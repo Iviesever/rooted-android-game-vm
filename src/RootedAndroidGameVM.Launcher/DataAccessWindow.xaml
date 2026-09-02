@@ -1,0 +1,66 @@
+<Window x:Class="RootedAndroidGameVM.Launcher.DataAccessWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="应用与数据" Width="760" Height="700" MinHeight="650"
+        WindowStartupLocation="CenterOwner" Background="{StaticResource PageBrush}"
+        FontFamily="Segoe UI" Foreground="{StaticResource InkBrush}">
+    <Grid Margin="30">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" /><RowDefinition Height="18" />
+            <RowDefinition Height="Auto" /><RowDefinition Height="12" />
+            <RowDefinition Height="Auto" /><RowDefinition Height="12" />
+            <RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <StackPanel>
+            <TextBlock Text="应用与数据" FontSize="22" FontWeight="SemiBold" />
+            <TextBlock Text="浏览安卓私有目录，或把任意应用的数据安全导出到 Windows。" Foreground="{StaticResource MutedBrush}" FontSize="13" Margin="0,7,0,0" />
+        </StackPanel>
+        <Border Grid.Row="2" Background="White" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="14" Padding="18">
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="在质感文件中浏览" FontSize="15" FontWeight="SemiBold" />
+                    <TextBlock Text="使用 Root 权限访问各应用的 /data/data 目录。" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,5,0,0" />
+                </StackPanel>
+                <Button Grid.Column="1" Style="{StaticResource PrimaryButton}" Content="打开质感文件" Width="128" Click="OpenFiles_Click" />
+            </Grid>
+        </Border>
+        <Border Grid.Row="4" Background="White" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="14" Padding="18">
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="导出 Arcaea 谱面" FontSize="15" FontWeight="SemiBold" />
+                    <TextBlock Text="/data/data/moe.low.arc/files/dl" FontFamily="Cascadia Mono" Foreground="{StaticResource AccentBrush}" FontSize="12" Margin="0,6,0,0" />
+                    <TextBlock Text="7.x 的 AFF 谱面是无扩展名的 *_0、*_1 等文件。" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,5,0,0" />
+                </StackPanel>
+                <Button x:Name="ExportButton" Grid.Column="1" Style="{StaticResource PrimaryButton}" Content="选择位置并导出" Width="140" Click="ExportArcaea_Click" />
+            </Grid>
+        </Border>
+        <Border Grid.Row="6" Background="White" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="14" Padding="18">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBlock Text="其他已安装应用" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <Button Grid.Column="1" Content="刷新列表" Padding="13,6" Click="RefreshPackages_Click" />
+                </Grid>
+                <Grid Margin="0,13,0,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="180" /></Grid.ColumnDefinitions>
+                    <ComboBox x:Name="PackageComboBox" Height="36" IsEditable="True" IsTextSearchEnabled="True"
+                              AutomationProperties.Name="Android 包名" />
+                    <TextBox x:Name="RelativePathTextBox" Grid.Column="2" Height="36" Text="files" Padding="9,7"
+                             ToolTip="相对于 /data/data/&lt;包名&gt; 的路径，例如 files 或 databases"
+                             AutomationProperties.Name="私有数据相对路径" />
+                </Grid>
+                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                    <Button Content="启动应用" Padding="14,7" Click="LaunchSelected_Click" />
+                    <Button Content="强制停止" Padding="14,7" Margin="9,0,0,0" Click="StopSelected_Click" />
+                    <Button Content="卸载应用" Padding="14,7" Margin="9,0,0,0" Click="UninstallSelected_Click" />
+                    <Button x:Name="ExportSelectedButton" Content="导出所选目录" Padding="14,7" Margin="9,0,0,0" Click="ExportSelected_Click" />
+                </StackPanel>
+                <TextBlock Text="路径将严格限制在所选包的 /data/data/&lt;包名&gt; 内。" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,10,0,0" />
+            </StackPanel>
+        </Border>
+        <TextBlock Grid.Row="7" x:Name="StatusText" Text="虚拟机需要处于运行状态。" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,14,0,0" TextWrapping="Wrap" />
+        <Button Grid.Row="8" Content="关闭" Width="82" Height="36" HorizontalAlignment="Right" Click="Close_Click" />
+    </Grid>
+</Window>

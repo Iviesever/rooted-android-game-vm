@@ -1,0 +1,130 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "RootedAndroidGameVM-0.1.0",
+  "documentNamespace": "https://github.com/RootedAndroidGameVM/RootedAndroidGameVM/sbom/0.1.0",
+  "creationInfo": {
+    "created": "2026-09-02T00:00:00Z",
+    "creators": [
+      "Tool: RootedAndroidGameVM.Build"
+    ]
+  },
+  "packages": [
+    {
+      "name": "RootedAndroidGameVM",
+      "SPDXID": "SPDXRef-Package-RootedAndroidGameVM",
+      "versionInfo": "0.1.0",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "Copyright (c) 2026 RootedAndroidGameVM contributors"
+    },
+    {
+      "name": "Microsoft .NET Runtime",
+      "SPDXID": "SPDXRef-Package-DotNetRuntime",
+      "versionInfo": "10.0.11",
+      "downloadLocation": "https://github.com/dotnet/runtime",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "Copyright Microsoft Corporation"
+    },
+    {
+      "name": "Windows Presentation Foundation",
+      "SPDXID": "SPDXRef-Package-WPF",
+      "versionInfo": "10.0.11",
+      "downloadLocation": "https://github.com/dotnet/wpf",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "Copyright .NET Foundation and Contributors"
+    },
+    {
+      "name": "Inno Setup",
+      "SPDXID": "SPDXRef-Package-InnoSetup",
+      "versionInfo": "6.7.3",
+      "downloadLocation": "https://jrsoftware.org/isinfo.php",
+      "filesAnalyzed": false,
+      "licenseConcluded": "LicenseRef-InnoSetup",
+      "licenseDeclared": "LicenseRef-InnoSetup",
+      "copyrightText": "Copyright Jordan Russell and Martijn Laan"
+    },
+    {
+      "name": "rootAVD",
+      "SPDXID": "SPDXRef-Package-rootAVD",
+      "versionInfo": "92df40eafa2f117053f56015e3c32ca706a55fa9",
+      "downloadLocation": "https://github.com/galihlasahido/rootAVD",
+      "filesAnalyzed": false,
+      "licenseConcluded": "GPL-3.0-only",
+      "licenseDeclared": "GPL-3.0-only",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "Magisk",
+      "SPDXID": "SPDXRef-Package-Magisk",
+      "versionInfo": "30.6",
+      "downloadLocation": "https://github.com/topjohnwu/Magisk",
+      "filesAnalyzed": false,
+      "licenseConcluded": "GPL-3.0-only",
+      "licenseDeclared": "GPL-3.0-only",
+      "copyrightText": "Copyright topjohnwu and contributors"
+    },
+    {
+      "name": "Microsoft Build of OpenJDK",
+      "SPDXID": "SPDXRef-Package-OpenJDK",
+      "versionInfo": "21.0.12.1",
+      "downloadLocation": "https://learn.microsoft.com/java/openjdk/download",
+      "filesAnalyzed": false,
+      "licenseConcluded": "GPL-2.0-only WITH Classpath-exception-2.0",
+      "licenseDeclared": "GPL-2.0-only WITH Classpath-exception-2.0",
+      "copyrightText": "Copyright Microsoft and OpenJDK contributors"
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-RootedAndroidGameVM"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-RootedAndroidGameVM",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-Package-DotNetRuntime"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-RootedAndroidGameVM",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-Package-WPF"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-InnoSetup",
+      "relationshipType": "BUILD_TOOL_OF",
+      "relatedSpdxElement": "SPDXRef-Package-RootedAndroidGameVM"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-RootedAndroidGameVM",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-rootAVD"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-RootedAndroidGameVM",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-Magisk"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-RootedAndroidGameVM",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-OpenJDK"
+    }
+  ],
+  "annotations": [
+    {
+      "annotationDate": "2026-09-02T00:00:00Z",
+      "annotationType": "OTHER",
+      "annotator": "Tool: RootedAndroidGameVM.Build",
+      "comment": "Android SDK, OpenJDK, rootAVD and Magisk are runtime downloads and are not contained in the Release installer."
+    }
+  ]
+}
