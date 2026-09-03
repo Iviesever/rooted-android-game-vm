@@ -10,6 +10,7 @@ public sealed class AndroidVmController
     private readonly IProcessRunner _runner;
     private readonly DetachedProcessLauncher _detachedLauncher;
     private readonly AndroidVmStartupPolicy _startupPolicy;
+    private DetachedProcessHandle? _activeEmulatorHandle;
 
     public AndroidVmController(
         AndroidSdkLayout? layout = null,
@@ -73,9 +74,19 @@ public sealed class AndroidVmController
             return;
         }
 
-        using var emulatorProcess = _detachedLauncher.Start(
+        await ReleaseActiveEmulatorHandleAsync(killIfRunning: true, CancellationToken.None);
+
+        var diagnosticLogPath = _options.Verbose && !string.IsNullOrWhiteSpace(_options.AvdHome)
+            ? Path.Combine(
+                _options.AvdHome,
+                $"{_options.AvdName}-emulator-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}.log")
+            : null;
+        var emulatorHandle = _detachedLauncher.Start(
             AndroidCommandFactory.StartEmulator(_layout, _options),
-            CreateAvdEnvironment());
+            CreateAvdEnvironment(),
+            diagnosticLogPath);
+        _activeEmulatorHandle = emulatorHandle;
+        var emulatorProcess = emulatorHandle.Process;
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(_startupPolicy.Timeout);
 
@@ -98,6 +109,11 @@ public sealed class AndroidVmController
                         AndroidCommandFactory.Adb(_layout, _options, "shell", "settings", "put", "secure",
                             "show_ime_with_hard_keyboard", "0"),
                         timeout.Token);
+                    if (!_options.Verbose)
+                    {
+                        _activeEmulatorHandle = null;
+                        await emulatorHandle.DisposeAsync();
+                    }
                     return;
                 }
 
@@ -106,19 +122,45 @@ public sealed class AndroidVmController
         }
         catch (Exception exception)
         {
+            var processState = emulatorProcess.HasExited
+                ? $"Emulator exited with code {emulatorProcess.ExitCode}."
+                : "Emulator was still running when startup timed out.";
             if (!emulatorProcess.HasExited)
             {
                 emulatorProcess.Kill(entireProcessTree: true);
                 await emulatorProcess.WaitForExitAsync(CancellationToken.None);
             }
+            _activeEmulatorHandle = null;
+            await DisposeHandlePreservingPrimaryFailureAsync(emulatorHandle);
+            var diagnostics = ReadDiagnosticTail(diagnosticLogPath);
 
             if (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested)
             {
                 throw new TimeoutException(
-                    $"安卓虚拟机未能在 {_startupPolicy.Timeout.TotalMinutes:0} 分钟内完成启动。",
+                    $"安卓虚拟机未能在 {_startupPolicy.Timeout.TotalMinutes:0} 分钟内完成启动。" +
+                    $"{Environment.NewLine}{processState}{Environment.NewLine}{diagnostics}",
                     exception);
             }
             throw;
+        }
+    }
+
+    private static string ReadDiagnosticTail(string? path)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            {
+                return "Emulator diagnostic output is unavailable.";
+            }
+            var lines = File.ReadLines(path).TakeLast(80).ToArray();
+            return lines.Length == 0
+                ? "Emulator diagnostic output was empty."
+                : "Emulator diagnostic tail:" + Environment.NewLine + string.Join(Environment.NewLine, lines);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return $"Emulator diagnostic output could not be read: {exception.GetType().Name}.";
         }
     }
 
@@ -126,6 +168,7 @@ public sealed class AndroidVmController
     {
         if (await GetStatusAsync(cancellationToken) != VmStatus.Running)
         {
+            await ReleaseActiveEmulatorHandleAsync(killIfRunning: true, CancellationToken.None);
             return;
         }
 
@@ -140,12 +183,44 @@ public sealed class AndroidVmController
             if (state.ExitCode != 0 ||
                 !string.Equals(state.StandardOutput.Trim(), "device", StringComparison.OrdinalIgnoreCase))
             {
+                await ReleaseActiveEmulatorHandleAsync(killIfRunning: true, cancellationToken);
                 return;
             }
             await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
         }
 
         throw new TimeoutException("安卓虚拟机未能在一分钟内完全停止。");
+    }
+
+    private async Task ReleaseActiveEmulatorHandleAsync(
+        bool killIfRunning,
+        CancellationToken cancellationToken)
+    {
+        var handle = _activeEmulatorHandle;
+        if (handle is null) return;
+        if (!handle.Process.HasExited && killIfRunning)
+        {
+            handle.Process.Kill(entireProcessTree: true);
+        }
+        if (!handle.Process.HasExited)
+        {
+            await handle.Process.WaitForExitAsync(cancellationToken);
+        }
+        _activeEmulatorHandle = null;
+        await handle.DisposeAsync();
+    }
+
+    private static async Task DisposeHandlePreservingPrimaryFailureAsync(
+        DetachedProcessHandle handle)
+    {
+        try
+        {
+            await handle.DisposeAsync();
+        }
+        catch
+        {
+            // Preserve the primary startup failure even if diagnostic capture itself failed.
+        }
     }
 
     public async Task InstallApkAsync(string apkPath, CancellationToken cancellationToken = default)

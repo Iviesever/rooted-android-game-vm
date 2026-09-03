@@ -37,4 +37,32 @@ public sealed class ProcessRunnerContractTests
         Assert.Matches(@"^\d+\.\d+\.\d+", standardOutput.Trim());
         Assert.True(string.IsNullOrWhiteSpace(standardError));
     }
+
+    [Fact]
+    public async Task Detached_launcher_can_capture_diagnostics_without_a_console_window()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "rgvm-detached-log", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var log = Path.Combine(root, "process.log");
+            var handle = new RootedAndroidGameVM.Core.Processes.DetachedProcessLauncher().Start(
+                new RootedAndroidGameVM.Core.Processes.ProcessSpec(
+                    "dotnet",
+                    ["--version"],
+                    root),
+                diagnosticLogPath: log);
+
+            await handle.Process.WaitForExitAsync();
+            await handle.CaptureCompletion;
+
+            Assert.Equal(0, handle.Process.ExitCode);
+            Assert.Matches(@"\d+\.\d+\.\d+", await File.ReadAllTextAsync(log));
+            await handle.DisposeAsync();
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
 }
