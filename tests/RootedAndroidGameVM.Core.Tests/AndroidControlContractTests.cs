@@ -170,4 +170,18 @@ public sealed class AndroidControlContractTests
         Assert.Equal(layout.Root, environment["ANDROID_SDK_ROOT"]);
         Assert.Equal(@"D:\Product\Avd", environment["ANDROID_AVD_HOME"]);
     }
+
+    [Fact]
+    public void Interactive_session_commands_wake_and_dismiss_the_keyguard()
+    {
+        var layout = AndroidSdkLayout.FromRoot(@"D:\Product\Sdk");
+        var options = AndroidVmOptions.Default;
+
+        Assert.Equal(
+            ["-s", options.Serial, "shell", "input", "keyevent", "KEYCODE_WAKEUP"],
+            AndroidCommandFactory.WakeDevice(layout, options).Arguments);
+        Assert.Equal(
+            ["-s", options.Serial, "shell", "wm", "dismiss-keyguard"],
+            AndroidCommandFactory.DismissKeyguard(layout, options).Arguments);
+    }
 }

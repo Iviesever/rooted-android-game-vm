@@ -56,6 +56,19 @@ public sealed partial class AndroidUiSnapshot
         FindByResourceId(resourceId).DescendantsAndSelf().Any(node =>
             string.Equals(node.Attribute("checked")?.Value, "true", StringComparison.Ordinal));
 
+    public string DescribeVisibleLabels() =>
+        string.Join(
+            " | ",
+            _document.Descendants("node")
+                .SelectMany(node => new[]
+                {
+                    node.Attribute("text")?.Value,
+                    node.Attribute("content-desc")?.Value
+                })
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.Ordinal)
+                .Take(20));
+
     private static AndroidUiPoint GetCenter(XElement node, string label)
     {
         var bounds = node.Attribute("bounds")?.Value ?? string.Empty;

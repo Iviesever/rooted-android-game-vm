@@ -80,4 +80,10 @@ public static class AndroidCommandFactory
 
     public static ProcessSpec RootIdentity(AndroidSdkLayout layout, AndroidVmOptions options) =>
         Adb(layout, options, "shell", "su", "-c", "id");
+
+    public static ProcessSpec WakeDevice(AndroidSdkLayout layout, AndroidVmOptions options) =>
+        Adb(layout, options, "shell", "input", "keyevent", "KEYCODE_WAKEUP");
+
+    public static ProcessSpec DismissKeyguard(AndroidSdkLayout layout, AndroidVmOptions options) =>
+        Adb(layout, options, "shell", "wm", "dismiss-keyguard");
 }

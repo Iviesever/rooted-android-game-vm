@@ -105,6 +105,8 @@ public sealed class AndroidVmController
                     timeout.Token);
                 if (boot.ExitCode == 0 && boot.StandardOutput.Trim() == "1")
                 {
+                    await new AndroidInteractiveSessionService(_layout, _options, _runner)
+                        .PrepareAsync(timeout.Token);
                     await _runner.RunAsync(
                         AndroidCommandFactory.Adb(_layout, _options, "shell", "settings", "put", "secure",
                             "show_ime_with_hard_keyboard", "0"),

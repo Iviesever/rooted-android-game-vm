@@ -66,4 +66,17 @@ public sealed class AndroidUiContractTests
 
         Assert.True(AndroidUiSnapshot.Parse(xml).IsCheckedByResourceId("policy"));
     }
+
+    [Fact]
+    public void Ui_snapshot_describes_visible_labels_for_timeout_diagnostics()
+    {
+        const string xml = """
+            <hierarchy>
+              <node text="Welcome" content-desc="" enabled="true" bounds="[0,0][10,10]" />
+              <node text="" content-desc="Continue" enabled="true" bounds="[10,10][20,20]" />
+            </hierarchy>
+            """;
+
+        Assert.Equal("Welcome | Continue", AndroidUiSnapshot.Parse(xml).DescribeVisibleLabels());
+    }
 }

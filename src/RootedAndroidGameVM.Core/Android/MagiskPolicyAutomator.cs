@@ -188,8 +188,13 @@ public sealed class MagiskPolicyAutomator
             await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
         }
 
-        throw new TimeoutException("多次启动 Magisk 后仍未出现授权主页。", lastError);
+        throw new TimeoutException(FormatOpenFailure(lastError), lastError);
     }
+
+    public static string FormatOpenFailure(Exception? lastError) =>
+        lastError is null
+            ? "多次启动 Magisk 后仍未出现授权主页。"
+            : $"多次启动 Magisk 后仍未出现授权主页。最后错误：{lastError.Message}";
 
     private async Task LaunchAsync(CancellationToken cancellationToken)
     {
@@ -240,7 +245,12 @@ public sealed class MagiskPolicyAutomator
                     "getprop",
                     "sys.boot_completed"),
                 cancellationToken);
-            if (boot.ExitCode == 0 && boot.StandardOutput.Trim() == "1") return;
+            if (boot.ExitCode == 0 && boot.StandardOutput.Trim() == "1")
+            {
+                await new AndroidInteractiveSessionService(_layout, _options, _runner)
+                    .PrepareAsync(cancellationToken);
+                return;
+            }
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
         }
 
@@ -290,6 +300,7 @@ public sealed class MagiskPolicyAutomator
         CancellationToken cancellationToken)
     {
         var deadline = DateTimeOffset.UtcNow + timeout;
+        var lastVisibleLabels = "<none>";
         while (DateTimeOffset.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -307,6 +318,8 @@ public sealed class MagiskPolicyAutomator
                 try
                 {
                     var snapshot = AndroidUiSnapshot.Parse(dump.StandardOutput);
+                    var labels = snapshot.DescribeVisibleLabels();
+                    if (!string.IsNullOrWhiteSpace(labels)) lastVisibleLabels = labels;
                     if (predicate(snapshot)) return snapshot;
                 }
                 catch (InvalidDataException)
@@ -318,7 +331,8 @@ public sealed class MagiskPolicyAutomator
             await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
         }
 
-        throw new TimeoutException("等待 Magisk 授权界面超时。");
+        throw new TimeoutException(
+            $"等待 Magisk 授权界面超时。最后可见标签：{lastVisibleLabels}");
     }
 
     private async Task TapAsync(AndroidUiPoint point, CancellationToken cancellationToken)
