@@ -25,7 +25,7 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $releaseJson = gh release view $env:RELEASE_TAG --json isDraft,body,tagName
+          $releaseJson = gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json isDraft,body,tagName
           if ($LASTEXITCODE -ne 0) { throw 'Unable to read the requested Draft Release.' }
           $release = $releaseJson | ConvertFrom-Json
           if ($release.isDraft -ne $true) { throw 'The requested Release is not a draft.' }
@@ -36,7 +36,7 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($version)) { throw 'Invalid Release tag.' }
           $assetRoot = Join-Path $env:RUNNER_TEMP "rgvm-reviewed-$([Guid]::NewGuid().ToString('N'))"
           [IO.Directory]::CreateDirectory($assetRoot) | Out-Null
-          gh release download $env:RELEASE_TAG --dir $assetRoot
+          gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --dir $assetRoot
           if ($LASTEXITCODE -ne 0) { throw 'Unable to download the draft assets.' }
           $installerName = "RootedAndroidGameVM-Setup-$version-x64-UNSIGNED.exe"
           $expected = @(
@@ -93,5 +93,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
-          gh release edit $env:RELEASE_TAG --draft=false --latest
+          gh release edit $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --draft=false --latest
           if ($LASTEXITCODE -ne 0) { throw 'Reviewed Release publication failed.' }

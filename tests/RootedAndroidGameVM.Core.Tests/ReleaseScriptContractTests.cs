@@ -208,7 +208,15 @@ public sealed class ReleaseScriptContractTests
         Assert.Contains("workflow_dispatch", workflow, StringComparison.Ordinal);
         Assert.Contains("environment: release-publish", workflow, StringComparison.Ordinal);
         Assert.Contains(
-            "gh release view $env:RELEASE_TAG --json isDraft,body,tagName",
+            "gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json isDraft,body,tagName",
+            workflow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --dir $assetRoot",
+            workflow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "gh release edit $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --draft=false --latest",
             workflow,
             StringComparison.Ordinal);
         Assert.DoesNotContain("releases/tags/$env:RELEASE_TAG", workflow, StringComparison.Ordinal);
