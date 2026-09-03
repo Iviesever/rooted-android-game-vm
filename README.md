@@ -3,7 +3,7 @@
 一个面向 Windows 11 x64 的图形化安卓游戏虚拟机管理器。安装、日常启动、APK 更新、Root 诊断和私有数据导出都通过 .exe 窗口完成，普通用户无需输入终端命令。
 项目不针对、不捆绑任何单一应用或游戏；所有 APK 安装、应用启动和私有数据导出都使用通用的 Android 包名与相对路径。
 
-> 0.1.1 按项目政策明确以 unsigned 形式发布，安装器文件名包含 `UNSIGNED`，Windows 可能显示 unknown publisher（未知发布者）警告。请只从本仓库 GitHub Release 下载，并核对随 Release 发布的 SHA-256 或 GitHub provenance。
+> 0.1.2 按项目政策明确以 unsigned 形式发布，安装器文件名包含 `UNSIGNED`，Windows 可能显示 unknown publisher（未知发布者）警告。请只从本仓库 GitHub Release 下载，并核对随 Release 发布的 SHA-256 或 GitHub provenance。
 
 ## 日常使用
 

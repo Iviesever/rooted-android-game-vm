@@ -1,4 +1,4 @@
-# 0.1.1
+# 0.1.2
 
 This Windows installer is intentionally not Authenticode-signed and its filename includes `UNSIGNED`. Windows may show an unknown publisher warning. Download only from this repository's GitHub Release page and verify the accompanying SHA-256 checksum or GitHub build provenance before running it.
 

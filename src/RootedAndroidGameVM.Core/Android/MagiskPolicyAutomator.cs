@@ -36,11 +36,7 @@ public sealed class MagiskPolicyAutomator
             return;
         }
 
-        await TapAsync(beforePolicy.FindCenter("Superuser"), cancellationToken);
-        var policySnapshot = await WaitForSnapshotAsync(
-            IsActionableMagiskPolicySnapshot,
-            TimeSpan.FromSeconds(30),
-            cancellationToken);
+        var policySnapshot = await OpenMagiskPolicyAsync(beforePolicy, cancellationToken);
         if (!policySnapshot.IsCheckedByResourceId(PolicyIndicatorResourceId))
         {
             await TapAsync(
@@ -49,6 +45,40 @@ public sealed class MagiskPolicyAutomator
         }
         await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
         await PersistShellPolicyAsync(cancellationToken);
+    }
+
+    private async Task<AndroidUiSnapshot> OpenMagiskPolicyAsync(
+        AndroidUiSnapshot beforePolicy,
+        CancellationToken cancellationToken)
+    {
+        const int maxNavigationAttempts = 4;
+        TimeoutException? lastError = null;
+        for (var navigationAttempt = 0;
+             navigationAttempt < maxNavigationAttempts;
+             navigationAttempt++)
+        {
+            await TapAsync(beforePolicy.FindCenter("Superuser"), cancellationToken);
+            try
+            {
+                return await WaitForSnapshotAsync(
+                    IsActionableMagiskPolicySnapshot,
+                    TimeSpan.FromSeconds(10),
+                    cancellationToken);
+            }
+            catch (TimeoutException exception)
+            {
+                lastError = exception;
+                if (navigationAttempt + 1 >= maxNavigationAttempts)
+                {
+                    break;
+                }
+                (beforePolicy, _) = await PrepareMagiskHomeAsync(cancellationToken);
+            }
+        }
+
+        throw new TimeoutException(
+            "Magisk 授权策略页在有限次导航尝试后仍未出现。",
+            lastError);
     }
 
     public Task PersistCurrentShellPolicyAsync(CancellationToken cancellationToken = default) =>

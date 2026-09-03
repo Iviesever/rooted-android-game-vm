@@ -1,6 +1,6 @@
 # Release integrity and code signing policy
 
-Version 0.1.1 is intentionally not Authenticode-signed. Its installer filename must include `UNSIGNED`, and Windows can display an unknown publisher warning. A self-signed certificate is not used because it would not establish public publisher trust.
+Version 0.1.2 is intentionally not Authenticode-signed. Its installer filename must include `UNSIGNED`, and Windows can display an unknown publisher warning. A self-signed certificate is not used because it would not establish public publisher trust.
 
 ## Release controls
 
@@ -12,7 +12,7 @@ Version 0.1.1 is intentionally not Authenticode-signed. Its installer filename m
 - Tagged automation creates only a Draft. Publication requires a separate protected manual approval that re-downloads and revalidates every asset.
 - Users should download only from this repository's GitHub Release page and verify the published SHA-256 or GitHub provenance before running the installer.
 
-If a safe and publicly trusted signing identity becomes available in the future, optional Authenticode support requires Launcher, Setup, the final installer and its embedded uninstaller to use and verify the same signer. That optional path is not required for version 0.1.1.
+If a safe and publicly trusted signing identity becomes available in the future, optional Authenticode support requires Launcher, Setup, the final installer and its embedded uninstaller to use and verify the same signer. That optional path is not required for version 0.1.2.
 
 ## Roles
 

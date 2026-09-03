@@ -88,6 +88,12 @@ public sealed class AndroidInteractiveSessionServiceTests
         Assert.Contains("actionCount <= maxSetupActions", source, StringComparison.Ordinal);
         Assert.Contains("if (actionCount == maxSetupActions)", source, StringComparison.Ordinal);
         Assert.Contains("beforePolicy.FindCenter(\"Superuser\")", source, StringComparison.Ordinal);
+        Assert.Contains("OpenMagiskPolicyAsync", source, StringComparison.Ordinal);
+        Assert.Contains("navigationAttempt < maxNavigationAttempts", source, StringComparison.Ordinal);
+        Assert.Contains("catch (TimeoutException exception)", source, StringComparison.Ordinal);
+        Assert.Contains("lastError = exception", source, StringComparison.Ordinal);
+        Assert.Contains("throw new TimeoutException(", source, StringComparison.Ordinal);
+        Assert.Contains("\"Magisk 授权策略页", source, StringComparison.Ordinal);
         Assert.Contains(
             "policySnapshot.FindCenterByResourceId(PolicyIndicatorResourceId)",
             source,
