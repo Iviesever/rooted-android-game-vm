@@ -56,6 +56,6 @@
                 <StackPanel><Border Width="38" Height="38" CornerRadius="10" Background="#FDEFF0" HorizontalAlignment="Left"><TextBlock Text="&#xE777;" FontFamily="Segoe Fluent Icons" FontSize="17" Foreground="#B94D59" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border><TextBlock Text="修复" FontSize="15" FontWeight="SemiBold" Margin="0,15,0,0" /><TextBlock Text="修复虚拟机或重新配置 Root" Foreground="{StaticResource MutedBrush}" FontSize="13" Margin="0,5,0,0" /></StackPanel>
             </Button>
         </UniformGrid>
-        <Grid Grid.Row="6"><TextBlock x:Name="FooterStatusText" Text="准备就绪" Foreground="{StaticResource MutedBrush}" FontSize="12" VerticalAlignment="Center" /><TextBlock Text="版本 0.1.0 · 本地运行" Foreground="#929BAD" FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center" /></Grid>
+        <Grid Grid.Row="6"><TextBlock x:Name="FooterStatusText" Text="准备就绪" Foreground="{StaticResource MutedBrush}" FontSize="12" VerticalAlignment="Center" /><TextBlock Text="版本 0.1.1 · 本地运行" Foreground="#929BAD" FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center" /></Grid>
     </Grid>
 </Window>

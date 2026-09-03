@@ -77,6 +77,12 @@ public sealed class ReleaseScriptContractTests
         Assert.Contains("refs/remotes/origin/release-tag", workflow, StringComparison.Ordinal);
         Assert.Contains("git rev-parse HEAD", workflow, StringComparison.Ordinal);
         Assert.Contains("GITHUB_SHA", workflow, StringComparison.Ordinal);
+        Assert.Contains("$_.DisplayName -like 'Inno Setup version *'", workflow, StringComparison.Ordinal);
+        Assert.Contains("InstallLocation", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "$_.DisplayName -eq 'Inno Setup version 6.7.3'",
+            workflow,
+            StringComparison.Ordinal);
         Assert.Contains("Verify immutable release source before executing repository scripts", workflow, StringComparison.Ordinal);
         Assert.Contains("Recheck immutable release source before retaining artifacts", workflow, StringComparison.Ordinal);
         Assert.Contains("Recheck immutable release source before Draft", workflow, StringComparison.Ordinal);
@@ -140,6 +146,44 @@ public sealed class ReleaseScriptContractTests
             "'(?m)^#define AppVersion \"([^\"]+)\"\\r?$'",
             script,
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Release_version_advances_past_the_failed_immutable_v0_1_0_tag()
+    {
+        const string expectedVersion = "0.1.1";
+        var inno = await File.ReadAllTextAsync(
+            Path.Combine(ProjectRoot, "installer", "RootedAndroidGameVM.iss"));
+        var launcherProject = await File.ReadAllTextAsync(Path.Combine(
+            ProjectRoot,
+            "src",
+            "RootedAndroidGameVM.Launcher",
+            "RootedAndroidGameVM.Launcher.csproj"));
+        var setupProject = await File.ReadAllTextAsync(Path.Combine(
+            ProjectRoot,
+            "src",
+            "RootedAndroidGameVM.Setup",
+            "RootedAndroidGameVM.Setup.csproj"));
+        var installProfile = await File.ReadAllTextAsync(Path.Combine(
+            ProjectRoot,
+            "src",
+            "RootedAndroidGameVM.Core",
+            "Setup",
+            "InstallProfile.cs"));
+        var launcherWindow = await File.ReadAllTextAsync(Path.Combine(
+            ProjectRoot,
+            "src",
+            "RootedAndroidGameVM.Launcher",
+            "MainWindow.xaml"));
+        var changelog = await File.ReadAllTextAsync(
+            Path.Combine(ProjectRoot, "release", "CHANGELOG.md"));
+
+        Assert.Contains($"#define AppVersion \"{expectedVersion}\"", inno, StringComparison.Ordinal);
+        Assert.Contains($"<Version>{expectedVersion}</Version>", launcherProject, StringComparison.Ordinal);
+        Assert.Contains($"<Version>{expectedVersion}</Version>", setupProject, StringComparison.Ordinal);
+        Assert.Contains($"ProductVersion = \"{expectedVersion}\"", installProfile, StringComparison.Ordinal);
+        Assert.Contains($"版本 {expectedVersion}", launcherWindow, StringComparison.Ordinal);
+        Assert.StartsWith($"# {expectedVersion}", changelog, StringComparison.Ordinal);
     }
 
     [Fact]

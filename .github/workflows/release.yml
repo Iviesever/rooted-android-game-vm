@@ -64,8 +64,13 @@ jobs:
           }
           $inno = Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe'
           if (-not (Test-Path -LiteralPath $inno)) { throw 'Inno Setup 6.7.3 is required.' }
+          $innoInstallRoot = (Split-Path -Parent $inno).TrimEnd('\')
           $innoRegistration = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
-            Where-Object { $_.DisplayName -eq 'Inno Setup version 6.7.3' -and $_.DisplayVersion -eq '6.7.3' } |
+            Where-Object {
+              $_.DisplayName -like 'Inno Setup version *' -and
+              $_.DisplayVersion -eq '6.7.3' -and
+              ([string]$_.InstallLocation).TrimEnd('\') -eq $innoInstallRoot
+            } |
             Select-Object -First 1
           if (-not $innoRegistration) { throw 'The installed Inno Setup version is not 6.7.3.' }
           $versionLine = Select-String -LiteralPath 'installer\RootedAndroidGameVM.iss' -Pattern '^#define AppVersion "([^"]+)"$'

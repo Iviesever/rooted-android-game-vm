@@ -17,7 +17,7 @@
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <DebugType>embedded</DebugType>
     <PublishTrimmed>false</PublishTrimmed>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <RuntimeFrameworkVersion>10.0.11</RuntimeFrameworkVersion>
   </PropertyGroup>
 

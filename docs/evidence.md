@@ -61,7 +61,8 @@ Verified results:
 Repository protection state:
 
 - `release` and `release-publish` GitHub environments both require review by the repository owner.
-- No Release tag or GitHub Release exists.
-- No paid or publicly trusted Authenticode identity is configured or required for version 0.1.0.
+- The immutable `v0.1.0` tag remains at commit `175fc369cc9b7cd403021c3bd84ec3eceb028602`; its Release workflow run 33772087910 failed during the duplicated Inno registration precheck before E2E, asset upload or Draft creation.
+- No GitHub Release exists.
+- No paid or publicly trusted Authenticode identity is configured or required for version 0.1.1.
 
-The clean unsigned Release pipeline is proven. Version 0.1.0 intentionally uses the visibly named `UNSIGNED` installer; the immutable tag, protected Draft and independent publication workflow remain the final public-release gates.
+The generic clean unsigned Release pipeline is proven by the authoritative run above. Version 0.1.1 is intended to use the visibly named `UNSIGNED` installer, but it is not yet proven on its exact tag; the immutable tag, protected Draft and independent publication workflow remain required before publication.
