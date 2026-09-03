@@ -1,0 +1,222 @@
+name: Windows Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 90
+    steps:
+      - name: Check out the immutable tag
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Verify immutable release source before executing repository scripts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_REF_NAME -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') {
+            throw "Invalid Release tag: $env:GITHUB_REF_NAME"
+          }
+          $tagFetch = "+refs/tags/$env:GITHUB_REF_NAME`:refs/remotes/origin/release-tag"
+          git fetch --force --no-tags origin $tagFetch '+refs/heads/main:refs/remotes/origin/main'
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to fetch immutable Release refs.' }
+          $checkoutCommit = (git rev-parse HEAD).Trim()
+          $eventCommit = (git rev-parse "$env:GITHUB_SHA`^{commit}").Trim()
+          $tagCommit = (git rev-parse 'refs/remotes/origin/release-tag^{commit}').Trim()
+          $mainCommit = (git rev-parse refs/remotes/origin/main).Trim()
+          if ($checkoutCommit -ne $eventCommit -or
+              $checkoutCommit -ne $tagCommit -or
+              $checkoutCommit -ne $mainCommit) {
+            throw "Release source mismatch: checkout=$checkoutCommit event=$eventCommit tag=$tagCommit main=$mainCommit"
+          }
+
+      - name: Install pinned .NET SDK
+        uses: actions/setup-dotnet@d4c94342e560b34958eacfc5d055d21461ed1c5d # v5.0.0
+        with:
+          dotnet-version: '10.0.400'
+
+      - name: Install pinned Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13.0'
+
+      - name: Provision hash-verified build tools
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          .\build\Prepare-InnoSetup.ps1
+          .\build\Prepare-SpdxValidator.ps1
+
+      - name: Verify runner and version prerequisites
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Get-Command python.exe -ErrorAction Stop | Out-Null
+          if ((dotnet --version).Trim() -ne '10.0.400') {
+            throw 'The pinned .NET SDK is unavailable.'
+          }
+          $inno = Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path -LiteralPath $inno)) { throw 'Inno Setup 6.7.3 is required.' }
+          $innoRegistration = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -eq 'Inno Setup version 6.7.3' -and $_.DisplayVersion -eq '6.7.3' } |
+            Select-Object -First 1
+          if (-not $innoRegistration) { throw 'The installed Inno Setup version is not 6.7.3.' }
+          $versionLine = Select-String -LiteralPath 'installer\RootedAndroidGameVM.iss' -Pattern '^#define AppVersion "([^"]+)"$'
+          $version = $versionLine.Matches[0].Groups[1].Value
+          if ($env:GITHUB_REF_NAME -ne "v$version") {
+            throw "Tag $env:GITHUB_REF_NAME does not match installer version $version."
+          }
+
+      - name: Build and run every Release gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cleanRoot = Join-Path $env:RUNNER_TEMP "rgvm-clean-$([Guid]::NewGuid().ToString('N'))"
+          "RGVM_CLEAN_ROOT=$cleanRoot" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          .\build\Build-Release.ps1 `
+            -CleanInstallRoot $cleanRoot `
+            -HeadlessE2E `
+            -AllowUnsignedPublicRelease
+
+      - name: Recheck immutable release source before retaining artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tagFetch = "+refs/tags/$env:GITHUB_REF_NAME`:refs/remotes/origin/release-tag"
+          git fetch --force --no-tags origin $tagFetch '+refs/heads/main:refs/remotes/origin/main'
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to refresh Release refs.' }
+          $checkoutCommit = (git rev-parse HEAD).Trim()
+          $eventCommit = (git rev-parse "$env:GITHUB_SHA`^{commit}").Trim()
+          $tagCommit = (git rev-parse 'refs/remotes/origin/release-tag^{commit}').Trim()
+          $mainCommit = (git rev-parse refs/remotes/origin/main).Trim()
+          if ($checkoutCommit -ne $eventCommit -or
+              $checkoutCommit -ne $tagCommit -or
+              $checkoutCommit -ne $mainCommit) {
+            throw 'Release source moved while the clean gate was running.'
+          }
+
+      - name: Verify the explicitly unsigned publishable asset
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = @(Get-ChildItem -LiteralPath 'artifacts\release' -Filter 'RootedAndroidGameVM-Setup-*-x64-UNSIGNED.exe' -File)
+          if ($installer.Count -ne 1) { throw 'Expected exactly one explicitly unsigned installer.' }
+          $publicNamed = @(Get-ChildItem -LiteralPath 'artifacts\release' -Filter 'RootedAndroidGameVM-Setup-*-x64.exe' -File)
+          if ($publicNamed.Count -ne 0) { throw 'An ambiguously named unsigned installer cannot enter the Release.' }
+          $signature = Get-AuthenticodeSignature -LiteralPath $installer[0].FullName
+          if ($signature.Status -ne 'NotSigned') {
+            throw "The explicitly unsigned Release has an unexpected signature state: $($signature.Status)"
+          }
+
+      - name: Retain the verified Release assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: RootedAndroidGameVM-${{ github.ref_name }}
+          path: artifacts/release/*
+          if-no-files-found: error
+
+      - name: Remove isolated E2E data
+        if: always()
+        shell: pwsh
+        run: |
+          if ($env:RGVM_CLEAN_ROOT) {
+            .\build\Remove-IsolatedProductRoot.ps1 `
+              -ProductRoot $env:RGVM_CLEAN_ROOT `
+              -AllowedParent $env:RUNNER_TEMP
+          }
+
+  draft:
+    needs: build
+    environment: release
+    runs-on: windows-2025
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Check out the immutable tag
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Recheck immutable release source before Draft
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tagFetch = "+refs/tags/$env:GITHUB_REF_NAME`:refs/remotes/origin/release-tag"
+          git fetch --force --no-tags origin $tagFetch '+refs/heads/main:refs/remotes/origin/main'
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to refresh Release refs before Draft creation.' }
+          $checkoutCommit = (git rev-parse HEAD).Trim()
+          $eventCommit = (git rev-parse "$env:GITHUB_SHA`^{commit}").Trim()
+          $tagCommit = (git rev-parse 'refs/remotes/origin/release-tag^{commit}').Trim()
+          $mainCommit = (git rev-parse refs/remotes/origin/main).Trim()
+          if ($checkoutCommit -ne $eventCommit -or
+              $checkoutCommit -ne $tagCommit -or
+              $checkoutCommit -ne $mainCommit) {
+            throw 'Release source changed before Draft creation.'
+          }
+
+      - name: Download the verified build artifact
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [IO.Directory]::CreateDirectory('reviewed-assets') | Out-Null
+          gh run download $env:GITHUB_RUN_ID --name "RootedAndroidGameVM-$env:GITHUB_REF_NAME" --dir 'reviewed-assets'
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to download this run''s verified build artifact.' }
+
+      - name: Revalidate the Draft inputs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = $env:GITHUB_REF_NAME.Substring(1)
+          $installerName = "RootedAndroidGameVM-Setup-$version-x64-UNSIGNED.exe"
+          $expected = @(
+            'CHANGELOG.md',
+            $installerName,
+            "$installerName.sha256",
+            'SBOM.spdx.json',
+            'THIRD_PARTY_NOTICES.md'
+          )
+          $actual = @(Get-ChildItem -LiteralPath 'reviewed-assets' -File | ForEach-Object Name | Sort-Object)
+          if (Compare-Object ($expected | Sort-Object) $actual) {
+            throw 'Build artifact does not match the exact Release allowlist.'
+          }
+          $installer = Join-Path 'reviewed-assets' $installerName
+          $signature = Get-AuthenticodeSignature -LiteralPath $installer
+          if ($signature.Status -ne 'NotSigned') {
+            throw "The explicitly unsigned installer has an unexpected signature state: $($signature.Status)"
+          }
+          $expectedHash = ((Get-Content -Raw -LiteralPath "$installer.sha256").Trim() -split '\s+')[0]
+          $actualHash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($expectedHash -ne $actualHash) { throw 'Installer checksum does not match.' }
+          $sbom = Get-Content -Raw -LiteralPath 'reviewed-assets\SBOM.spdx.json' | ConvertFrom-Json
+          $sbomInstaller = $sbom.files | Where-Object fileName -eq $installerName
+          $sbomSha256 = $sbomInstaller.checksums | Where-Object algorithm -eq 'SHA256'
+          if (@($sbomInstaller).Count -ne 1 -or
+              @($sbomSha256).Count -ne 1 -or
+              $sbomSha256.checksumValue -ne $actualHash) {
+            throw 'Draft SBOM does not identify the verified installer.'
+          }
+
+      - name: Attest installer provenance
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-path: reviewed-assets/RootedAndroidGameVM-Setup-*-x64-UNSIGNED.exe
+
+      - name: Create GitHub Release draft for human review
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $assets = Get-ChildItem -LiteralPath 'reviewed-assets' -File | ForEach-Object FullName
+          gh release create $env:GITHUB_REF_NAME $assets --draft --verify-tag --title "Rooted Android Game VM $env:GITHUB_REF_NAME (unsigned)" --notes-file 'release\CHANGELOG.md'
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub Release draft creation failed.' }

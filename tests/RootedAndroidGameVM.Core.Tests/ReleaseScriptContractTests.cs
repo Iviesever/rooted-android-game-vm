@@ -24,6 +24,15 @@ public sealed class ReleaseScriptContractTests
     }
 
     [Fact]
+    public async Task Unsigned_public_release_rejects_reused_e2e_state()
+    {
+        var script = await File.ReadAllTextAsync(
+            Path.Combine(ProjectRoot, "build", "Build-Release.ps1"));
+
+        Assert.Contains("$AllowUnsignedPublicRelease -and $ReuseE2EState", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Release_gate_invokes_the_pinned_official_spdx_validator()
     {
         var buildScript = await File.ReadAllTextAsync(
@@ -42,24 +51,58 @@ public sealed class ReleaseScriptContractTests
     }
 
     [Fact]
-    public async Task Github_release_requires_a_signed_clean_hosted_gate()
+    public async Task Github_release_requires_an_explicit_unsigned_clean_hosted_gate()
     {
-        var workflow = await File.ReadAllTextAsync(
-            Path.Combine(ProjectRoot, ".github", "workflows", "signed-release.yml"));
+        var releaseWorkflowPath = Path.Combine(
+            ProjectRoot,
+            ".github",
+            "workflows",
+            "release.yml");
+        Assert.True(File.Exists(releaseWorkflowPath), "The public Release workflow is missing.");
+        var workflow = await File.ReadAllTextAsync(releaseWorkflowPath);
+        var buildScript = await File.ReadAllTextAsync(
+            Path.Combine(ProjectRoot, "build", "Build-Release.ps1"));
+        var policy = await File.ReadAllTextAsync(
+            Path.Combine(ProjectRoot, "CODE_SIGNING_POLICY.md"));
+        var changelog = await File.ReadAllTextAsync(
+            Path.Combine(ProjectRoot, "release", "CHANGELOG.md"));
 
         Assert.Contains("runs-on: windows-2025", workflow, StringComparison.Ordinal);
-        Assert.Contains("RGVM_CODESIGN_PFX_BASE64", workflow, StringComparison.Ordinal);
-        Assert.Contains("-SigningCertificateThumbprint", workflow, StringComparison.Ordinal);
+        Assert.Contains("environment: release", workflow, StringComparison.Ordinal);
+        Assert.Contains("contents: read", workflow, StringComparison.Ordinal);
+        Assert.Contains("-AllowUnsignedPublicRelease", workflow, StringComparison.Ordinal);
         Assert.Contains("-HeadlessE2E", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("-ReuseE2EState", workflow, StringComparison.Ordinal);
-        Assert.Contains("$signature.Status -ne 'Valid'", workflow, StringComparison.Ordinal);
+        Assert.Contains("refs/remotes/origin/main", workflow, StringComparison.Ordinal);
+        Assert.Contains("refs/remotes/origin/release-tag", workflow, StringComparison.Ordinal);
+        Assert.Contains("git rev-parse HEAD", workflow, StringComparison.Ordinal);
+        Assert.Contains("GITHUB_SHA", workflow, StringComparison.Ordinal);
+        Assert.Contains("Verify immutable release source before executing repository scripts", workflow, StringComparison.Ordinal);
+        Assert.Contains("Recheck immutable release source before retaining artifacts", workflow, StringComparison.Ordinal);
+        Assert.Contains("Recheck immutable release source before Draft", workflow, StringComparison.Ordinal);
+        Assert.True(
+            workflow.IndexOf(
+                "Verify immutable release source before executing repository scripts",
+                StringComparison.Ordinal) <
+            workflow.IndexOf("Prepare-InnoSetup.ps1", StringComparison.Ordinal));
+        Assert.Contains("RootedAndroidGameVM-Setup-*-x64-UNSIGNED.exe", workflow, StringComparison.Ordinal);
+        Assert.Contains("$signature.Status -ne 'NotSigned'", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("RGVM_CODESIGN", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("PFX", workflow, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("SigningCertificateThumbprint", workflow, StringComparison.Ordinal);
         Assert.Contains("gh release create", workflow, StringComparison.Ordinal);
         Assert.Contains("--draft", workflow, StringComparison.Ordinal);
-        Assert.Contains("-DeleteKey", workflow, StringComparison.Ordinal);
         Assert.Contains("attest-build-provenance", workflow, StringComparison.Ordinal);
-        Assert.True(
-            workflow.IndexOf("Prepare-InnoSetup.ps1", StringComparison.Ordinal) <
-            workflow.IndexOf("Import trusted Authenticode certificate", StringComparison.Ordinal));
+        Assert.Contains("[switch]$AllowUnsignedPublicRelease", buildScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("AllowUnsignedLocalCandidate", buildScript, StringComparison.Ordinal);
+        Assert.Contains("not Authenticode-signed", policy, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("UNSIGNED", policy, StringComparison.Ordinal);
+        Assert.Contains("unknown publisher", changelog, StringComparison.OrdinalIgnoreCase);
+        Assert.False(File.Exists(Path.Combine(
+            ProjectRoot,
+            ".github",
+            "workflows",
+            "signed-release.yml")));
     }
 
     [Fact]
@@ -71,7 +114,7 @@ public sealed class ReleaseScriptContractTests
         Assert.Contains("runs-on: windows-2025", workflow, StringComparison.Ordinal);
         Assert.Contains("Prepare-InnoSetup.ps1", workflow, StringComparison.Ordinal);
         Assert.Contains("Build-Release.ps1", workflow, StringComparison.Ordinal);
-        Assert.Contains("-AllowUnsignedLocalCandidate", workflow, StringComparison.Ordinal);
+        Assert.Contains("-AllowUnsignedPublicRelease", workflow, StringComparison.Ordinal);
         Assert.Contains("-HeadlessE2E", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("gh release create", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("upload-artifact", workflow, StringComparison.Ordinal);
@@ -120,10 +163,18 @@ public sealed class ReleaseScriptContractTests
 
         Assert.Contains("workflow_dispatch", workflow, StringComparison.Ordinal);
         Assert.Contains("environment: release-publish", workflow, StringComparison.Ordinal);
-        Assert.Contains("$signature.Status -ne 'Valid'", workflow, StringComparison.Ordinal);
-        Assert.Contains("RGVM_RELEASE_CERT_THUMBPRINT", workflow, StringComparison.Ordinal);
+        Assert.Contains("RootedAndroidGameVM-Setup-$version-x64-UNSIGNED.exe", workflow, StringComparison.Ordinal);
+        Assert.Contains("$signature.Status -ne 'NotSigned'", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("RGVM_RELEASE_CERT_THUMBPRINT", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("EXPECTED_SIGNER_THUMBPRINT", workflow, StringComparison.Ordinal);
         Assert.Contains("attestations: read", workflow, StringComparison.Ordinal);
         Assert.Contains("gh attestation verify", workflow, StringComparison.Ordinal);
+        Assert.Contains("--signer-workflow", workflow, StringComparison.Ordinal);
+        Assert.Contains(".github/workflows/release.yml", workflow, StringComparison.Ordinal);
+        Assert.Contains("--source-ref", workflow, StringComparison.Ordinal);
+        Assert.Contains("refs/tags/$env:RELEASE_TAG", workflow, StringComparison.Ordinal);
+        Assert.Contains("--source-digest", workflow, StringComparison.Ordinal);
+        Assert.Contains("--deny-self-hosted-runners", workflow, StringComparison.Ordinal);
         Assert.Contains("FileVersionRaw", workflow, StringComparison.Ordinal);
         Assert.Contains("--draft=false", workflow, StringComparison.Ordinal);
     }
@@ -145,13 +196,9 @@ public sealed class ReleaseScriptContractTests
     {
         var buildScript = await File.ReadAllTextAsync(
             Path.Combine(ProjectRoot, "build", "Build-Release.ps1"));
-        var workflow = await File.ReadAllTextAsync(
-            Path.Combine(ProjectRoot, ".github", "workflows", "signed-release.yml"));
 
         Assert.Contains("Windows Kits\\10\\bin", buildScript, StringComparison.Ordinal);
-        Assert.Contains("Windows Kits\\10\\bin", workflow, StringComparison.Ordinal);
         Assert.Contains("x64\\signtool.exe", buildScript, StringComparison.Ordinal);
-        Assert.Contains("x64\\signtool.exe", workflow, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -282,7 +329,7 @@ public sealed class ReleaseScriptContractTests
         Assert.Contains("StartsWith($RequiredLeafPrefix", cleanup, StringComparison.Ordinal);
         Assert.Contains("Stop-Process", cleanup, StringComparison.Ordinal);
 
-        foreach (var workflowName in new[] { "signed-release.yml", "unsigned-release-e2e.yml" })
+        foreach (var workflowName in new[] { "release.yml", "unsigned-release-e2e.yml" })
         {
             var workflow = await File.ReadAllTextAsync(
                 Path.Combine(ProjectRoot, ".github", "workflows", workflowName));

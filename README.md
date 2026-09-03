@@ -3,7 +3,7 @@
 一个面向 Windows 11 x64 的图形化安卓游戏虚拟机管理器。安装、日常启动、APK 更新、Root 诊断和私有数据导出都通过 .exe 窗口完成，普通用户无需输入终端命令。
 项目不针对、不捆绑任何单一应用或游戏；所有 APK 安装、应用启动和私有数据导出都使用通用的 Android 包名与相对路径。
 
-> 当前版本为未签名候选 0.1.0。GitHub 托管的全新环境已经完整通过 Core Root E2E、最终安装包 E2E 与官方 SPDX Tools 校验；在取得受信任 Authenticode 代码签名证书前，不创建公开 GitHub Release。
+> 0.1.0 按项目政策明确以 unsigned 形式发布，安装器文件名包含 `UNSIGNED`，Windows 可能显示 unknown publisher（未知发布者）警告。请只从本仓库 GitHub Release 下载，并核对随 Release 发布的 SHA-256 或 GitHub provenance。
 
 ## 日常使用
 
@@ -24,12 +24,12 @@
 
 ## 开发与发布门禁
 
-    .\build\Build-Release.ps1 -CleanInstallRoot D:\rgvm-clean-e2e -AllowUnsignedLocalCandidate
+    .\build\Build-Release.ps1 -CleanInstallRoot D:\rgvm-clean-e2e -AllowUnsignedPublicRelease
 
 发布脚本会强制运行单元测试、Core CleanE2E和最终安装包 E2E。后者会安装最终 Inno资产、运行安装后的 Setup.exe、安装固定开源测试 APK、验证 Root私有目录导出、精确检查两个 GUI窗口标题、检查桌面/开始菜单快捷方式，并执行保留 AVD 数据的程序卸载。随后从单一依赖 manifest 与实际三层 EXE生成 SPDX SBOM，调用固定版本的官方 SPDX Tools 做语义验证，并执行禁止内容、精确资产、凭据模式与 PE GUI子系统审计。
 
-CleanInstallRoot 默认必须不存在或为空；ReuseE2EState 和 E2EDependencyCache 只用于本地未签名迭代，签名路径会拒绝复用状态。AllowUnsignedLocalCandidate 只允许生成带 UNSIGNED 文件名、不可公开的候选；公开 Release 必须提供受信任代码签名证书的 SigningCertificateThumbprint，否则门禁失败。
+CleanInstallRoot 默认必须不存在或为空；ReuseE2EState 和 E2EDependencyCache 只用于本地迭代，正式标签工作流不复用任何状态。AllowUnsignedPublicRelease 必须显式提供，产物会强制带 `UNSIGNED` 文件名，不会伪装成已签名软件。
 
-`.github/workflows/signed-release.yml` 在 GitHub 托管的 `windows-2025` Runner 上响应版本标签。该环境的 Android 加速、磁盘空间、Windows SDK 签名工具和两个真实 WPF 窗口已经由独立探针验证；工作流会固定 Python 3.13，并在接触签名密钥前从官方、哈希与来源证明均通过的资产安装 Inno Setup 6.7.3。`release` 环境必须配置 `RGVM_CODESIGN_PFX_BASE64` 和 `RGVM_CODESIGN_PFX_PASSWORD`。只有空产品目录全链 E2E、启动器、配置程序、安装器及内置卸载器的同一签名者 Authenticode 校验、来源证明和最终资产审计全部通过后才创建 Draft。公开发布必须再由 `release-publish` 环境的人工审批者运行独立工作流；该环境还需设置预期签名者变量 `RGVM_RELEASE_CERT_THUMBPRINT`。
+`.github/workflows/release.yml` 在 GitHub 托管的 `windows-2025` Runner 上响应版本标签。它从空产品目录运行全链 Root/AVD 和最终安装包 E2E，强制校验产物为明确命名的 `UNSIGNED` 文件，然后生成 SHA-256、SPDX SBOM 与 GitHub provenance，只创建 Draft。公开发布必须再由 `release-publish` 环境的审批者运行独立工作流，重新下载并校验精确资产列表、unsigned 状态、PE 版本、provenance、SHA-256 和 SBOM 后才能发布。
 
-发布治理与安全边界见 [代码签名政策](CODE_SIGNING_POLICY.md)、[隐私说明](PRIVACY.md) 和 [安全政策](SECURITY.md)。
+发布治理与安全边界见 [发布完整性与签名政策](CODE_SIGNING_POLICY.md)、[隐私说明](PRIVACY.md) 和 [安全政策](SECURITY.md)。

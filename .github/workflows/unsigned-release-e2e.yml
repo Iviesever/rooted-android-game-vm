@@ -40,7 +40,7 @@ jobs:
           .\build\Build-Release.ps1 `
             -CleanInstallRoot $cleanRoot `
             -HeadlessE2E `
-            -AllowUnsignedLocalCandidate
+            -AllowUnsignedPublicRelease
 
       - name: Remove isolated E2E data
         if: always()

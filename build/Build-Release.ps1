@@ -3,7 +3,7 @@ param(
     [Parameter(Mandatory)]
     [string]$CleanInstallRoot,
     [string]$SigningCertificateThumbprint,
-    [switch]$AllowUnsignedLocalCandidate,
+    [switch]$AllowUnsignedPublicRelease,
     [switch]$ReuseE2EState,
     [switch]$HeadlessE2E,
     [string]$E2EDependencyCache
@@ -84,8 +84,11 @@ foreach ($project in @(
 if ($SigningCertificateThumbprint -and $ReuseE2EState) {
     throw 'A signed public candidate must pass E2E from an absent or empty product root.'
 }
-if ($SigningCertificateThumbprint -and $AllowUnsignedLocalCandidate) {
-    throw 'AllowUnsignedLocalCandidate cannot be combined with a signing certificate.'
+if ($AllowUnsignedPublicRelease -and $ReuseE2EState) {
+    throw 'An unsigned public Release must pass E2E from an absent or empty product root.'
+}
+if ($SigningCertificateThumbprint -and $AllowUnsignedPublicRelease) {
+    throw 'AllowUnsignedPublicRelease cannot be combined with a signing certificate.'
 }
 
 $prepareValidator = Join-Path $projectRoot 'build\Prepare-SpdxValidator.ps1'
@@ -149,8 +152,8 @@ function Invoke-AuthenticodeSign {
 if ($SigningCertificateThumbprint) {
     Invoke-AuthenticodeSign (Join-Path $launcherOutput 'RootedAndroidGameVM.exe')
     Invoke-AuthenticodeSign (Join-Path $setupOutput 'RootedAndroidGameVM.Setup.exe')
-} elseif (-not $AllowUnsignedLocalCandidate) {
-    throw 'A trusted code-signing certificate thumbprint is required. Use -AllowUnsignedLocalCandidate only for a non-public local candidate.'
+} elseif (-not $AllowUnsignedPublicRelease) {
+    throw 'Choose either a signing certificate or -AllowUnsignedPublicRelease. Unsigned output is always labeled UNSIGNED.'
 }
 
 $innoArguments = @()

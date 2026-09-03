@@ -1,4 +1,6 @@
-# 0.1.0 local release candidate
+# 0.1.0
+
+This Windows installer is intentionally not Authenticode-signed and its filename includes `UNSIGNED`. Windows may show an unknown publisher warning. Download only from this repository's GitHub Release page and verify the accompanying SHA-256 checksum or GitHub build provenance before running it.
 
 - Added double-clickable Windows GUI installer and daily launcher.
 - Added rooted Android 15 AVD start/stop and health diagnostics.
@@ -17,10 +19,10 @@
 - Added a persistent Root journal containing stock and patched ramdisk hashes.
 - Added final-installer E2E covering installed Setup.exe, an open-source APK, private-data export, GUI windows and program uninstall.
 - Generate SPDX from the dependency manifest and actual Launcher, Setup and Installer SHA-256/SHA-1 digests, with package verification code and official SPDX Tools validation.
-- Added fail-closed Draft creation on a virtualization-capable signed Windows runner, provenance attestation, and a separate protected human-approved publication workflow.
+- Added fail-closed Draft creation on a virtualization-capable GitHub-hosted Windows runner, provenance attestation, and a separate protected human-approved publication workflow.
 - Added Windows push/PR CI and automatic discovery of the installed Windows SDK x64 signing tool.
 - Proved the complete clean Release gate on GitHub-hosted Windows, including Root, cold restart, final installer, APK/private-data E2E and cleanup.
 - Isolated Emulator SDK environment variables, normalized Android shell scripts to LF, handled slow first-boot System UI safely and waited for Package Manager readiness.
 - Added verified runtime dependency downloads, Release content audit, SPDX SBOM and SHA-256 output.
 
-The local candidate remains intentionally unpublished until a trusted Authenticode certificate is supplied and the signed GitHub-hosted Windows Release workflow passes.
+The tagged Release is published only after the complete clean hosted gate creates a Draft and the separate protected publication workflow revalidates every asset.

@@ -12,4 +12,4 @@ Include the affected commit or version, reproduction conditions, expected impact
 
 ## Release integrity
 
-Official releases must satisfy `CODE_SIGNING_POLICY.md`. A file named `UNSIGNED` is never an official public Release asset.
+Official releases must satisfy `CODE_SIGNING_POLICY.md`. Version 0.1.0 is deliberately and visibly unsigned: use only the `UNSIGNED` installer attached to this repository's Release and verify its SHA-256 or GitHub provenance before execution.

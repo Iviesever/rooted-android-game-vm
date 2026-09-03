@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing signed draft tag, for example v0.1.0
+        description: Existing explicitly unsigned draft tag, for example v0.1.0
         required: true
         type: string
 
@@ -23,18 +23,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}
-          EXPECTED_SIGNER_THUMBPRINT: ${{ vars.RGVM_RELEASE_CERT_THUMBPRINT }}
         run: |
           $ErrorActionPreference = 'Stop'
           $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" | ConvertFrom-Json
           if ($release.draft -ne $true) { throw 'The requested Release is not a draft.' }
+          if ($release.body -notmatch '(?i)unknown publisher') {
+            throw 'The draft does not disclose the Windows unknown-publisher warning.'
+          }
           $version = $env:RELEASE_TAG.TrimStart('v')
           if ([string]::IsNullOrWhiteSpace($version)) { throw 'Invalid Release tag.' }
           $assetRoot = Join-Path $env:RUNNER_TEMP "rgvm-reviewed-$([Guid]::NewGuid().ToString('N'))"
           [IO.Directory]::CreateDirectory($assetRoot) | Out-Null
           gh release download $env:RELEASE_TAG --dir $assetRoot
           if ($LASTEXITCODE -ne 0) { throw 'Unable to download the draft assets.' }
-          $installerName = "RootedAndroidGameVM-Setup-$version-x64.exe"
+          $installerName = "RootedAndroidGameVM-Setup-$version-x64-UNSIGNED.exe"
           $expected = @(
             'CHANGELOG.md',
             $installerName,
@@ -48,13 +50,8 @@ jobs:
           }
           $installer = Join-Path $assetRoot $installerName
           $signature = Get-AuthenticodeSignature -LiteralPath $installer
-          if ($signature.Status -ne 'Valid') { throw "Invalid installer signature: $($signature.Status)" }
-          if ([string]::IsNullOrWhiteSpace($env:EXPECTED_SIGNER_THUMBPRINT)) {
-            throw 'Protected RGVM_RELEASE_CERT_THUMBPRINT is unavailable.'
-          }
-          $expectedSigner = $env:EXPECTED_SIGNER_THUMBPRINT.Replace(' ', '').ToUpperInvariant()
-          if ($signature.SignerCertificate.Thumbprint.ToUpperInvariant() -ne $expectedSigner) {
-            throw 'Installer signer does not match the protected Release certificate thumbprint.'
+          if ($signature.Status -ne 'NotSigned') {
+            throw "The explicitly unsigned installer has an unexpected signature state: $($signature.Status)"
           }
           $versionParts = $version.Split('.')
           if ($versionParts.Count -ne 3) { throw 'Release tag must contain a three-part version.' }
@@ -64,7 +61,17 @@ jobs:
               $fileVersion.Build -ne [int]$versionParts[2]) {
             throw "Installer PE version $fileVersion does not match tag $env:RELEASE_TAG."
           }
-          gh attestation verify $installer --repo $env:GITHUB_REPOSITORY
+          $tagCommit = (gh api "repos/$env:GITHUB_REPOSITORY/commits/$env:RELEASE_TAG" --jq .sha).Trim()
+          if ($LASTEXITCODE -ne 0 -or $tagCommit -notmatch '^[0-9a-f]{40}$') {
+            throw 'Unable to resolve the immutable Release tag commit.'
+          }
+          $signerWorkflow = "$env:GITHUB_REPOSITORY/.github/workflows/release.yml"
+          gh attestation verify $installer `
+            --repo $env:GITHUB_REPOSITORY `
+            --signer-workflow $signerWorkflow `
+            --source-ref "refs/tags/$env:RELEASE_TAG" `
+            --source-digest $tagCommit `
+            --deny-self-hosted-runners
           if ($LASTEXITCODE -ne 0) { throw 'Installer has no valid repository build provenance.' }
           $expectedHash = ((Get-Content -Raw -LiteralPath "$installer.sha256").Trim() -split '\s+')[0]
           $actualHash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()

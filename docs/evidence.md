@@ -32,10 +32,10 @@ The verified artifact from that cycle was an explicitly unsigned local candidate
 Public Release remains fail-closed until all of the following succeed on the exact tagged commit:
 
 1. A clean virtualization-capable Windows runner provisions every locked dependency.
-2. A trusted Authenticode certificate signs Launcher, Setup, the final installer and its embedded uninstaller with the same identity.
-3. The complete Core and final installed-package E2E gates pass against the signed asset.
+2. The installer is visibly named `UNSIGNED`, verifies as `NotSigned`, and the Release notes disclose the Windows unknown-publisher warning.
+3. The complete Core and final installed-package E2E gates pass against the exact tagged asset.
 4. GitHub records build provenance and creates only a Draft.
-5. A separate protected human-approved workflow rechecks the expected signer, PE version, checksum, SBOM and provenance before publication.
+5. A separate protected human-approved workflow rechecks the asset allowlist, unsigned status, PE version, checksum, SBOM and provenance before publication.
 
 ## 2026-09-03 — GitHub-hosted clean Release E2E
 
@@ -52,7 +52,7 @@ Verified results:
 - Clean product root Core E2E passed in 13m43s on GitHub-hosted `windows-2025`.
 - Android 15 Play Store x86_64 AVD creation, product-scoped SDK/AVD environment, Magisk 30.6 patching, persistent Root policy, cold-restart Root health, Root read/write and screenshot checks passed.
 - Self-contained Launcher and Setup Windows GUI executables published successfully.
-- Inno Setup 6.7.3 compiled the final installer after SHA-256, Authenticode signer and fixed GitHub Release attestation verification.
+- Inno Setup 6.7.3 compiled the final installer after the upstream Inno installer's SHA-256, publisher signature and fixed GitHub Release attestation verification.
 - The final installed-package E2E installed the built installer, executed installed Setup, installed the pinned open-source APK, waited for Android Package Manager readiness, exported a Root-owned private-data probe, conditionally waited for and verified exact GUI titles and nonzero handles, and completed the real program-only uninstaller while retaining AVD data.
 - Official SPDX validation and the exact Release allowlist/content/PE audits passed.
 - Ephemeral unsigned installer SHA-256: `e1c97476cb8e1e6b04343e0eeaf122ae51935ccb1ef121144f4f7d09293c6996`.
@@ -62,6 +62,6 @@ Repository protection state:
 
 - `release` and `release-publish` GitHub environments both require review by the repository owner.
 - No Release tag or GitHub Release exists.
-- No signing secrets or expected signer thumbprint are configured.
+- No paid or publicly trusted Authenticode identity is configured or required for version 0.1.0.
 
-The clean unsigned Release pipeline is proven. The remaining external requirement is a publicly trusted Authenticode signing identity; the signed tag workflow remains fail-closed until it is supplied and independently approved.
+The clean unsigned Release pipeline is proven. Version 0.1.0 intentionally uses the visibly named `UNSIGNED` installer; the immutable tag, protected Draft and independent publication workflow remain the final public-release gates.
