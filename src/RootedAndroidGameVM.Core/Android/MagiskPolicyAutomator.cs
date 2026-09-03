@@ -197,10 +197,11 @@ public sealed class MagiskPolicyAutomator
             ? "多次启动 Magisk 后仍未出现授权主页。"
             : $"多次启动 Magisk 后仍未出现授权主页。最后错误：{lastError.Message}";
 
-    public static bool IsRecoverableSystemUiDialog(AndroidUiSnapshot snapshot)
+    public static bool IsRecoverableSystemAppAnrDialog(AndroidUiSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        return snapshot.Contains("System UI isn't responding") &&
+        return (snapshot.Contains("System UI isn't responding") ||
+                snapshot.Contains("Digital Wellbeing isn't responding")) &&
                snapshot.Contains("Close app") &&
                snapshot.Contains("Wait");
     }
@@ -330,7 +331,7 @@ public sealed class MagiskPolicyAutomator
                     var snapshot = AndroidUiSnapshot.Parse(dump.StandardOutput);
                     var labels = snapshot.DescribeVisibleLabels();
                     if (!string.IsNullOrWhiteSpace(labels)) lastVisibleLabels = labels;
-                    if (IsRecoverableSystemUiDialog(snapshot))
+                    if (IsRecoverableSystemAppAnrDialog(snapshot))
                     {
                         await TapAsync(snapshot.FindCenter("Wait"), cancellationToken);
                         continue;
