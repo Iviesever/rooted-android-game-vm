@@ -29,7 +29,7 @@ The verified artifact from that cycle was an explicitly unsigned local candidate
 
 ## Public Release gate
 
-Public Release remains fail-closed until all of the following succeed on the exact tagged commit:
+Public Release is fail-closed until all of the following succeed on the exact tagged commit:
 
 1. A clean virtualization-capable Windows runner provisions every locked dependency.
 2. The installer is visibly named `UNSIGNED`, verifies as `NotSigned`, and the Release notes disclose the Windows unknown-publisher warning.
@@ -62,8 +62,31 @@ Repository protection state:
 
 - `release` and `release-publish` GitHub environments both require review by the repository owner.
 - The immutable `v0.1.0` tag remains at commit `175fc369cc9b7cd403021c3bd84ec3eceb028602`; its Release workflow run 33772087910 failed during the duplicated Inno registration precheck before E2E, asset upload or Draft creation.
-- No GitHub Release exists.
+- No GitHub Release exists for `v0.1.0`.
 - The immutable `v0.1.1` tag remains at commit `0bf17a5f4d4b02dc9edf23da9279db9491572545`; its Release workflow run 33773675099 failed in clean Root E2E before asset upload or Draft creation.
+- No GitHub Release exists for `v0.1.1`.
 - No paid or publicly trusted Authenticode identity is configured or required for version 0.1.2.
 
-The generic clean unsigned Release pipeline is proven by the authoritative run above. Version 0.1.2 is intended to use the visibly named `UNSIGNED` installer, but it is not yet proven on its exact tag; the immutable tag, protected Draft and independent publication workflow remain required before publication.
+The generic clean unsigned Release pipeline was first proven by the authoritative run above and then executed against the exact version 0.1.2 tag as recorded below.
+
+## 2026-09-04 — Public Release v0.1.2
+
+Published Release:
+
+- Tag commit: `d4060e779c0c28a5af8596455f0b4e2fde600634`
+- Clean build, E2E, provenance and Draft run: https://github.com/Iviesever/rooted-android-game-vm/actions/runs/33776563728
+- Protected revalidation and publication run: https://github.com/Iviesever/rooted-android-game-vm/actions/runs/33781122216
+- Release: https://github.com/Iviesever/rooted-android-game-vm/releases/tag/v0.1.2
+- Installer: `RootedAndroidGameVM-Setup-0.1.2-x64-UNSIGNED.exe`
+- Installer SHA-256: `3292979276bd4c22a01b0d4040f0ec891396bb86887c309f789050d9e0c89066`
+
+Final public-download verification:
+
+- The Release is public, is not a prerelease, and is the repository's latest Release.
+- The public Release contains exactly five allowed assets, all served from the immutable `v0.1.2` download path.
+- A fresh public download matched both the accompanying checksum file and GitHub's asset digest.
+- Windows reported the installer as `NotSigned`; the filename and Release notes both make that status explicit and disclose the unknown-publisher warning.
+- The installer PE reports file version `0.1.2.0` and Windows GUI subsystem 2.
+- Official SPDX Tools Python 0.8.5 accepted the downloaded SBOM, whose installer entry matched the downloaded installer SHA-256.
+- Strict GitHub attestation verification passed for the exact tag commit, the repository Release workflow, the tag ref and GitHub-hosted runners only.
+- Main-branch CI passed after the protected publication workflow was corrected to bind all GitHub CLI Release commands explicitly to this repository.
