@@ -9,20 +9,12 @@
 1. 双击桌面的 **Rooted Android Game VM**。
 2. 点击“启动虚拟机”。
 3. 使用“安装或更新 APK”选择你合法取得的本机 APK。
-4. 打开“应用与数据”，可以启动质感文件，或把应用私有目录导出到 Windows。
+4. 打开“应用与数据”，选择任意已安装应用及其私有目录，将数据导出到 Windows。
 5. 也可以把单个 APK 直接拖到启动器窗口；应用页支持第三方包列表、启动、强停、确认卸载和任意安全相对目录导出。
-
-### Arcaea 7.x 谱面
-
-Arcaea 7.0.255c 下载内容位于：
-
-    /data/data/moe.low.arc/files/dl
-
-7.x 的 AFF 谱面仍是可读的 AudioOffset / timing(...) / arc(...) 文本，但文件不再使用 .aff 扩展名。常见文件名是 歌曲名_0、歌曲名_1、歌曲名_2 等。启动器的“导出 Arcaea 谱面”会完整复制 dl 目录，不会擅自重命名文件。
 
 ## 安全与兼容边界
 
-- Release 不包含游戏 APK、账号数据、谱面、音视频、Google 系统镜像、Magisk APK 或 AVD 用户磁盘。
+- Release 不包含第三方 APK、账号或应用数据、音视频、Google 系统镜像、Magisk APK 或 AVD 用户磁盘。
 - 安装器只在用户接受 Android SDK 许可后，从固定 HTTPS 地址下载组件并校验 SHA-256。
 - 产品使用独立的 `%LOCALAPPDATA%\RootedAndroidGameVM\runtime\avd` 和 `rooted_android_game_vm_api35`，不会接管或卸载用户已有的全局 Android Studio AVD。
 - Platform Tools、Emulator 和 Android System Image 使用固定 archive URL、官方 SHA-1与产品侧 SHA-256，不跟随 sdkmanager latest。

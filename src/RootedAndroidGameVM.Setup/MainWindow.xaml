@@ -69,7 +69,7 @@
                     <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons" Foreground="#168A64" FontSize="14" />
                     <TextBlock Grid.Column="1" Text="桌面启动器、APK 安装与数据导出工具" FontSize="13" />
                 </Grid>
-                <TextBlock Text="不会附带任何商业 APK、账号数据或游戏谱面。" Foreground="#8A94A6" FontSize="11" Margin="0,24,0,0" TextWrapping="Wrap" />
+                <TextBlock Text="不会附带任何第三方 APK、账号或应用数据。" Foreground="#8A94A6" FontSize="11" Margin="0,24,0,0" TextWrapping="Wrap" />
                 <StackPanel Margin="0,18,0,0">
                     <CheckBox x:Name="LicenseCheckBox" VerticalContentAlignment="Center">
                         <TextBlock Text="我已阅读并接受 Android SDK 许可协议，允许安装器下载所需组件。" FontSize="12" TextWrapping="Wrap" />

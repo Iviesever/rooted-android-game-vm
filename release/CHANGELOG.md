@@ -5,10 +5,10 @@
 - Added local APK install/update with data-preserving adb install.
 - Added APK drag-and-drop, installed package discovery, launch, force-stop and confirmed uninstall.
 - Added Material Files launch and Root-backed private directory export.
-- Added one-click export for Arcaea 7.x data/data/moe.low.arc/files/dl.
+- Added generic Root-backed export for any validated application package and private relative path.
 - Added stable SwiftShader and high-performance Host GPU profiles.
 - Added product-scoped AVD storage, resumable downloads, Root repair journal and persistent cold-boot health probes.
-- Isolated the product AVD under a dedicated non-legacy name; install and uninstall no longer access an existing global Arcaea AVD.
+- Isolated the product AVD under a dedicated name; install and uninstall do not access existing global Android Studio AVDs.
 - Added repair-with-rollback for incomplete or wrong-revision product SDK directories and recovery from complete/HTTP-416 partial downloads.
 - Added post-configuration shortcuts and three-scope interactive uninstall.
 - Pinned Android SDK archives with official SHA-1 and product-side SHA-256; removed sdkmanager latest downloads.

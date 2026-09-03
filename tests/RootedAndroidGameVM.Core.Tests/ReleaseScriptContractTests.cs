@@ -6,12 +6,11 @@ public sealed class ReleaseScriptContractTests
         Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
 
     [Fact]
-    public async Task Uninstaller_never_names_or_deletes_the_legacy_arcaea_avd()
+    public async Task Uninstaller_never_deletes_global_android_studio_avds()
     {
         var script = await File.ReadAllTextAsync(
             Path.Combine(ProjectRoot, "installer", "RootedAndroidGameVM.iss"));
 
-        Assert.DoesNotContain("arcaea_root_api35", script, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("{userprofile}\\.android\\avd", script, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -85,5 +84,42 @@ public sealed class ReleaseScriptContractTests
 
         Assert.Contains("CreateLauncherStartMenuShortcut", e2e, StringComparison.Ordinal);
         Assert.DoesNotContain("DesktopDirectory", service, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Public_repository_contains_no_game_specific_identifiers()
+    {
+        var excludedDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ".git", ".vs", "artifacts", "bin", "obj", "tasks", "TestResults"
+        };
+        var textExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            string.Empty, ".cs", ".csproj", ".gitignore", ".iss", ".json", ".md",
+            ".props", ".ps1", ".sln", ".txt", ".xaml", ".yaml", ".yml"
+        };
+        var files = Directory.EnumerateFiles(ProjectRoot, "*", SearchOption.AllDirectories)
+            .Where(path => !Path.GetRelativePath(ProjectRoot, path)
+                .Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                .Any(excludedDirectories.Contains))
+            .Where(path => textExtensions.Contains(Path.GetExtension(path)));
+        var gameSpecificIdentifiers = new[]
+        {
+            string.Concat("Arc", "aea"),
+            string.Concat("moe", ".low", ".arc"),
+            string.Concat("质", "感"),
+            string.Concat("谱", "面")
+        };
+
+        foreach (var file in files)
+        {
+            var content = await File.ReadAllTextAsync(file);
+            foreach (var identifier in gameSpecificIdentifiers)
+            {
+                Assert.False(
+                    content.Contains(identifier, StringComparison.OrdinalIgnoreCase),
+                    $"Game-specific identifier found in {Path.GetRelativePath(ProjectRoot, file)}.");
+            }
+        }
     }
 }

@@ -3,6 +3,7 @@
 bin/
 obj/
 artifacts/
+tasks/
 TestResults/
 .dotnet/
 *.user
@@ -22,7 +23,7 @@ TestResults/
 *.key
 *.log
 userdata*/
-arcaea_dl/
+exports/
 downloads/
 cache/
 secrets.json

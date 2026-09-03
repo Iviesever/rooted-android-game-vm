@@ -6,8 +6,12 @@ using RootedAndroidGameVM.Core.Security;
 
 namespace RootedAndroidGameVM.Core.Setup;
 
-public sealed class ProductArchiveInstaller(VerifiedDownloader downloader)
+public sealed class ProductArchiveInstaller(
+    VerifiedDownloader downloader,
+    DirectoryMoveService? directoryMover = null)
 {
+    private readonly DirectoryMoveService _directoryMover = directoryMover ?? new();
+
     public async Task InstallAsync(
         DependencyComponent component,
         string downloadCache,
@@ -85,13 +89,13 @@ public sealed class ProductArchiveInstaller(VerifiedDownloader downloader)
             var hasBackup = false;
             if (Directory.Exists(target))
             {
-                Directory.Move(target, backup);
+                await _directoryMover.MoveAsync(target, backup, cancellationToken);
                 hasBackup = true;
             }
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-                Directory.Move(source, target);
+                await _directoryMover.MoveAsync(source, target, cancellationToken);
             }
             catch
             {
@@ -101,7 +105,7 @@ public sealed class ProductArchiveInstaller(VerifiedDownloader downloader)
                 }
                 if (hasBackup && Directory.Exists(backup))
                 {
-                    Directory.Move(backup, target);
+                    await _directoryMover.MoveAsync(backup, target, CancellationToken.None);
                 }
                 throw;
             }

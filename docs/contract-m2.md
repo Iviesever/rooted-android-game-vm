@@ -28,4 +28,4 @@ Eliminate locally solvable public-release blockers while preserving a fail-close
 
 - End users interact only with Windows GUI executables.
 - CI/test-only flags must be explicit and unavailable through normal GUI navigation.
-- Existing arcaea_root_api35 and D:\program\Magisk\arcaea_dl remain untouched.
+- Existing global Android Studio AVDs and user-exported data remain untouched.

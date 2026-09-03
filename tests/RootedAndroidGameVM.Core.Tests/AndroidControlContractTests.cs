@@ -26,7 +26,7 @@ public sealed class AndroidControlContractTests
     }
 
     [Theory]
-    [InlineData("moe.low.arc")]
+    [InlineData("com.rhythm.game")]
     [InlineData("me.zhanghai.android.files")]
     public void Valid_android_package_names_are_accepted(string packageName)
     {
@@ -35,7 +35,7 @@ public sealed class AndroidControlContractTests
 
     [Theory]
     [InlineData("../data")]
-    [InlineData("moe.low.arc;rm")]
+    [InlineData("com.rhythm.game;rm")]
     [InlineData("moe low arc")]
     public void Unsafe_android_package_names_are_rejected(string packageName)
     {
@@ -76,10 +76,10 @@ public sealed class AndroidControlContractTests
     [Fact]
     public void Third_party_package_list_parser_returns_safe_distinct_names()
     {
-        const string output = "package:com.example.game\r\npackage:moe.low.arc\npackage:com.example.game\n";
+        const string output = "package:com.example.game\r\npackage:com.rhythm.game\npackage:com.example.game\n";
 
         Assert.Equal(
-            ["com.example.game", "moe.low.arc"],
+            ["com.example.game", "com.rhythm.game"],
             AndroidPackageListParser.Parse(output));
     }
 

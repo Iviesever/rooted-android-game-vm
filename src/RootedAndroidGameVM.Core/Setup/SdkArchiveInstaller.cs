@@ -7,8 +7,12 @@ using RootedAndroidGameVM.Core.Security;
 
 namespace RootedAndroidGameVM.Core.Setup;
 
-public sealed class SdkArchiveInstaller(VerifiedDownloader downloader)
+public sealed class SdkArchiveInstaller(
+    VerifiedDownloader downloader,
+    DirectoryMoveService? directoryMover = null)
 {
+    private readonly DirectoryMoveService _directoryMover = directoryMover ?? new();
+
     public async Task InstallAsync(
         DependencyComponent component,
         string downloadCache,
@@ -81,13 +85,13 @@ public sealed class SdkArchiveInstaller(VerifiedDownloader downloader)
             var hasBackup = false;
             if (Directory.Exists(target))
             {
-                Directory.Move(target, backup);
+                await _directoryMover.MoveAsync(target, backup, cancellationToken);
                 hasBackup = true;
             }
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-                Directory.Move(source, target);
+                await _directoryMover.MoveAsync(source, target, cancellationToken);
                 await EnsureGenericRegistrationAsync(
                     component,
                     normalizedSdkRoot,
@@ -102,7 +106,7 @@ public sealed class SdkArchiveInstaller(VerifiedDownloader downloader)
                 }
                 if (hasBackup && Directory.Exists(backup))
                 {
-                    Directory.Move(backup, target);
+                    await _directoryMover.MoveAsync(backup, target, CancellationToken.None);
                 }
                 throw;
             }
@@ -157,32 +161,53 @@ public sealed class SdkArchiveInstaller(VerifiedDownloader downloader)
                 $"SDK target '{targetRelativeDirectory}' is missing.");
         }
         var packageXml = Path.Combine(target, "package.xml");
+        var expectedPath = targetRelativeDirectory
+            .Replace(Path.DirectorySeparatorChar, ';')
+            .Replace(Path.AltDirectorySeparatorChar, ';');
+        var isSystemImage = expectedPath.StartsWith("system-images;", StringComparison.Ordinal);
         if (File.Exists(packageXml))
         {
             try
             {
-                var expectedPath = targetRelativeDirectory
-                    .Replace(Path.DirectorySeparatorChar, ';')
-                    .Replace(Path.AltDirectorySeparatorChar, ';');
                 var localPackage = XDocument.Load(packageXml)
                     .Descendants()
                     .FirstOrDefault(element =>
                         element.Name.LocalName == "localPackage" &&
                         element.Name.Namespace == XNamespace.None &&
                         element.Attribute("path")?.Value == expectedPath);
-                if (localPackage is not null) return;
+                XNamespace xsi = "http://www.w3.org/2001/XMLSchema-instance";
+                var typeName = localPackage?
+                    .Elements()
+                    .FirstOrDefault(element => element.Name.LocalName == "type-details")?
+                    .Attribute(xsi + "type")?
+                    .Value;
+                if (localPackage is not null &&
+                    (!isSystemImage || typeName?.EndsWith(":sysImgDetailsType", StringComparison.Ordinal) == true))
+                {
+                    return;
+                }
             }
             catch (Exception exception) when (exception is InvalidDataException or System.Xml.XmlException)
             {
                 // Replace malformed generated metadata with the pinned local package descriptor.
             }
         }
-        await AndroidLocalPackageMetadataWriter.WriteGenericAsync(
-            packageXml,
-            targetRelativeDirectory
-                .Replace(Path.DirectorySeparatorChar, ';')
-                .Replace(Path.AltDirectorySeparatorChar, ';'),
-            component,
-            cancellationToken);
+        if (isSystemImage)
+        {
+            await AndroidLocalPackageMetadataWriter.WriteSystemImageAsync(
+                packageXml,
+                expectedPath,
+                Path.Combine(target, "source.properties"),
+                component,
+                cancellationToken);
+        }
+        else
+        {
+            await AndroidLocalPackageMetadataWriter.WriteGenericAsync(
+                packageXml,
+                expectedPath,
+                component,
+                cancellationToken);
+        }
     }
 }

@@ -21,31 +21,16 @@ public partial class DataAccessWindow : Window
     {
         try
         {
-            StatusText.Text = "正在打开质感文件…";
+            StatusText.Text = "正在打开 Material Files 文件管理器…";
             await _controller.LaunchPackageAsync("me.zhanghai.android.files");
-            StatusText.Text = "质感文件已打开。进入 /data/data 后可浏览各应用私有目录。";
+            StatusText.Text = "文件管理器已打开。可使用 Root 权限浏览各应用私有目录。";
         }
         catch (Exception exception)
         {
             ShowError(new InvalidOperationException(
-                "未能打开质感文件。请先用首页“安装或更新 APK”安装 Material Files，再重试。",
+                "未能打开文件管理器。请先用首页“安装或更新 APK”安装 Material Files，再重试。",
                 exception));
         }
-    }
-
-    private async void ExportArcaea_Click(object sender, RoutedEventArgs e)
-    {
-        if (MessageBox.Show(
-                this,
-                "将完整导出 Arcaea 的 files/dl，其中可能包含大量音视频和你已下载的游戏数据。是否继续？",
-                "确认导出",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning) != MessageBoxResult.Yes)
-        {
-            return;
-        }
-
-        await ExportAsync("moe.low.arc", "files/dl", ExportButton);
     }
 
     private async void RefreshPackages_Click(object sender, RoutedEventArgs e) =>
@@ -58,11 +43,7 @@ public partial class DataAccessWindow : Window
             StatusText.Text = "正在读取第三方应用列表…";
             var packages = await _controller.ListThirdPartyPackagesAsync();
             PackageComboBox.ItemsSource = packages;
-            if (packages.Contains("moe.low.arc", StringComparer.Ordinal))
-            {
-                PackageComboBox.SelectedItem = "moe.low.arc";
-            }
-            else if (packages.Count > 0)
+            if (packages.Count > 0)
             {
                 PackageComboBox.SelectedIndex = 0;
             }

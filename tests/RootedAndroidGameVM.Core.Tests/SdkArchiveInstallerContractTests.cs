@@ -140,6 +140,60 @@ public sealed class SdkArchiveInstallerContractTests
     }
 
     [Fact]
+    public async Task System_image_registration_uses_sysimg_type_details_from_source_properties()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "rgvm-system-image-register", Guid.NewGuid().ToString("N"));
+        var relative = Path.Combine("system-images", "android-35", "google_apis_playstore", "x86_64");
+        var target = Path.Combine(root, relative);
+        Directory.CreateDirectory(target);
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(target, "source.properties"),
+                """
+                Pkg.Revision=9
+                AndroidVersion.ApiLevel=35
+                AndroidVersion.ExtensionLevel=13
+                AndroidVersion.IsBaseSdk=true
+                SystemImage.Abi=x86_64
+                SystemImage.TagId=google_apis_playstore
+                SystemImage.TagDisplay=Google Play
+                Addon.VendorId=google
+                Addon.VendorDisplay=Google Inc.
+                """);
+            var component = new DependencyComponent(
+                "android-system-image-api35-playstore-x86_64",
+                "Android System Image",
+                "9",
+                "https://example.invalid/image.zip",
+                "image.zip",
+                new string('a', 64),
+                string.Empty,
+                1,
+                true,
+                "NOASSERTION",
+                "direct");
+            var installer = new SdkArchiveInstaller(
+                new VerifiedDownloader(new HttpClient(new ThrowingHandler())));
+
+            await installer.EnsureGenericRegistrationAsync(component, root, relative);
+
+            var document = XDocument.Load(Path.Combine(target, "package.xml"));
+            XNamespace xsi = "http://www.w3.org/2001/XMLSchema-instance";
+            var typeDetails = document.Descendants().Single(element => element.Name.LocalName == "type-details");
+            Assert.EndsWith(":sysImgDetailsType", typeDetails.Attribute(xsi + "type")?.Value);
+            Assert.Equal("35", typeDetails.Elements().Single(element => element.Name.LocalName == "api-level").Value);
+            Assert.Equal("google_apis_playstore", typeDetails.Descendants().Single(element =>
+                element.Name.LocalName == "tag").Elements().Single(element => element.Name.LocalName == "id").Value);
+            Assert.Equal("x86_64", typeDetails.Elements().Single(element => element.Name.LocalName == "abi").Value);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public async Task Broken_existing_component_is_replaced_from_the_verified_archive()
     {
         var root = Path.Combine(Path.GetTempPath(), "rgvm-sdk-repair", Guid.NewGuid().ToString("N"));
