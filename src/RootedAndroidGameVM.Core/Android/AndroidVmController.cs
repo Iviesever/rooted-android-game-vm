@@ -105,6 +105,14 @@ public sealed class AndroidVmController
                     timeout.Token);
                 if (boot.ExitCode == 0 && boot.StandardOutput.Trim() == "1")
                 {
+                    var packageService = await _runner.RunAsync(
+                        AndroidCommandFactory.CheckPackageService(_layout, _options),
+                        timeout.Token);
+                    if (!AndroidBootReadiness.IsPackageServiceReady(packageService))
+                    {
+                        await Task.Delay(_startupPolicy.PollInterval, timeout.Token);
+                        continue;
+                    }
                     await new AndroidInteractiveSessionService(_layout, _options, _runner)
                         .PrepareAsync(timeout.Token);
                     await _runner.RunAsync(

@@ -184,4 +184,20 @@ public sealed class AndroidControlContractTests
             ["-s", options.Serial, "shell", "wm", "dismiss-keyguard"],
             AndroidCommandFactory.DismissKeyguard(layout, options).Arguments);
     }
+
+    [Fact]
+    public void Android_boot_is_ready_only_after_the_package_service_is_available()
+    {
+        var layout = AndroidSdkLayout.FromRoot(@"D:\Product\Sdk");
+        var options = AndroidVmOptions.Default;
+        var command = AndroidCommandFactory.CheckPackageService(layout, options);
+
+        Assert.Equal(
+            ["-s", options.Serial, "shell", "service", "check", "package"],
+            command.Arguments);
+        Assert.True(AndroidBootReadiness.IsPackageServiceReady(
+            new RootedAndroidGameVM.Core.Processes.ProcessResult(0, "Service package: found", string.Empty)));
+        Assert.False(AndroidBootReadiness.IsPackageServiceReady(
+            new RootedAndroidGameVM.Core.Processes.ProcessResult(0, "Service package: not found", string.Empty)));
+    }
 }

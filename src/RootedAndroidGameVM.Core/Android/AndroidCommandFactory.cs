@@ -86,4 +86,7 @@ public static class AndroidCommandFactory
 
     public static ProcessSpec DismissKeyguard(AndroidSdkLayout layout, AndroidVmOptions options) =>
         Adb(layout, options, "shell", "wm", "dismiss-keyguard");
+
+    public static ProcessSpec CheckPackageService(AndroidSdkLayout layout, AndroidVmOptions options) =>
+        Adb(layout, options, "shell", "service", "check", "package");
 }
