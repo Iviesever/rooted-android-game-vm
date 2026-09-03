@@ -87,6 +87,20 @@ public sealed class ReleaseScriptContractTests
     }
 
     [Fact]
+    public async Task Release_signing_discovers_the_x64_windows_sdk_signtool()
+    {
+        var buildScript = await File.ReadAllTextAsync(
+            Path.Combine(ProjectRoot, "build", "Build-Release.ps1"));
+        var workflow = await File.ReadAllTextAsync(
+            Path.Combine(ProjectRoot, ".github", "workflows", "signed-release.yml"));
+
+        Assert.Contains("Windows Kits\\10\\bin", buildScript, StringComparison.Ordinal);
+        Assert.Contains("Windows Kits\\10\\bin", workflow, StringComparison.Ordinal);
+        Assert.Contains("x64\\signtool.exe", buildScript, StringComparison.Ordinal);
+        Assert.Contains("x64\\signtool.exe", workflow, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Public_repository_contains_no_game_specific_identifiers()
     {
         var excludedDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)

@@ -15,7 +15,7 @@ Environment:
 
 Release-gate result:
 
-- Non-integration tests: 76 passed, 0 failed.
+- Non-integration tests: 77 passed, 0 failed.
 - Core E2E: 1 passed, 0 failed, duration 6m08s.
 - The isolated AVD passed SDK revision checks, acceleration checks, automated Root preparation, persistent shell policy, cold-restart Root verification, a Root read/write probe and screenshot capture.
 - Final installed-package E2E passed with the built Inno artifact: installed Setup execution, pinned open-source APK installation, generic private-data export, exact Launcher/Setup window titles, Inno shortcuts, post-Setup daily shortcut and real program-only uninstall with product AVD retention.

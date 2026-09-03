@@ -18,6 +18,7 @@
 - Added final-installer E2E covering installed Setup.exe, an open-source APK, private-data export, GUI windows and program uninstall.
 - Generate SPDX from the dependency manifest and actual Launcher, Setup and Installer SHA-256/SHA-1 digests, with package verification code and official SPDX Tools validation.
 - Added fail-closed Draft creation on a virtualization-capable signed Windows runner, provenance attestation, and a separate protected human-approved publication workflow.
+- Added Windows push/PR CI and automatic discovery of the installed Windows SDK x64 signing tool.
 - Added verified runtime dependency downloads, Release content audit, SPDX SBOM and SHA-256 output.
 
 The local candidate remains intentionally unpublished until a trusted Authenticode certificate is supplied and the signed self-hosted Windows Release workflow passes.

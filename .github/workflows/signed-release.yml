@@ -29,7 +29,18 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           Get-Command python.exe -ErrorAction Stop | Out-Null
-          Get-Command signtool.exe -ErrorAction Stop | Out-Null
+          $signTool = Get-Command signtool.exe -ErrorAction SilentlyContinue
+          $signToolPath = if ($signTool) { $signTool.Source } else { $null }
+          if (-not $signToolPath) {
+            $kitsRoot = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin'
+            $signTool = Get-ChildItem -LiteralPath $kitsRoot -Filter signtool.exe -Recurse -File -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName.EndsWith('x64\signtool.exe', [StringComparison]::OrdinalIgnoreCase) } |
+              Sort-Object FullName -Descending |
+              Select-Object -First 1
+            $signToolPath = $signTool.FullName
+          }
+          if (-not $signToolPath) { throw 'Windows SDK x64 signtool.exe is unavailable.' }
+          (Split-Path -Parent $signToolPath) | Out-File $env:GITHUB_PATH -Append -Encoding utf8
           if ((dotnet --version).Trim() -ne '10.0.400') { throw 'The pinned .NET SDK is unavailable.' }
           $inno = Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe'
           if (-not (Test-Path -LiteralPath $inno)) { throw 'Inno Setup 6.7.3 is required.' }

@@ -24,6 +24,20 @@ $versionMatch = [regex]::Match(
 if (-not $versionMatch.Success) { throw 'Unable to read the product version from the Inno script.' }
 $productVersion = $versionMatch.Groups[1].Value
 
+function Resolve-SignToolPath {
+    $command = Get-Command signtool.exe -ErrorAction SilentlyContinue
+    if ($command) { return $command.Source }
+    $kitsRoot = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin'
+    $candidate = Get-ChildItem -LiteralPath $kitsRoot -Filter signtool.exe -Recurse -File `
+        -ErrorAction SilentlyContinue | Where-Object {
+            $_.FullName.EndsWith('x64\signtool.exe', [StringComparison]::OrdinalIgnoreCase)
+        } | Sort-Object FullName -Descending | Select-Object -First 1
+    if (-not $candidate) { throw 'Windows SDK x64 signtool.exe was not found.' }
+    return $candidate.FullName
+}
+
+$signToolPath = if ($SigningCertificateThumbprint) { Resolve-SignToolPath } else { $null }
+
 if (-not (Test-Path -LiteralPath $innoCompiler)) {
     throw "Inno Setup compiler was not found at $innoCompiler"
 }
@@ -99,8 +113,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Setup publish failed.' }
 
 function Invoke-AuthenticodeSign {
     param([Parameter(Mandatory)][string]$Path)
-    $signTool = Get-Command signtool.exe -ErrorAction Stop
-    & $signTool.Source sign /sha1 $SigningCertificateThumbprint /fd SHA256 /tr 'http://timestamp.digicert.com' /td SHA256 $Path
+    & $signToolPath sign /sha1 $SigningCertificateThumbprint /fd SHA256 /tr 'http://timestamp.digicert.com' /td SHA256 $Path
     if ($LASTEXITCODE -ne 0) { throw "Authenticode signing failed for $Path" }
     $signature = Get-AuthenticodeSignature -LiteralPath $Path
     if ($signature.Status -ne 'Valid') { throw "Authenticode verification failed for ${Path}: $($signature.Status)" }
