@@ -46,6 +46,40 @@ function Assert-AuthenticodeSignature {
     }
 }
 
+function Wait-ForGuiWindow {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$ExpectedTitle
+    )
+    $process = Start-Process -FilePath $Path -PassThru
+    try {
+        $windowDeadline = (Get-Date).AddSeconds(30)
+        while ((Get-Date) -lt $windowDeadline) {
+            $process.Refresh()
+            if ($process.HasExited -or
+                ($process.MainWindowHandle -ne 0 -and
+                 $process.MainWindowTitle -eq $ExpectedTitle)) {
+                break
+            }
+            Start-Sleep -Milliseconds 250
+        }
+        $process.Refresh()
+        return [pscustomobject]@{
+            Executable = [IO.Path]::GetFileName($Path)
+            ExpectedTitle = $ExpectedTitle
+            HasExited = $process.HasExited
+            MainWindowTitle = $process.MainWindowTitle
+            MainWindowHandle = $process.MainWindowHandle.ToInt64()
+        }
+    }
+    finally {
+        if (-not $process.HasExited) {
+            Stop-Process -Id $process.Id -Force
+            $process.WaitForExit()
+        }
+    }
+}
+
 if (-not $testRoot.StartsWith($artifactsRoot, [StringComparison]::OrdinalIgnoreCase) -or
     (Split-Path $testRoot -Leaf) -ne 'post-package-e2e') {
     throw 'Unsafe post-package E2E root.'
@@ -175,20 +209,7 @@ try {
         @{ Path = $installedLauncher; Title = 'Rooted Android Game VM' },
         @{ Path = $installedSetup; Title = '安装 Rooted Android Game VM' }
     )) {
-        $process = Start-Process -FilePath $gui.Path -PassThru
-        Start-Sleep -Seconds 3
-        $process.Refresh()
-        $windowResults += [pscustomobject]@{
-            Executable = [IO.Path]::GetFileName($gui.Path)
-            ExpectedTitle = $gui.Title
-            HasExited = $process.HasExited
-            MainWindowTitle = $process.MainWindowTitle
-            MainWindowHandle = $process.MainWindowHandle.ToInt64()
-        }
-        if (-not $process.HasExited) {
-            Stop-Process -Id $process.Id -Force
-            $process.WaitForExit()
-        }
+        $windowResults += Wait-ForGuiWindow $gui.Path $gui.Title
     }
     if ($windowResults.Where({
         $_.HasExited -or $_.MainWindowHandle -eq 0 -or $_.MainWindowTitle -ne $_.ExpectedTitle

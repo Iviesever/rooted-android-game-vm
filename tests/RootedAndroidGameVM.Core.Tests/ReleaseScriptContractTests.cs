@@ -204,6 +204,21 @@ public sealed class ReleaseScriptContractTests
     }
 
     [Fact]
+    public async Task Post_package_gui_smoke_waits_for_the_real_window_condition()
+    {
+        var e2eScript = await File.ReadAllTextAsync(
+            Path.Combine(ProjectRoot, "build", "Invoke-PostPackageE2E.ps1"));
+
+        Assert.DoesNotContain("Start-Sleep -Seconds 3", e2eScript, StringComparison.Ordinal);
+        Assert.Contains("function Wait-ForGuiWindow", e2eScript, StringComparison.Ordinal);
+        Assert.Contains("AddSeconds(30)", e2eScript, StringComparison.Ordinal);
+        Assert.Contains("$process.Refresh()", e2eScript, StringComparison.Ordinal);
+        Assert.Contains("$process.MainWindowHandle -ne 0", e2eScript, StringComparison.Ordinal);
+        Assert.Contains("$process.MainWindowTitle -eq $ExpectedTitle", e2eScript, StringComparison.Ordinal);
+        Assert.Contains("Start-Sleep -Milliseconds 250", e2eScript, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Public_repository_contains_no_game_specific_identifiers()
     {
         var excludedDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
