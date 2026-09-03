@@ -19,18 +19,30 @@ public static class AndroidCommandFactory
                     ["ANDROID_AVD_HOME"] = options.AvdHome
                 });
 
-    public static ProcessSpec StartEmulator(AndroidSdkLayout layout, AndroidVmOptions options) =>
-        new(
+    public static ProcessSpec StartEmulator(AndroidSdkLayout layout, AndroidVmOptions options)
+    {
+        var arguments = new List<string>
+        {
+            "-avd", options.AvdName,
+            "-port", options.Port.ToString(),
+            "-gpu", options.GpuMode,
+            "-feature", "-Vulkan",
+            "-memory", options.MemoryMb.ToString(),
+            "-no-snapshot-load"
+        };
+        if (options.Headless)
+        {
+            arguments.AddRange(["-no-window", "-no-audio", "-no-boot-anim"]);
+        }
+        if (options.Verbose)
+        {
+            arguments.Add("-verbose");
+        }
+        return new(
             layout.EmulatorPath,
-            [
-                "-avd", options.AvdName,
-                "-port", options.Port.ToString(),
-                "-gpu", options.GpuMode,
-                "-feature", "-Vulkan",
-                "-memory", options.MemoryMb.ToString(),
-                "-no-snapshot-load"
-            ],
+            arguments,
             Path.GetDirectoryName(layout.EmulatorPath));
+    }
 
     public static ProcessSpec Adb(AndroidSdkLayout layout, AndroidVmOptions options, params string[] arguments) =>
         new(layout.AdbPath, ["-s", options.Serial, .. arguments], layout.Root);

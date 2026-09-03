@@ -50,6 +50,7 @@ public sealed class ReleaseScriptContractTests
         Assert.Contains("runs-on: windows-2025", workflow, StringComparison.Ordinal);
         Assert.Contains("RGVM_CODESIGN_PFX_BASE64", workflow, StringComparison.Ordinal);
         Assert.Contains("-SigningCertificateThumbprint", workflow, StringComparison.Ordinal);
+        Assert.Contains("-HeadlessE2E", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("-ReuseE2EState", workflow, StringComparison.Ordinal);
         Assert.Contains("$signature.Status -ne 'Valid'", workflow, StringComparison.Ordinal);
         Assert.Contains("gh release create", workflow, StringComparison.Ordinal);
@@ -71,6 +72,7 @@ public sealed class ReleaseScriptContractTests
         Assert.Contains("Prepare-InnoSetup.ps1", workflow, StringComparison.Ordinal);
         Assert.Contains("Build-Release.ps1", workflow, StringComparison.Ordinal);
         Assert.Contains("-AllowUnsignedLocalCandidate", workflow, StringComparison.Ordinal);
+        Assert.Contains("-HeadlessE2E", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("gh release create", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("upload-artifact", workflow, StringComparison.Ordinal);
     }
@@ -95,6 +97,19 @@ public sealed class ReleaseScriptContractTests
             "'(?m)^#define AppVersion \"([^\"]+)\"\\r?$'",
             script,
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Clean_e2e_test_propagates_the_explicit_headless_environment_gate()
+    {
+        var integrationTest = await File.ReadAllTextAsync(
+            Path.Combine(ProjectRoot, "tests", "RootedAndroidGameVM.Core.Tests", "CleanInstallIntegrationTests.cs"));
+        var cleanE2eSection = integrationTest[
+            integrationTest.IndexOf("[Trait(\"Category\", \"CleanE2E\")]", StringComparison.Ordinal)..];
+
+        Assert.Contains("RGVM_E2E_HEADLESS", cleanE2eSection, StringComparison.Ordinal);
+        Assert.Contains("Headless:", cleanE2eSection, StringComparison.Ordinal);
+        Assert.Contains("Verbose:", cleanE2eSection, StringComparison.Ordinal);
     }
 
     [Fact]

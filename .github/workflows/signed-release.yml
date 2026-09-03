@@ -121,6 +121,7 @@ jobs:
           "RGVM_CLEAN_ROOT=$cleanRoot" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
           .\build\Build-Release.ps1 `
             -CleanInstallRoot $cleanRoot `
+            -HeadlessE2E `
             -SigningCertificateThumbprint $env:RGVM_CERT_THUMBPRINT
 
       - name: Verify the publishable asset

@@ -31,5 +31,17 @@ public sealed class SetupE2eOptionsTests
         Assert.Equal("rgvm_e2e", options.AvdName);
         Assert.Equal(5574, options.Port);
         Assert.Equal("emulator-5574", options.Serial);
+        Assert.False(options.Headless);
+    }
+
+    [Fact]
+    public void Headless_mode_is_available_only_through_an_explicit_e2e_flag()
+    {
+        var options = SetupE2eOptions.TryParse(
+            ["--e2e", "--headless", "--product-root", @"D:\safe", "--avd-name", "rgvm_e2e", "--port", "5574"],
+            name => name == "RGVM_E2E_ACCEPT_SDK_LICENSE" ? "1" : null);
+
+        Assert.NotNull(options);
+        Assert.True(options.Headless);
     }
 }

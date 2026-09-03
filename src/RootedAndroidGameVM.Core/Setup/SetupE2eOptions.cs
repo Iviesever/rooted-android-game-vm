@@ -6,7 +6,8 @@ public sealed partial record SetupE2eOptions(
     string ProductRoot,
     string AvdName,
     int Port,
-    string Serial)
+    string Serial,
+    bool Headless)
 {
     public static SetupE2eOptions? TryParse(
         IReadOnlyList<string> arguments,
@@ -40,7 +41,12 @@ public sealed partial record SetupE2eOptions(
         {
             throw new ArgumentException("E2E product root cannot be a drive root.");
         }
-        return new(fullRoot, avdName, port, $"emulator-{port}");
+        return new(
+            fullRoot,
+            avdName,
+            port,
+            $"emulator-{port}",
+            arguments.Contains("--headless", StringComparer.Ordinal));
     }
 
     private static string RequiredValue(IReadOnlyList<string> arguments, string name)

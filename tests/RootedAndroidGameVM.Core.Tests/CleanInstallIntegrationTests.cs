@@ -56,7 +56,9 @@ public sealed class CleanInstallIntegrationTests
             5564,
             "swiftshader_indirect",
             4096,
-            paths.AvdHome);
+            paths.AvdHome,
+            Headless: Environment.GetEnvironmentVariable("RGVM_E2E_HEADLESS") == "1",
+            Verbose: Environment.GetEnvironmentVariable("RGVM_E2E_HEADLESS") == "1");
         var states = new List<SetupProgressState>();
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(45));
         var installer = new RootedVmInstaller(

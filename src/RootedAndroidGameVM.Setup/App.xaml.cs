@@ -49,7 +49,9 @@ public partial class App : Application
             options.Port,
             "swiftshader_indirect",
             4096,
-            paths.AvdHome);
+            paths.AvdHome,
+            Headless: options.Headless,
+            Verbose: options.Headless);
         var resultPath = Path.Combine(paths.ProductRoot, "setup-exe-e2e-result.json");
         var controller = new AndroidVmController(AndroidSdkLayout.FromRoot(paths.SdkRoot), vmOptions);
         try

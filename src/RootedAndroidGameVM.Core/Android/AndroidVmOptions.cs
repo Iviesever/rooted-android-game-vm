@@ -6,7 +6,9 @@ public sealed record AndroidVmOptions(
     int Port,
     string GpuMode,
     int MemoryMb,
-    string? AvdHome = null)
+    string? AvdHome = null,
+    bool Headless = false,
+    bool Verbose = false)
 {
     public static AndroidVmOptions ProductDefault
     {

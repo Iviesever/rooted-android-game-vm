@@ -86,12 +86,17 @@ try {
         'RGVM_E2E_ACCEPT_SDK_LICENSE',
         '1',
         [EnvironmentVariableTarget]::Process)
-    $setup = Start-Process -FilePath $installedSetup -ArgumentList @(
+    $setupArguments = @(
         '--e2e',
         '--product-root', $resolvedProductRoot,
         '--avd-name', 'rgvm_clean_test_api35',
         '--port', '5564'
-    ) -PassThru -WindowStyle Hidden
+    )
+    if ([Environment]::GetEnvironmentVariable('RGVM_E2E_HEADLESS') -eq '1') {
+        $setupArguments += '--headless'
+    }
+    $setup = Start-Process -FilePath $installedSetup -ArgumentList $setupArguments `
+        -PassThru -WindowStyle Hidden
     $setup.WaitForExit()
     $setup.Refresh()
     if ($setup.ExitCode -ne 0) {

@@ -139,4 +139,22 @@ public sealed class AndroidControlContractTests
         Assert.Equal(TimeSpan.FromMinutes(8), policy.Timeout);
         Assert.Equal(TimeSpan.FromSeconds(2), policy.PollInterval);
     }
+
+    [Fact]
+    public void Explicit_headless_e2e_options_add_ci_emulator_flags_without_changing_product_default()
+    {
+        var layout = AndroidSdkLayout.FromRoot(@"C:\Android\Sdk");
+
+        var headless = AndroidCommandFactory.StartEmulator(
+            layout,
+            AndroidVmOptions.Default with { Headless = true, Verbose = true });
+        var normal = AndroidCommandFactory.StartEmulator(layout, AndroidVmOptions.Default);
+
+        Assert.Contains("-no-window", headless.Arguments);
+        Assert.Contains("-no-audio", headless.Arguments);
+        Assert.Contains("-no-boot-anim", headless.Arguments);
+        Assert.Contains("-verbose", headless.Arguments);
+        Assert.DoesNotContain("-no-window", normal.Arguments);
+        Assert.DoesNotContain("-verbose", normal.Arguments);
+    }
 }

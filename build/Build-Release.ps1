@@ -5,6 +5,7 @@ param(
     [string]$SigningCertificateThumbprint,
     [switch]$AllowUnsignedLocalCandidate,
     [switch]$ReuseE2EState,
+    [switch]$HeadlessE2E,
     [string]$E2EDependencyCache
 )
 
@@ -102,6 +103,7 @@ if (-not $ReuseE2EState -and
 }
 $env:RGVM_CLEAN_INSTALL_ROOT = $resolvedCleanRoot
 $env:RGVM_E2E_REUSE_STATE = if ($ReuseE2EState) { '1' } else { '0' }
+$env:RGVM_E2E_HEADLESS = if ($HeadlessE2E) { '1' } else { '0' }
 dotnet test (Join-Path $projectRoot 'tests\RootedAndroidGameVM.Core.Tests\RootedAndroidGameVM.Core.Tests.csproj') -c $Configuration --filter 'Category=CleanE2E'
 if ($LASTEXITCODE -ne 0) { throw 'Clean Windows AVD/Root E2E gate failed.' }
 

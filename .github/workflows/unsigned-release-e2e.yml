@@ -39,6 +39,7 @@ jobs:
           "RGVM_CLEAN_ROOT=$cleanRoot" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
           .\build\Build-Release.ps1 `
             -CleanInstallRoot $cleanRoot `
+            -HeadlessE2E `
             -AllowUnsignedLocalCandidate
 
       - name: Remove isolated E2E data
