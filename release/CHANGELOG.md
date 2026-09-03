@@ -19,6 +19,8 @@
 - Generate SPDX from the dependency manifest and actual Launcher, Setup and Installer SHA-256/SHA-1 digests, with package verification code and official SPDX Tools validation.
 - Added fail-closed Draft creation on a virtualization-capable signed Windows runner, provenance attestation, and a separate protected human-approved publication workflow.
 - Added Windows push/PR CI and automatic discovery of the installed Windows SDK x64 signing tool.
+- Proved the complete clean Release gate on GitHub-hosted Windows, including Root, cold restart, final installer, APK/private-data E2E and cleanup.
+- Isolated Emulator SDK environment variables, normalized Android shell scripts to LF, handled slow first-boot System UI safely and waited for Package Manager readiness.
 - Added verified runtime dependency downloads, Release content audit, SPDX SBOM and SHA-256 output.
 
 The local candidate remains intentionally unpublished until a trusted Authenticode certificate is supplied and the signed GitHub-hosted Windows Release workflow passes.
