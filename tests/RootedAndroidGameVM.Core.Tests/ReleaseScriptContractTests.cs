@@ -207,6 +207,11 @@ public sealed class ReleaseScriptContractTests
 
         Assert.Contains("workflow_dispatch", workflow, StringComparison.Ordinal);
         Assert.Contains("environment: release-publish", workflow, StringComparison.Ordinal);
+        Assert.Contains(
+            "gh release view $env:RELEASE_TAG --json isDraft,body,tagName",
+            workflow,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("releases/tags/$env:RELEASE_TAG", workflow, StringComparison.Ordinal);
         Assert.Contains("RootedAndroidGameVM-Setup-$version-x64-UNSIGNED.exe", workflow, StringComparison.Ordinal);
         Assert.Contains("$signature.Status -ne 'NotSigned'", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("RGVM_RELEASE_CERT_THUMBPRINT", workflow, StringComparison.Ordinal);

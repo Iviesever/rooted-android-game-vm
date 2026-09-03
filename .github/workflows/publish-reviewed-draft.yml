@@ -25,8 +25,10 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" | ConvertFrom-Json
-          if ($release.draft -ne $true) { throw 'The requested Release is not a draft.' }
+          $releaseJson = gh release view $env:RELEASE_TAG --json isDraft,body,tagName
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to read the requested Draft Release.' }
+          $release = $releaseJson | ConvertFrom-Json
+          if ($release.isDraft -ne $true) { throw 'The requested Release is not a draft.' }
           if ($release.body -notmatch '(?i)unknown publisher') {
             throw 'The draft does not disclose the Windows unknown-publisher warning.'
           }
