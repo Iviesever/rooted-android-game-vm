@@ -41,21 +41,21 @@ Public Release remains fail-closed until all of the following succeed on the exa
 
 Authoritative run:
 
-- Commit: `3b138c8d0d2098db82064aa2ac8f49917c0fc3c5`
+- Commit: `f14f6907dcb7d6af1d4e2e5813e601c9c6ebbf02`
 - Workflow: `Unsigned Release E2E`
-- Run: https://github.com/Iviesever/rooted-android-game-vm/actions/runs/33745583644
-- Result: success, 22m15s.
+- Run: https://github.com/Iviesever/rooted-android-game-vm/actions/runs/33758138818
+- Result: success, 21m53s.
 
 Verified results:
 
-- 101 non-integration tests passed.
-- Clean product root Core E2E passed in 14m18s on GitHub-hosted `windows-2025`.
+- 108 non-integration tests passed.
+- Clean product root Core E2E passed in 13m43s on GitHub-hosted `windows-2025`.
 - Android 15 Play Store x86_64 AVD creation, product-scoped SDK/AVD environment, Magisk 30.6 patching, persistent Root policy, cold-restart Root health, Root read/write and screenshot checks passed.
 - Self-contained Launcher and Setup Windows GUI executables published successfully.
 - Inno Setup 6.7.3 compiled the final installer after SHA-256, Authenticode signer and fixed GitHub Release attestation verification.
-- The final installed-package E2E installed the built installer, executed installed Setup, installed the pinned open-source APK, waited for Android Package Manager readiness, exported a Root-owned private-data probe, verified exact GUI titles and handles, and completed the real program-only uninstaller while retaining AVD data.
+- The final installed-package E2E installed the built installer, executed installed Setup, installed the pinned open-source APK, waited for Android Package Manager readiness, exported a Root-owned private-data probe, conditionally waited for and verified exact GUI titles and nonzero handles, and completed the real program-only uninstaller while retaining AVD data.
 - Official SPDX validation and the exact Release allowlist/content/PE audits passed.
-- Ephemeral unsigned installer SHA-256: `bab8dfefbd463a1254c17c47c782f728133e6caed7bf3f8bf277e81a53638060`.
+- Ephemeral unsigned installer SHA-256: `e1c97476cb8e1e6b04343e0eeaf122ae51935ccb1ef121144f4f7d09293c6996`.
 - Isolated 12+ GB E2E data and product processes were removed successfully after the gate.
 
 Repository protection state:
