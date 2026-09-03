@@ -20,7 +20,10 @@ public sealed class LocalSetupIntegrationTests
         var controller = new AndroidVmController();
         try
         {
-            await new RootedVmInstaller().InstallAsync(true, progress);
+            await new RootedVmInstaller().InstallAsync(
+                true,
+                progress,
+                adoptExistingEnvironment: true);
 
             Assert.Contains(states, state => state.Stage == SetupStage.Complete && state.Percent == 100);
             Assert.Contains("Root：正常（uid=0）", await controller.DiagnoseAsync());

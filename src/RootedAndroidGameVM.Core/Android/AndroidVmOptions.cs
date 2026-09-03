@@ -8,7 +8,7 @@ public sealed record AndroidVmOptions(
     int MemoryMb,
     string? AvdHome = null)
 {
-    public static AndroidVmOptions Default
+    public static AndroidVmOptions ProductDefault
     {
         get
         {
@@ -17,15 +17,16 @@ public sealed record AndroidVmOptions(
                 "RootedAndroidGameVM",
                 "runtime",
                 "avd");
-            var installedProductAvd = Path.Combine(productAvdHome, "arcaea_root_api35.avd");
             var profile = PerformanceProfileService.ReadCurrent();
             return new(
-                "arcaea_root_api35",
+                "rooted_android_game_vm_api35",
                 "emulator-5554",
                 5554,
                 profile == PerformanceProfile.HighPerformance ? "host" : "swiftshader_indirect",
                 4096,
-                Directory.Exists(installedProductAvd) ? productAvdHome : null);
+                productAvdHome);
         }
     }
+
+    public static AndroidVmOptions Default => ProductDefault;
 }

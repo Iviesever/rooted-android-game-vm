@@ -15,6 +15,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RootedAndroidGameVM.Core.Tests", "tests\RootedAndroidGameVM.Core.Tests\RootedAndroidGameVM.Core.Tests.csproj", "{F3BAD028-7252-48E8-A2F4-4007D519C3FE}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{07C2787E-EAC7-C090-1BA3-A61EC2A24D84}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RootedAndroidGameVM.ReleaseTool", "tools\RootedAndroidGameVM.ReleaseTool\RootedAndroidGameVM.ReleaseTool.csproj", "{20522EF6-8E58-49FA-9194-60BF1AB41145}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -73,6 +77,18 @@ Global
 		{F3BAD028-7252-48E8-A2F4-4007D519C3FE}.Release|x64.Build.0 = Release|Any CPU
 		{F3BAD028-7252-48E8-A2F4-4007D519C3FE}.Release|x86.ActiveCfg = Release|Any CPU
 		{F3BAD028-7252-48E8-A2F4-4007D519C3FE}.Release|x86.Build.0 = Release|Any CPU
+		{20522EF6-8E58-49FA-9194-60BF1AB41145}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{20522EF6-8E58-49FA-9194-60BF1AB41145}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{20522EF6-8E58-49FA-9194-60BF1AB41145}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{20522EF6-8E58-49FA-9194-60BF1AB41145}.Debug|x64.Build.0 = Debug|Any CPU
+		{20522EF6-8E58-49FA-9194-60BF1AB41145}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{20522EF6-8E58-49FA-9194-60BF1AB41145}.Debug|x86.Build.0 = Debug|Any CPU
+		{20522EF6-8E58-49FA-9194-60BF1AB41145}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{20522EF6-8E58-49FA-9194-60BF1AB41145}.Release|Any CPU.Build.0 = Release|Any CPU
+		{20522EF6-8E58-49FA-9194-60BF1AB41145}.Release|x64.ActiveCfg = Release|Any CPU
+		{20522EF6-8E58-49FA-9194-60BF1AB41145}.Release|x64.Build.0 = Release|Any CPU
+		{20522EF6-8E58-49FA-9194-60BF1AB41145}.Release|x86.ActiveCfg = Release|Any CPU
+		{20522EF6-8E58-49FA-9194-60BF1AB41145}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -82,5 +98,6 @@ Global
 		{9F1AD264-5D98-4B1A-B92B-F4CB3833DFB7} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{53B1DCEC-81A1-4E91-A861-5D7BAB394F41} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{F3BAD028-7252-48E8-A2F4-4007D519C3FE} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{20522EF6-8E58-49FA-9194-60BF1AB41145} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 	EndGlobalSection
 EndGlobal

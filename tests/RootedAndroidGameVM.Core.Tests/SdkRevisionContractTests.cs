@@ -19,8 +19,14 @@ public sealed class SdkRevisionContractTests
             }
 
             SdkComponentRevisionVerifier.Verify(AndroidSdkLayout.FromRoot(root));
+            Assert.True(SdkComponentRevisionVerifier.IsInstalled(
+                AndroidSdkLayout.FromRoot(root),
+                InstallProfile.SdkComponents[0]));
 
             File.WriteAllText(Path.Combine(root, "emulator", "source.properties"), "Pkg.Revision=999.0.0\n");
+            Assert.False(SdkComponentRevisionVerifier.IsInstalled(
+                AndroidSdkLayout.FromRoot(root),
+                InstallProfile.SdkComponents[1]));
             Assert.Throws<InvalidDataException>(() =>
                 SdkComponentRevisionVerifier.Verify(AndroidSdkLayout.FromRoot(root)));
         }

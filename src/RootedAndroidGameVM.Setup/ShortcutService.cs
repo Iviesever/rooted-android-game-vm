@@ -5,7 +5,7 @@ namespace RootedAndroidGameVM.Setup;
 
 internal static class ShortcutService
 {
-    public static void CreateLauncherShortcuts(string launcherPath)
+    public static void CreateLauncherStartMenuShortcut(string launcherPath)
     {
         if (!File.Exists(launcherPath))
         {
@@ -18,11 +18,6 @@ internal static class ShortcutService
         Directory.CreateDirectory(startMenuDirectory);
         CreateShortcut(
             Path.Combine(startMenuDirectory, "Rooted Android Game VM.lnk"),
-            launcherPath);
-        CreateShortcut(
-            Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
-                "Rooted Android Game VM.lnk"),
             launcherPath);
     }
 

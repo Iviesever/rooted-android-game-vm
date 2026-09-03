@@ -47,7 +47,7 @@ public partial class MainWindow : Window
                 sdkLicenseAccepted: true,
                 progress,
                 _installationCancellation.Token);
-            ShortcutService.CreateLauncherShortcuts(
+            ShortcutService.CreateLauncherStartMenuShortcut(
                 Path.Combine(AppContext.BaseDirectory, "RootedAndroidGameVM.exe"));
             _installationSucceeded = true;
             InstallButton.Content = "安装完成";

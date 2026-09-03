@@ -28,8 +28,12 @@ VersionInfoDescription={#AppName} installer
 Source: "..\artifacts\publish\Launcher\RootedAndroidGameVM.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\artifacts\publish\Setup\RootedAndroidGameVM.Setup.exe"; DestDir: "{app}"; Flags: ignoreversion
 
+[Tasks]
+Name: "desktopicon"; Description: "创建桌面快捷方式"
+
 [Icons]
 Name: "{group}\配置 Rooted Android Game VM"; Filename: "{app}\RootedAndroidGameVM.Setup.exe"
+Name: "{userdesktop}\Rooted Android Game VM"; Filename: "{app}\RootedAndroidGameVM.exe"; Tasks: desktopicon
 
 [Code]
 var
@@ -39,6 +43,13 @@ function InitializeUninstall(): Boolean;
 var
   Answer: Integer;
 begin
+  if CompareText(GetEnv('RGVM_E2E_UNINSTALL_MODE'), 'program') = 0 then
+  begin
+    UninstallMode := 0;
+    Result := True;
+    exit;
+  end;
+
   Answer := MsgBox(
     '请选择卸载范围：' + #13#10 + #13#10 +
     '“否”＝仅删除程序，保留安卓虚拟机和数据。' + #13#10 +
@@ -72,7 +83,6 @@ end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
-  LegacyAvd: String;
   ResultCode: Integer;
 begin
   if (CurUninstallStep = usUninstall) and (UninstallMode >= 1) then
@@ -91,9 +101,6 @@ begin
   if UninstallMode >= 1 then
   begin
     DelTree(ExpandConstant('{localappdata}\RootedAndroidGameVM\runtime'), True, True, True);
-    LegacyAvd := ExpandConstant('{userprofile}\.android\avd\arcaea_root_api35.avd');
-    DelTree(LegacyAvd, True, True, True);
-    DeleteFile(ExpandConstant('{userprofile}\.android\avd\arcaea_root_api35.ini'));
   end;
 
   if UninstallMode = 2 then

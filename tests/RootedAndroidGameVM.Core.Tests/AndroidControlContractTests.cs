@@ -20,7 +20,7 @@ public sealed class AndroidControlContractTests
         var command = AndroidCommandFactory.StartEmulator(layout, AndroidVmOptions.Default);
 
         Assert.Equal(layout.EmulatorPath, command.FileName);
-        Assert.Contains("arcaea_root_api35", command.Arguments);
+        Assert.Contains("rooted_android_game_vm_api35", command.Arguments);
         Assert.Contains("swiftshader_indirect", command.Arguments);
         Assert.Contains("-no-snapshot-load", command.Arguments);
     }
@@ -106,5 +106,28 @@ public sealed class AndroidControlContractTests
             AndroidPackageName.Parse("com.example.game"));
 
         Assert.Equal(["-s", "emulator-5554", "uninstall", "com.example.game"], command.Arguments);
+    }
+
+    [Fact]
+    public void List_avds_request_carries_the_product_scoped_avd_home()
+    {
+        var layout = AndroidSdkLayout.FromRoot(@"D:\Product\Sdk");
+        var options = AndroidVmOptions.Default with { AvdHome = @"D:\Product\Avd" };
+
+        var request = AndroidCommandFactory.ListAvds(layout, options);
+
+        Assert.Equal(["-list-avds"], request.Spec.Arguments);
+        Assert.Equal(@"D:\Product\Avd", request.EnvironmentVariables!["ANDROID_AVD_HOME"]);
+    }
+
+    [Fact]
+    public void Product_default_uses_a_product_scoped_non_legacy_avd_name()
+    {
+        var options = AndroidVmOptions.ProductDefault;
+
+        Assert.Equal("rooted_android_game_vm_api35", options.AvdName);
+        Assert.NotNull(options.AvdHome);
+        Assert.Contains("RootedAndroidGameVM", options.AvdHome, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(".android", options.AvdHome, StringComparison.OrdinalIgnoreCase);
     }
 }

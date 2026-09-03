@@ -4,6 +4,21 @@ namespace RootedAndroidGameVM.Core.Android;
 
 public static class AndroidCommandFactory
 {
+    public static ProcessRequest ListAvds(
+        AndroidSdkLayout layout,
+        AndroidVmOptions options) =>
+        new(
+            new ProcessSpec(
+                layout.EmulatorPath,
+                ["-list-avds"],
+                Path.GetDirectoryName(layout.EmulatorPath)),
+            EnvironmentVariables: string.IsNullOrWhiteSpace(options.AvdHome)
+                ? null
+                : new Dictionary<string, string>
+                {
+                    ["ANDROID_AVD_HOME"] = options.AvdHome
+                });
+
     public static ProcessSpec StartEmulator(AndroidSdkLayout layout, AndroidVmOptions options) =>
         new(
             layout.EmulatorPath,

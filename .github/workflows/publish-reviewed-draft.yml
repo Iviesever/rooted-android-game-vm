@@ -1,0 +1,88 @@
+name: Publish Reviewed Release Draft
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing signed draft tag, for example v0.1.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  attestations: read
+
+jobs:
+  publish:
+    environment: release-publish
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Re-download and verify every draft asset
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          EXPECTED_SIGNER_THUMBPRINT: ${{ vars.RGVM_RELEASE_CERT_THUMBPRINT }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" | ConvertFrom-Json
+          if ($release.draft -ne $true) { throw 'The requested Release is not a draft.' }
+          $version = $env:RELEASE_TAG.TrimStart('v')
+          if ([string]::IsNullOrWhiteSpace($version)) { throw 'Invalid Release tag.' }
+          $assetRoot = Join-Path $env:RUNNER_TEMP "rgvm-reviewed-$([Guid]::NewGuid().ToString('N'))"
+          [IO.Directory]::CreateDirectory($assetRoot) | Out-Null
+          gh release download $env:RELEASE_TAG --dir $assetRoot
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to download the draft assets.' }
+          $installerName = "RootedAndroidGameVM-Setup-$version-x64.exe"
+          $expected = @(
+            'CHANGELOG.md',
+            $installerName,
+            "$installerName.sha256",
+            'SBOM.spdx.json',
+            'THIRD_PARTY_NOTICES.md'
+          )
+          $actual = @(Get-ChildItem -LiteralPath $assetRoot -File | ForEach-Object Name | Sort-Object)
+          if (Compare-Object ($expected | Sort-Object) $actual) {
+            throw 'Draft assets do not match the exact Release allowlist.'
+          }
+          $installer = Join-Path $assetRoot $installerName
+          $signature = Get-AuthenticodeSignature -LiteralPath $installer
+          if ($signature.Status -ne 'Valid') { throw "Invalid installer signature: $($signature.Status)" }
+          if ([string]::IsNullOrWhiteSpace($env:EXPECTED_SIGNER_THUMBPRINT)) {
+            throw 'Protected RGVM_RELEASE_CERT_THUMBPRINT is unavailable.'
+          }
+          $expectedSigner = $env:EXPECTED_SIGNER_THUMBPRINT.Replace(' ', '').ToUpperInvariant()
+          if ($signature.SignerCertificate.Thumbprint.ToUpperInvariant() -ne $expectedSigner) {
+            throw 'Installer signer does not match the protected Release certificate thumbprint.'
+          }
+          $versionParts = $version.Split('.')
+          if ($versionParts.Count -ne 3) { throw 'Release tag must contain a three-part version.' }
+          $fileVersion = (Get-Item -LiteralPath $installer).VersionInfo.FileVersionRaw
+          if ($fileVersion.Major -ne [int]$versionParts[0] -or
+              $fileVersion.Minor -ne [int]$versionParts[1] -or
+              $fileVersion.Build -ne [int]$versionParts[2]) {
+            throw "Installer PE version $fileVersion does not match tag $env:RELEASE_TAG."
+          }
+          gh attestation verify $installer --repo $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw 'Installer has no valid repository build provenance.' }
+          $expectedHash = ((Get-Content -Raw -LiteralPath "$installer.sha256").Trim() -split '\s+')[0]
+          $actualHash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($expectedHash -ne $actualHash) { throw 'Installer checksum does not match.' }
+          $sbom = Get-Content -Raw -LiteralPath (Join-Path $assetRoot 'SBOM.spdx.json') | ConvertFrom-Json
+          $sbomInstaller = $sbom.files | Where-Object fileName -eq $installerName
+          $sbomSha256 = $sbomInstaller.checksums | Where-Object algorithm -eq 'SHA256'
+          if (@($sbomInstaller).Count -ne 1 -or
+              @($sbomSha256).Count -ne 1 -or
+              $sbomSha256.checksumValue -ne $actualHash) {
+            throw 'Draft SBOM does not identify the verified installer.'
+          }
+
+      - name: Publish the human-approved draft
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          gh release edit $env:RELEASE_TAG --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Reviewed Release publication failed.' }

@@ -103,6 +103,86 @@ public sealed class VerifiedDownloaderContractTests
         }
     }
 
+    [Fact]
+    public async Task Downloader_retries_transient_http_failures_before_succeeding()
+    {
+        var payload = Encoding.UTF8.GetBytes("eventual");
+        var expectedHash = Convert.ToHexStringLower(SHA256.HashData(payload));
+        var handler = new TransientFailureHandler(payload, failures: 2);
+        using var client = new HttpClient(handler);
+        var downloader = new RootedAndroidGameVM.Core.Downloads.VerifiedDownloader(
+            client,
+            _ => TimeSpan.Zero);
+        var root = Path.Combine(Path.GetTempPath(), "rgvm-retry", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var destination = Path.Combine(root, "payload.bin");
+            await downloader.DownloadAsync(
+                new Uri("https://example.invalid/payload.bin"),
+                destination,
+                expectedHash);
+
+            Assert.Equal(3, handler.Attempts);
+            Assert.Equal("eventual", await File.ReadAllTextAsync(destination));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Downloader_promotes_a_complete_verified_partial_without_a_network_request()
+    {
+        var payload = Encoding.UTF8.GetBytes("already complete");
+        var expectedHash = Convert.ToHexStringLower(SHA256.HashData(payload));
+        var root = Path.Combine(Path.GetTempPath(), "rgvm-complete-partial", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var destination = Path.Combine(root, "payload.bin");
+            await File.WriteAllBytesAsync(destination + ".partial", payload);
+            using var client = new HttpClient(new ThrowingHandler());
+
+            await new RootedAndroidGameVM.Core.Downloads.VerifiedDownloader(client)
+                .DownloadAsync(new Uri("https://example.invalid/payload.bin"), destination, expectedHash);
+
+            Assert.Equal(payload, await File.ReadAllBytesAsync(destination));
+            Assert.False(File.Exists(destination + ".partial"));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Downloader_restarts_from_zero_after_a_range_not_satisfiable_response()
+    {
+        var payload = Encoding.UTF8.GetBytes("fresh payload");
+        var expectedHash = Convert.ToHexStringLower(SHA256.HashData(payload));
+        var root = Path.Combine(Path.GetTempPath(), "rgvm-http-416", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var destination = Path.Combine(root, "payload.bin");
+            await File.WriteAllTextAsync(destination + ".partial", "stale partial");
+            var handler = new RangeNotSatisfiableThenFullHandler(payload);
+            using var client = new HttpClient(handler);
+
+            await new RootedAndroidGameVM.Core.Downloads.VerifiedDownloader(client)
+                .DownloadAsync(new Uri("https://example.invalid/payload.bin"), destination, expectedHash);
+
+            Assert.Equal(2, handler.Attempts);
+            Assert.Equal(payload, await File.ReadAllBytesAsync(destination));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private sealed class StaticContentHandler(byte[] payload) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
@@ -128,6 +208,56 @@ public sealed class VerifiedDownloaderContractTests
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.PartialContent)
             {
                 Content = new ByteArrayContent(Encoding.UTF8.GetBytes("lo"))
+            });
+        }
+    }
+
+    private sealed class TransientFailureHandler(byte[] payload, int failures) : HttpMessageHandler
+    {
+        public int Attempts { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            Attempts++;
+            if (Attempts <= failures)
+            {
+                throw new HttpRequestException("transient TLS failure");
+            }
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(payload)
+            });
+        }
+    }
+
+    private sealed class ThrowingHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("A verified complete partial must not use the network.");
+    }
+
+    private sealed class RangeNotSatisfiableThenFullHandler(byte[] payload) : HttpMessageHandler
+    {
+        public int Attempts { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            Attempts++;
+            if (Attempts == 1)
+            {
+                Assert.NotNull(request.Headers.Range);
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.RequestedRangeNotSatisfiable));
+            }
+            Assert.Null(request.Headers.Range);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(payload)
             });
         }
     }

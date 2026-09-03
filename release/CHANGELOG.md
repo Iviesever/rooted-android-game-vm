@@ -8,7 +8,16 @@
 - Added one-click export for Arcaea 7.x data/data/moe.low.arc/files/dl.
 - Added stable SwiftShader and high-performance Host GPU profiles.
 - Added product-scoped AVD storage, resumable downloads, Root repair journal and persistent cold-boot health probes.
+- Isolated the product AVD under a dedicated non-legacy name; install and uninstall no longer access an existing global Arcaea AVD.
+- Added repair-with-rollback for incomplete or wrong-revision product SDK directories and recovery from complete/HTTP-416 partial downloads.
 - Added post-configuration shortcuts and three-scope interactive uninstall.
+- Pinned Android SDK archives with official SHA-1 and product-side SHA-256; removed sdkmanager latest downloads.
+- Added direct SDK package registration and product-scoped AVD discovery without userdata recreation.
+- Replaced Magisk file-picker automation with the official boot_patch.sh command-line workflow.
+- Added a persistent Root journal containing stock and patched ramdisk hashes.
+- Added final-installer E2E covering installed Setup.exe, an open-source APK, private-data export, GUI windows and program uninstall.
+- Generate SPDX from the dependency manifest and actual Launcher, Setup and Installer SHA-256/SHA-1 digests, with package verification code and official SPDX Tools validation.
+- Added fail-closed Draft creation on a virtualization-capable signed Windows runner, provenance attestation, and a separate protected human-approved publication workflow.
 - Added verified runtime dependency downloads, Release content audit, SPDX SBOM and SHA-256 output.
 
-This build is not approved for public release until the clean Windows 11 installation and fresh Root workflow pass end-to-end verification.
+The local candidate remains intentionally unpublished until a trusted Authenticode certificate is supplied and the signed self-hosted Windows Release workflow passes.

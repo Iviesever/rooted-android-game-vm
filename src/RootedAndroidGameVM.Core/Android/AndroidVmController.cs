@@ -29,8 +29,8 @@ public sealed class AndroidVmController
             return VmStatus.NotInstalled;
         }
 
-        var avds = await RunWithAvdEnvironmentAsync(
-            new ProcessSpec(_layout.EmulatorPath, ["-list-avds"], Path.GetDirectoryName(_layout.EmulatorPath)),
+        var avds = await _runner.RunRequestAsync(
+            AndroidCommandFactory.ListAvds(_layout, _options),
             cancellationToken);
         if (avds.ExitCode != 0 ||
             !avds.StandardOutput.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
@@ -238,18 +238,6 @@ public sealed class AndroidVmController
                 : result.StandardError.Trim();
             throw new InvalidOperationException($"{operation}失败：{detail}");
         }
-    }
-
-    private Task<ProcessResult> RunWithAvdEnvironmentAsync(
-        ProcessSpec spec,
-        CancellationToken cancellationToken)
-    {
-        var environment = CreateAvdEnvironment();
-        return environment is null
-            ? _runner.RunAsync(spec, cancellationToken)
-            : _runner.RunRequestAsync(
-                new ProcessRequest(spec, EnvironmentVariables: environment),
-                cancellationToken);
     }
 
     private IReadOnlyDictionary<string, string>? CreateAvdEnvironment() =>

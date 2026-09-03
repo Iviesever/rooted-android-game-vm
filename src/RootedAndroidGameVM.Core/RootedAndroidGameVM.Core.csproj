@@ -6,4 +6,10 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\profiles\dependencies.json"
+                      Link="Profiles\dependencies.json"
+                      LogicalName="RootedAndroidGameVM.dependencies.json" />
+  </ItemGroup>
+
 </Project>

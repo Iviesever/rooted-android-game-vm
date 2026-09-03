@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Text.Json;
 using RootedAndroidGameVM.Core.Android;
+using RootedAndroidGameVM.Core.Dependencies;
 using RootedAndroidGameVM.Core.Downloads;
 using RootedAndroidGameVM.Core.Processes;
 using RootedAndroidGameVM.Core.Ui;
@@ -22,7 +23,7 @@ public sealed class RootedVmInstaller
     {
         _paths = paths ?? InstallPaths.CreateDefault();
         _runner = runner ?? new ProcessRunner();
-        _options = options ?? AndroidVmOptions.Default;
+        _options = options ?? AndroidVmOptions.ProductDefault;
         _downloader = new VerifiedDownloader(httpClient ?? new HttpClient
         {
             Timeout = TimeSpan.FromMinutes(30)
@@ -33,7 +34,7 @@ public sealed class RootedVmInstaller
         bool sdkLicenseAccepted,
         IProgress<SetupProgressState>? progress = null,
         CancellationToken cancellationToken = default,
-        bool adoptExistingEnvironment = true)
+        bool adoptExistingEnvironment = false)
     {
         if (!sdkLicenseAccepted)
         {
@@ -47,14 +48,17 @@ public sealed class RootedVmInstaller
         Directory.CreateDirectory(_paths.DownloadCache);
         await WriteJournalAsync(SetupStage.Preflight, cancellationToken);
 
-        var existingLayout = AndroidSdkLayout.Discover();
-        if (adoptExistingEnvironment && existingLayout.HasRequiredTools)
+        if (adoptExistingEnvironment)
         {
-            var existingController = new AndroidVmController(existingLayout, _options);
-            if (await existingController.GetStatusAsync(cancellationToken) != VmStatus.NotInstalled)
+            var existingLayout = AndroidSdkLayout.Discover();
+            if (existingLayout.HasRequiredTools)
             {
-                await VerifyAndRecordAsync(existingLayout, existingController, progress, cancellationToken);
-                return;
+                var existingController = new AndroidVmController(existingLayout, _options);
+                if (await existingController.GetStatusAsync(cancellationToken) != VmStatus.NotInstalled)
+                {
+                    await VerifyAndRecordAsync(existingLayout, existingController, progress, cancellationToken);
+                    return;
+                }
             }
         }
 
@@ -81,8 +85,9 @@ public sealed class RootedVmInstaller
         if (await GetRootPreparationStateAsync(layout, cancellationToken) == RootPreparationState.NeedsPatch)
         {
             await PrepareRootToolsAsync(cancellationToken);
-            RestoreStockRamdiskWhenAvailable(layout);
+            await RestoreStockRamdiskWhenAvailableAsync(layout, cancellationToken);
             await PatchRootAsync(layout, cancellationToken);
+            await RecordRamdiskHashesAsync(layout, cancellationToken);
             await controller.StopAsync(cancellationToken);
             await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
             DeleteAvdInitrdCache();
@@ -103,34 +108,41 @@ public sealed class RootedVmInstaller
             "x86_64",
             "ramdisk.img");
         var backup = ramdisk + ".backup";
-        if (File.Exists(ramdisk) && File.Exists(backup))
+        var ramdiskMatchesStock = false;
+        var currentHash = File.Exists(ramdisk)
+            ? await Security.Sha256Verifier.ComputeAsync(ramdisk, cancellationToken)
+            : string.Empty;
+        var journal = await Journal.LoadAsync(cancellationToken);
+        if (!string.IsNullOrWhiteSpace(journal?.PatchedRamdiskSha256))
         {
-            var currentHash = await Security.Sha256Verifier.ComputeAsync(ramdisk, cancellationToken);
-            var backupHash = await Security.Sha256Verifier.ComputeAsync(backup, cancellationToken);
-            if (string.Equals(currentHash, backupHash, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(currentHash, journal.StockRamdiskSha256, StringComparison.OrdinalIgnoreCase))
+            {
+                ramdiskMatchesStock = true;
+            }
+            else if (!string.Equals(currentHash, journal.PatchedRamdiskSha256, StringComparison.OrdinalIgnoreCase))
             {
                 return RootPreparationState.NeedsPatch;
             }
+        }
+        if (File.Exists(ramdisk) && File.Exists(backup))
+        {
+            var backupHash = await Security.Sha256Verifier.ComputeAsync(backup, cancellationToken);
+            ramdiskMatchesStock = ramdiskMatchesStock ||
+                string.Equals(currentHash, backupHash, StringComparison.OrdinalIgnoreCase);
         }
 
         var identity = await _runner.RunAsync(
             AndroidCommandFactory.RootIdentity(layout, _options),
             cancellationToken);
-        if (identity.ExitCode == 0 && identity.StandardOutput.Contains("uid=0", StringComparison.Ordinal))
-        {
-            return RootPreparationState.Working;
-        }
-
         var su = await _runner.RunAsync(
             AndroidCommandFactory.Adb(layout, _options, "shell", "which", "su"),
             cancellationToken);
-        return su.ExitCode == 0 &&
-               !string.IsNullOrWhiteSpace(su.StandardOutput)
-            ? RootPreparationState.PolicyPending
-            : RootPreparationState.NeedsPatch;
+        return RootPreparationClassifier.Classify(ramdiskMatchesStock, identity, su);
     }
 
-    private static void RestoreStockRamdiskWhenAvailable(AndroidSdkLayout layout)
+    private async Task RestoreStockRamdiskWhenAvailableAsync(
+        AndroidSdkLayout layout,
+        CancellationToken cancellationToken)
     {
         var ramdisk = Path.Combine(
             layout.Root,
@@ -142,8 +154,48 @@ public sealed class RootedVmInstaller
         var backup = ramdisk + ".backup";
         if (File.Exists(backup))
         {
+            var journal = await Journal.LoadAsync(cancellationToken);
+            if (!string.IsNullOrWhiteSpace(journal?.StockRamdiskSha256))
+            {
+                var backupHash = await Security.Sha256Verifier.ComputeAsync(backup, cancellationToken);
+                if (!string.Equals(
+                        backupHash,
+                        journal.StockRamdiskSha256,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidDataException(
+                        "ramdisk.img.backup does not match the install journal stock hash.");
+                }
+            }
             File.Copy(backup, ramdisk, overwrite: true);
         }
+    }
+
+    private async Task RecordRamdiskHashesAsync(
+        AndroidSdkLayout layout,
+        CancellationToken cancellationToken)
+    {
+        var ramdisk = Path.Combine(
+            layout.Root,
+            "system-images",
+            "android-35",
+            "google_apis_playstore",
+            "x86_64",
+            "ramdisk.img");
+        var backup = ramdisk + ".backup";
+        if (!File.Exists(ramdisk) || !File.Exists(backup))
+        {
+            throw new FileNotFoundException(
+                "RootAVD did not preserve both stock and patched ramdisk files.");
+        }
+        await Journal.UpdateAsync(
+            SetupStage.Root,
+            layout.Root,
+            _options.AvdHome ?? string.Empty,
+            _options.AvdName,
+            await Security.Sha256Verifier.ComputeAsync(backup, cancellationToken),
+            await Security.Sha256Verifier.ComputeAsync(ramdisk, cancellationToken),
+            cancellationToken);
     }
 
     private void DeleteAvdInitrdCache()
@@ -179,29 +231,34 @@ public sealed class RootedVmInstaller
 
     private async Task PrepareJavaAsync(CancellationToken cancellationToken)
     {
-        if (File.Exists(Path.Combine(_paths.JavaHome, "bin", "java.exe"))) return;
-        var archive = await DownloadAsync(InstallProfile.OpenJdk, cancellationToken);
-        var staging = CreateStagingDirectory("java");
-        ZipFile.ExtractToDirectory(archive, staging);
-        var extracted = Directory.GetDirectories(staging).Single();
-        Directory.CreateDirectory(Path.GetDirectoryName(_paths.JavaHome)!);
-        Directory.Move(extracted, _paths.JavaHome);
+        var component = DependencyManifest.LoadEmbedded().Required("microsoft-openjdk");
+        await new ProductArchiveInstaller(_downloader).InstallAsync(
+            component,
+            _paths.DownloadCache,
+            _paths.ProductRoot,
+            archiveTopLevelDirectory: null,
+            targetRelativeDirectory: Path.GetRelativePath(_paths.ProductRoot, _paths.JavaHome),
+            revisionFileRelativePath: "release",
+            revisionProperty: "JAVA_VERSION",
+            expectedRevision: component.Version,
+            cancellationToken);
     }
 
     private async Task PrepareCommandLineToolsAsync(
         AndroidSdkLayout layout,
         CancellationToken cancellationToken)
     {
-        var sdkManager = GetSdkManagerPath(layout);
-        if (File.Exists(sdkManager)) return;
-
-        var archive = await DownloadAsync(InstallProfile.CommandLineTools, cancellationToken);
-        var staging = CreateStagingDirectory("cmdline-tools");
-        ZipFile.ExtractToDirectory(archive, staging);
-        var source = Path.Combine(staging, "cmdline-tools");
-        var destination = Path.Combine(layout.Root, "cmdline-tools", "latest");
-        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-        Directory.Move(source, destination);
+        var component = DependencyManifest.LoadEmbedded().Required("android-command-line-tools");
+        await new ProductArchiveInstaller(_downloader).InstallAsync(
+            component,
+            _paths.DownloadCache,
+            layout.Root,
+            "cmdline-tools",
+            Path.Combine("cmdline-tools", "latest"),
+            "source.properties",
+            "Pkg.Revision",
+            component.Version,
+            cancellationToken);
     }
 
     private async Task InstallSdkPackagesAsync(
@@ -216,14 +273,55 @@ public sealed class RootedVmInstaller
             environment);
         EnsureSuccess(await _runner.RunRequestAsync(acceptLicenses, cancellationToken), "接受 Android SDK 许可");
 
-        var install = new ProcessRequest(
-            new ProcessSpec(
-                sdkManager,
-                [$"--sdk_root={layout.Root}", .. InstallProfile.SdkPackages],
-                layout.Root),
-            string.Concat(Enumerable.Repeat("y\n", 8)),
-            environment);
-        EnsureSuccess(await _runner.RunRequestAsync(install, cancellationToken), "安装 Android SDK 组件");
+        var manifest = DependencyManifest.LoadEmbedded();
+        var archiveInstaller = new SdkArchiveInstaller(_downloader);
+        await InstallSdkArchiveIfMissingAsync(
+            layout,
+            archiveInstaller,
+            manifest.Required("android-platform-tools"),
+            InstallProfile.SdkComponents.Single(component => component.PackagePath == "platform-tools"),
+            "platform-tools",
+            cancellationToken);
+        await InstallSdkArchiveIfMissingAsync(
+            layout,
+            archiveInstaller,
+            manifest.Required("android-emulator"),
+            InstallProfile.SdkComponents.Single(component => component.PackagePath == "emulator"),
+            "emulator",
+            cancellationToken);
+        await InstallSdkArchiveIfMissingAsync(
+            layout,
+            archiveInstaller,
+            manifest.Required("android-system-image-api35-playstore-x86_64"),
+            InstallProfile.SdkComponents.Single(component => component.PackagePath == InstallProfile.SystemImagePackage),
+            "x86_64",
+            cancellationToken);
+    }
+
+    private async Task InstallSdkArchiveIfMissingAsync(
+        AndroidSdkLayout layout,
+        SdkArchiveInstaller archiveInstaller,
+        DependencyComponent dependency,
+        PinnedSdkComponent component,
+        string archiveTopLevelDirectory,
+        CancellationToken cancellationToken)
+    {
+        if (SdkComponentRevisionVerifier.IsInstalled(layout, component))
+        {
+            await archiveInstaller.EnsureGenericRegistrationAsync(
+                dependency,
+                layout.Root,
+                component.RelativeDirectory,
+                cancellationToken);
+            return;
+        }
+        await archiveInstaller.InstallAsync(
+            dependency,
+            _paths.DownloadCache,
+            layout.Root,
+            archiveTopLevelDirectory,
+            component.RelativeDirectory,
+            cancellationToken);
     }
 
     private async Task VerifyAccelerationAsync(
@@ -242,8 +340,8 @@ public sealed class RootedVmInstaller
     private async Task CreateAvdAsync(AndroidSdkLayout layout, CancellationToken cancellationToken)
     {
         var options = _options;
-        var list = await _runner.RunAsync(
-            new ProcessSpec(layout.EmulatorPath, ["-list-avds"], Path.GetDirectoryName(layout.EmulatorPath)),
+        var list = await _runner.RunRequestAsync(
+            AndroidCommandFactory.ListAvds(layout, options),
             cancellationToken);
         var exists = list.StandardOutput.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
             .Any(name => name.Trim() == options.AvdName);
@@ -362,9 +460,8 @@ public sealed class RootedVmInstaller
                 cancellationToken);
             EnsureSuccess(fakeBoot, "生成 Magisk FAKEBOOTIMG");
 
-            var magiskApk = Path.Combine(_paths.DownloadCache, InstallProfile.Magisk.FileName);
-            await new MagiskPatchAutomator(layout, _options, _runner)
-                .PatchFakeBootAsync(magiskApk, cancellationToken);
+            await new MagiskCliPatchService(layout, _options, _runner)
+                .PatchAsync(cancellationToken);
         }
 
         var finalResult = await RunRootAvdAsync(layout, relativeRamdisk, cancellationToken);
@@ -463,24 +560,12 @@ public sealed class RootedVmInstaller
         SetupStage stage,
         CancellationToken cancellationToken)
     {
-        Directory.CreateDirectory(_paths.ProductRoot);
-        var journal = new
-        {
-            schemaVersion = 1,
-            productVersion = InstallProfile.ProductVersion,
-            stage = stage.ToString(),
-            sdkRoot = _paths.SdkRoot,
-            avdHome = _options.AvdHome,
-            avdName = _options.AvdName,
-            updatedAtUtc = DateTimeOffset.UtcNow,
-            sdkRevisions = InstallProfile.SdkComponents.ToDictionary(
-                component => component.PackagePath,
-                component => component.Revision)
-        };
-        await File.WriteAllTextAsync(
-            Path.Combine(_paths.ProductRoot, "install-state.json"),
-            JsonSerializer.Serialize(journal, new JsonSerializerOptions { WriteIndented = true }),
-            cancellationToken);
+        await Journal.UpdateAsync(
+            stage,
+            _paths.SdkRoot,
+            _options.AvdHome ?? string.Empty,
+            _options.AvdName,
+            cancellationToken: cancellationToken);
     }
 
     private async Task VerifyPersistentRootAndHealthAsync(
@@ -648,11 +733,7 @@ public sealed class RootedVmInstaller
         throw new InvalidOperationException($"{operation}失败：{detail}");
     }
 
-    private enum RootPreparationState
-    {
-        NeedsPatch,
-        PolicyPending,
-        Working
-    }
+    private InstallJournalStore Journal =>
+        new(Path.Combine(_paths.ProductRoot, "install-state.json"));
 
 }

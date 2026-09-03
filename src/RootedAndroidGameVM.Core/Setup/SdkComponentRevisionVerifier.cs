@@ -4,6 +4,9 @@ namespace RootedAndroidGameVM.Core.Setup;
 
 public static class SdkComponentRevisionVerifier
 {
+    public static bool IsInstalled(AndroidSdkLayout layout, PinnedSdkComponent component) =>
+        string.Equals(ReadRevision(layout, component), component.Revision, StringComparison.Ordinal);
+
     public static void Verify(AndroidSdkLayout layout)
     {
         foreach (var component in InstallProfile.SdkComponents)
@@ -16,10 +19,7 @@ public static class SdkComponentRevisionVerifier
                     propertiesPath);
             }
 
-            var revision = File.ReadLines(propertiesPath)
-                .FirstOrDefault(line => line.StartsWith("Pkg.Revision=", StringComparison.Ordinal))
-                ?.Split('=', 2)[1]
-                .Trim();
+            var revision = ReadRevision(layout, component);
             if (!string.Equals(revision, component.Revision, StringComparison.Ordinal))
             {
                 throw new InvalidDataException(
@@ -27,5 +27,15 @@ public static class SdkComponentRevisionVerifier
                     $"Expected {component.Revision}, got {revision ?? "<missing>"}.");
             }
         }
+    }
+
+    private static string? ReadRevision(AndroidSdkLayout layout, PinnedSdkComponent component)
+    {
+        var propertiesPath = Path.Combine(layout.Root, component.RelativeDirectory, "source.properties");
+        if (!File.Exists(propertiesPath)) return null;
+        return File.ReadLines(propertiesPath)
+            .FirstOrDefault(line => line.StartsWith("Pkg.Revision=", StringComparison.Ordinal))
+            ?.Split('=', 2)[1]
+            .Trim();
     }
 }

@@ -41,6 +41,13 @@ public sealed class CleanInstallIntegrationTests
         {
             throw new InvalidOperationException("Set RGVM_CLEAN_INSTALL_ROOT to an isolated empty product root.");
         }
+        if (Environment.GetEnvironmentVariable("RGVM_E2E_REUSE_STATE") != "1" &&
+            Directory.Exists(productRoot) &&
+            Directory.EnumerateFileSystemEntries(productRoot).Any())
+        {
+            throw new InvalidOperationException(
+                "CleanE2E product root must be absent or empty unless RGVM_E2E_REUSE_STATE=1.");
+        }
 
         var paths = InstallPaths.FromProductRoot(productRoot);
         var options = new AndroidVmOptions(
