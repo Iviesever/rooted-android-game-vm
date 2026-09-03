@@ -93,6 +93,9 @@ public sealed class AndroidInteractiveSessionServiceTests
             source,
             StringComparison.Ordinal);
         Assert.Contains("if (setupRestarted)", source, StringComparison.Ordinal);
+        Assert.Contains("private async Task<bool> WaitForBootAsync", source, StringComparison.Ordinal);
+        Assert.Contains("setupRestarted |= await WaitForBootAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Magisk 额外设置未触发预期的设备重启", source, StringComparison.Ordinal);
         Assert.DoesNotContain("WaitForLabelAsync", source, StringComparison.Ordinal);
         Assert.DoesNotContain("WaitForResourceAsync", source, StringComparison.Ordinal);
     }

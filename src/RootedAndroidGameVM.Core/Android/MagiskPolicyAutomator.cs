@@ -169,8 +169,7 @@ public sealed class MagiskPolicyAutomator
             if (snapshot.Contains("Requires additional setup"))
             {
                 await TapAsync(snapshot.FindCenter("OK"), cancellationToken);
-                await WaitForBootAsync(cancellationToken);
-                setupRestarted = true;
+                setupRestarted |= await WaitForBootAsync(cancellationToken);
                 continue;
             }
             if (snapshot.Contains("Allow Magisk to send you notifications?"))
@@ -256,7 +255,7 @@ public sealed class MagiskPolicyAutomator
         EnsureSuccess(launch, "启动 Magisk 授权页");
     }
 
-    private async Task WaitForBootAsync(CancellationToken cancellationToken)
+    private async Task<bool> WaitForBootAsync(CancellationToken cancellationToken)
     {
         var offlineDeadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(45);
         var observedOffline = false;
@@ -276,7 +275,7 @@ public sealed class MagiskPolicyAutomator
         }
         if (!observedOffline)
         {
-            throw new TimeoutException("Magisk 额外设置未触发预期的设备重启。");
+            return false;
         }
 
         var wait = await _runner.RunAsync(
@@ -298,7 +297,7 @@ public sealed class MagiskPolicyAutomator
             {
                 await new AndroidInteractiveSessionService(_layout, _options, _runner)
                     .PrepareAsync(cancellationToken);
-                return;
+                return true;
             }
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
         }
