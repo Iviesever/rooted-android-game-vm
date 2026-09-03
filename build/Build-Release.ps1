@@ -25,6 +25,15 @@ $versionMatch = [regex]::Match(
 if (-not $versionMatch.Success) { throw 'Unable to read the product version from the Inno script.' }
 $productVersion = $versionMatch.Groups[1].Value
 
+function Normalize-CertificateThumbprint {
+    param([Parameter(Mandatory)][string]$Thumbprint)
+    $normalized = ($Thumbprint -replace '\s', '').ToUpperInvariant()
+    if ($normalized -notmatch '^[0-9A-F]{40,128}$') {
+        throw 'The code-signing certificate thumbprint is invalid.'
+    }
+    return $normalized
+}
+
 function Resolve-SignToolPath {
     $command = Get-Command signtool.exe -ErrorAction SilentlyContinue
     if ($command) { return $command.Source }
@@ -37,6 +46,9 @@ function Resolve-SignToolPath {
     return $candidate.FullName
 }
 
+if ($SigningCertificateThumbprint) {
+    $SigningCertificateThumbprint = Normalize-CertificateThumbprint $SigningCertificateThumbprint
+}
 $signToolPath = if ($SigningCertificateThumbprint) { Resolve-SignToolPath } else { $null }
 
 if (-not (Test-Path -LiteralPath $innoCompiler)) {
@@ -113,12 +125,25 @@ if ($LASTEXITCODE -ne 0) { throw 'Launcher publish failed.' }
 dotnet publish (Join-Path $projectRoot 'src\RootedAndroidGameVM.Setup\RootedAndroidGameVM.Setup.csproj') -c $Configuration -r win-x64 --self-contained true -p:PublishSingleFile=true -o $setupOutput
 if ($LASTEXITCODE -ne 0) { throw 'Setup publish failed.' }
 
+function Assert-AuthenticodeValid {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$ExpectedSignerThumbprint
+    )
+    $signature = Get-AuthenticodeSignature -LiteralPath $Path
+    if ($signature.Status -ne 'Valid') { throw "Authenticode verification failed for ${Path}: $($signature.Status)" }
+    $actualThumbprint = Normalize-CertificateThumbprint $signature.SignerCertificate.Thumbprint
+    $expectedThumbprint = Normalize-CertificateThumbprint $ExpectedSignerThumbprint
+    if ($actualThumbprint -ne $expectedThumbprint) {
+        throw "Authenticode signer mismatch for $Path."
+    }
+}
+
 function Invoke-AuthenticodeSign {
     param([Parameter(Mandatory)][string]$Path)
     & $signToolPath sign /sha1 $SigningCertificateThumbprint /fd SHA256 /tr 'http://timestamp.digicert.com' /td SHA256 $Path
     if ($LASTEXITCODE -ne 0) { throw "Authenticode signing failed for $Path" }
-    $signature = Get-AuthenticodeSignature -LiteralPath $Path
-    if ($signature.Status -ne 'Valid') { throw "Authenticode verification failed for ${Path}: $($signature.Status)" }
+    Assert-AuthenticodeValid $Path $SigningCertificateThumbprint
 }
 
 if ($SigningCertificateThumbprint) {
@@ -128,7 +153,16 @@ if ($SigningCertificateThumbprint) {
     throw 'A trusted code-signing certificate thumbprint is required. Use -AllowUnsignedLocalCandidate only for a non-public local candidate.'
 }
 
-& $innoCompiler $innoScript
+$innoArguments = @()
+if ($SigningCertificateThumbprint) {
+    $innoSignCommand = '$q' + $signToolPath + '$q sign /sha1 ' +
+        $SigningCertificateThumbprint +
+        ' /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $f'
+    $innoArguments += '/DRgvmSignedBuild=1'
+    $innoArguments += "/Srgvm=$innoSignCommand"
+}
+$innoArguments += $innoScript
+& $innoCompiler @innoArguments
 if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed.' }
 
 $installer = Get-ChildItem -LiteralPath $releaseDirectory -Filter 'RootedAndroidGameVM-Setup-*-x64.exe' -File |
@@ -142,10 +176,10 @@ if (-not $SigningCertificateThumbprint) {
     $installer = Get-Item -LiteralPath $unsignedPath
 }
 if ($SigningCertificateThumbprint) {
-    Invoke-AuthenticodeSign $installer.FullName
+    Assert-AuthenticodeValid $installer.FullName $SigningCertificateThumbprint
 }
 
-& (Join-Path $projectRoot 'build\Invoke-PostPackageE2E.ps1') -InstallerPath $installer.FullName -ProductRoot $resolvedCleanRoot -Configuration $Configuration -DependencyCache $E2EDependencyCache
+& (Join-Path $projectRoot 'build\Invoke-PostPackageE2E.ps1') -InstallerPath $installer.FullName -ProductRoot $resolvedCleanRoot -Configuration $Configuration -DependencyCache $E2EDependencyCache -ExpectedSignerThumbprint $SigningCertificateThumbprint
 if ($LASTEXITCODE -ne 0) { throw 'Post-package final installer E2E failed.' }
 
 Copy-Item -LiteralPath (Join-Path $projectRoot 'release\THIRD_PARTY_NOTICES.md') -Destination $releaseDirectory -Force

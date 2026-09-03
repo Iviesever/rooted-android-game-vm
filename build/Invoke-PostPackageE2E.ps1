@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory)]
     [string]$ProductRoot,
     [string]$Configuration = 'Release',
-    [string]$DependencyCache
+    [string]$DependencyCache,
+    [string]$ExpectedSignerThumbprint
 )
 
 $ErrorActionPreference = 'Stop'
@@ -21,6 +22,30 @@ $desktopShortcut = Join-Path ([Environment]::GetFolderPath(
 $startMenuGroup = Join-Path ([Environment]::GetFolderPath(
     [Environment+SpecialFolder]::Programs)) 'Rooted Android Game VM'
 
+function Normalize-CertificateThumbprint {
+    param([Parameter(Mandatory)][string]$Thumbprint)
+    $normalized = ($Thumbprint -replace '\s', '').ToUpperInvariant()
+    if ($normalized -notmatch '^[0-9A-F]{40,128}$') {
+        throw 'The expected Authenticode signer thumbprint is invalid.'
+    }
+    return $normalized
+}
+
+function Assert-AuthenticodeSignature {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$ExpectedThumbprint
+    )
+    $signature = Get-AuthenticodeSignature -LiteralPath $Path
+    if ($signature.Status -ne 'Valid') {
+        throw "Invalid Authenticode signature for ${Path}: $($signature.Status)"
+    }
+    $actualThumbprint = Normalize-CertificateThumbprint $signature.SignerCertificate.Thumbprint
+    if ($actualThumbprint -ne $ExpectedThumbprint) {
+        throw "Unexpected Authenticode signer for $Path."
+    }
+}
+
 if (-not $testRoot.StartsWith($artifactsRoot, [StringComparison]::OrdinalIgnoreCase) -or
     (Split-Path $testRoot -Leaf) -ne 'post-package-e2e') {
     throw 'Unsafe post-package E2E root.'
@@ -30,6 +55,14 @@ if (Test-Path -LiteralPath $testRoot) {
 }
 if (-not (Test-Path -LiteralPath $resolvedInstaller)) {
     throw "Installer does not exist: $resolvedInstaller"
+}
+$normalizedExpectedSigner = if ([string]::IsNullOrWhiteSpace($ExpectedSignerThumbprint)) {
+    $null
+} else {
+    Normalize-CertificateThumbprint $ExpectedSignerThumbprint
+}
+if ($normalizedExpectedSigner) {
+    Assert-AuthenticodeSignature $resolvedInstaller $normalizedExpectedSigner
 }
 if ((Test-Path -LiteralPath $desktopShortcut) -or
     (Test-Path -LiteralPath $startMenuGroup)) {
@@ -67,9 +100,15 @@ try {
 
     $installedSetup = Join-Path $programRoot 'RootedAndroidGameVM.Setup.exe'
     $installedLauncher = Join-Path $programRoot 'RootedAndroidGameVM.exe'
-    foreach ($required in @($installedSetup, $installedLauncher)) {
+    $uninstaller = Join-Path $programRoot 'unins000.exe'
+    foreach ($required in @($installedSetup, $installedLauncher, $uninstaller)) {
         if (-not (Test-Path -LiteralPath $required)) {
             throw "Installed GUI executable is missing: $required"
+        }
+    }
+    if ($normalizedExpectedSigner) {
+        foreach ($signedExecutable in @($installedLauncher, $installedSetup, $uninstaller)) {
+            Assert-AuthenticodeSignature $signedExecutable $normalizedExpectedSigner
         }
     }
     $startMenuShortcut = Join-Path $startMenuGroup '配置 Rooted Android Game VM.lnk'
@@ -162,7 +201,6 @@ try {
         'RGVM_E2E_UNINSTALL_MODE',
         'program',
         [EnvironmentVariableTarget]::Process)
-    $uninstaller = Join-Path $programRoot 'unins000.exe'
     $uninstall = Start-Process -FilePath $uninstaller -ArgumentList @(
         '/VERYSILENT',
         '/SUPPRESSMSGBOXES',

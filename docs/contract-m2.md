@@ -15,7 +15,7 @@ Eliminate locally solvable public-release blockers while preserving a fail-close
 - Inno observes Setup success/failure and removes product-created shortcuts during uninstall.
 - Normal install and uninstall paths never adopt, modify or delete a global legacy AVD.
 - Broken product SDK components can be replaced from verified archives with rollback on failure.
-- A trusted certificate is required for a public-named artifact.
+- A trusted certificate is required for a public-named artifact, and the same signer must cover Launcher, Setup, the final installer and its embedded uninstaller.
 - Signed automation creates only a provenance-attested Draft; publication requires a separate protected manual approval and exact signer check.
 
 ## Non-goals

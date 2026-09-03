@@ -32,7 +32,7 @@ The verified artifact from that cycle was an explicitly unsigned local candidate
 Public Release remains fail-closed until all of the following succeed on the exact tagged commit:
 
 1. A clean virtualization-capable Windows runner provisions every locked dependency.
-2. A trusted Authenticode certificate signs Launcher, Setup and the final installer.
+2. A trusted Authenticode certificate signs Launcher, Setup, the final installer and its embedded uninstaller with the same identity.
 3. The complete Core and final installed-package E2E gates pass against the signed asset.
 4. GitHub records build provenance and creates only a Draft.
 5. A separate protected human-approved workflow rechecks the expected signer, PE version, checksum, SBOM and provenance before publication.

@@ -6,7 +6,7 @@ Official Windows releases must be Authenticode-signed by the signing identity co
 
 - Release builds run from an immutable version tag on GitHub-hosted Windows.
 - The complete clean Root/AVD and final installed-package E2E gates must pass on the exact tagged commit.
-- Launcher, Setup and the final installer are signed and timestamped before they are accepted.
+- Launcher, Setup, the final installer and its embedded uninstaller are signed, timestamped and verified against the same signer before they are accepted.
 - The final installer signature must be valid and match the thumbprint configured in the protected `release-publish` environment.
 - GitHub build provenance, file checksums and the SPDX SBOM must identify the same installer bytes.
 - Automated signing creates only a Draft. Publication requires a separate protected manual approval.

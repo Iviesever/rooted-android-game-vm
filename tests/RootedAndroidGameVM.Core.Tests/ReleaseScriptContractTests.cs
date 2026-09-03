@@ -155,6 +155,55 @@ public sealed class ReleaseScriptContractTests
     }
 
     [Fact]
+    public async Task Signed_release_uses_inno_to_sign_the_installer_and_embedded_uninstaller()
+    {
+        var innoScript = await File.ReadAllTextAsync(
+            Path.Combine(ProjectRoot, "installer", "RootedAndroidGameVM.iss"));
+        var buildScript = await File.ReadAllTextAsync(
+            Path.Combine(ProjectRoot, "build", "Build-Release.ps1"));
+        var signingPolicy = await File.ReadAllTextAsync(
+            Path.Combine(ProjectRoot, "CODE_SIGNING_POLICY.md"));
+
+        Assert.Contains("#ifdef RgvmSignedBuild", innoScript, StringComparison.Ordinal);
+        Assert.Contains("SignTool=rgvm", innoScript, StringComparison.Ordinal);
+        Assert.Contains("SignedUninstaller=yes", innoScript, StringComparison.Ordinal);
+        Assert.Contains("SignToolRetryCount=3", innoScript, StringComparison.Ordinal);
+        Assert.Contains("SignedUninstaller=no", innoScript, StringComparison.Ordinal);
+
+        Assert.Contains("/DRgvmSignedBuild=1", buildScript, StringComparison.Ordinal);
+        Assert.Contains("/Srgvm=$innoSignCommand", buildScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("--signtool", buildScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("--no-signing", buildScript, StringComparison.Ordinal);
+        Assert.Contains("'$q' + $signToolPath + '$q sign", buildScript, StringComparison.Ordinal);
+        Assert.Contains(" /td SHA256 $f'", buildScript, StringComparison.Ordinal);
+        Assert.Contains(
+            "Assert-AuthenticodeValid $installer.FullName $SigningCertificateThumbprint",
+            buildScript,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("Invoke-AuthenticodeSign $installer.FullName", buildScript, StringComparison.Ordinal);
+        Assert.Contains("embedded uninstaller", signingPolicy, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Signed_post_package_e2e_verifies_every_installed_executable_signer()
+    {
+        var buildScript = await File.ReadAllTextAsync(
+            Path.Combine(ProjectRoot, "build", "Build-Release.ps1"));
+        var e2eScript = await File.ReadAllTextAsync(
+            Path.Combine(ProjectRoot, "build", "Invoke-PostPackageE2E.ps1"));
+
+        Assert.Contains("-ExpectedSignerThumbprint $SigningCertificateThumbprint", buildScript, StringComparison.Ordinal);
+        Assert.Contains("[string]$ExpectedSignerThumbprint", e2eScript, StringComparison.Ordinal);
+        Assert.Contains("function Normalize-CertificateThumbprint", e2eScript, StringComparison.Ordinal);
+        Assert.Contains("Get-AuthenticodeSignature -LiteralPath $Path", e2eScript, StringComparison.Ordinal);
+        Assert.Contains("$resolvedInstaller", e2eScript, StringComparison.Ordinal);
+        Assert.Contains("$installedLauncher", e2eScript, StringComparison.Ordinal);
+        Assert.Contains("$installedSetup", e2eScript, StringComparison.Ordinal);
+        Assert.Contains("$uninstaller", e2eScript, StringComparison.Ordinal);
+        Assert.Contains("SignerCertificate.Thumbprint", e2eScript, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Public_repository_contains_no_game_specific_identifiers()
     {
         var excludedDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)

@@ -23,6 +23,13 @@ UninstallDisplayIcon={app}\RootedAndroidGameVM.exe
 VersionInfoVersion={#AppVersion}
 VersionInfoCompany={#Publisher}
 VersionInfoDescription={#AppName} installer
+#ifdef RgvmSignedBuild
+SignTool=rgvm
+SignedUninstaller=yes
+SignToolRetryCount=3
+#else
+SignedUninstaller=no
+#endif
 
 [Files]
 Source: "..\artifacts\publish\Launcher\RootedAndroidGameVM.exe"; DestDir: "{app}"; Flags: ignoreversion
