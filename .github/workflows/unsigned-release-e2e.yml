@@ -47,16 +47,7 @@ jobs:
         shell: pwsh
         run: |
           if ($env:RGVM_CLEAN_ROOT) {
-            $runnerTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\') + '\'
-            $cleanRoot = [IO.Path]::GetFullPath($env:RGVM_CLEAN_ROOT)
-            if ($cleanRoot.StartsWith($runnerTemp, [StringComparison]::OrdinalIgnoreCase) -and
-                (Split-Path $cleanRoot -Leaf).StartsWith('rgvm-clean-', [StringComparison]::Ordinal)) {
-              $adb = Join-Path $cleanRoot 'runtime\android-sdk\platform-tools\adb.exe'
-              if (Test-Path -LiteralPath $adb) { & $adb kill-server }
-              if (Test-Path -LiteralPath $cleanRoot) {
-                Get-ChildItem -LiteralPath $cleanRoot -Recurse -Force -File -ErrorAction SilentlyContinue |
-                  ForEach-Object { [IO.File]::SetAttributes($_.FullName, [IO.FileAttributes]::Normal) }
-                [IO.Directory]::Delete($cleanRoot, $true)
-              }
-            }
+            .\build\Remove-IsolatedProductRoot.ps1 `
+              -ProductRoot $env:RGVM_CLEAN_ROOT `
+              -AllowedParent $env:RUNNER_TEMP
           }

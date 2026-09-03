@@ -14,4 +14,15 @@ public sealed class MagiskCliPatchServiceTests
         Assert.Contains("/sdcard/Download/magisk_patched-rgvm.img", script, StringComparison.Ordinal);
         Assert.DoesNotContain("input tap", script, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void Android_shell_script_encoding_is_utf8_without_bom_and_uses_lf_only()
+    {
+        var bytes = UnixShellScriptEncoding.Encode("#!/system/bin/sh\r\nset -e\r\n");
+
+        Assert.Equal(
+            System.Text.Encoding.UTF8.GetBytes("#!/system/bin/sh\nset -e\n"),
+            bytes);
+        Assert.False(bytes.AsSpan().StartsWith(System.Text.Encoding.UTF8.Preamble));
+    }
 }

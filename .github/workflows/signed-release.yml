@@ -169,10 +169,7 @@ jobs:
             [IO.File]::Delete($env:RGVM_PFX_PATH)
           }
           if ($env:RGVM_CLEAN_ROOT) {
-            $runnerTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\') + '\'
-            $cleanRoot = [IO.Path]::GetFullPath($env:RGVM_CLEAN_ROOT)
-            if ($cleanRoot.StartsWith($runnerTemp, [StringComparison]::OrdinalIgnoreCase) -and
-                (Split-Path $cleanRoot -Leaf).StartsWith('rgvm-clean-', [StringComparison]::Ordinal)) {
-              if (Test-Path -LiteralPath $cleanRoot) { [IO.Directory]::Delete($cleanRoot, $true) }
-            }
+            .\build\Remove-IsolatedProductRoot.ps1 `
+              -ProductRoot $env:RGVM_CLEAN_ROOT `
+              -AllowedParent $env:RUNNER_TEMP
           }

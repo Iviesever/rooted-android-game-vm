@@ -205,4 +205,21 @@ public sealed class ReleaseScriptContractTests
         Assert.Contains($"/{directory}/", lines);
         Assert.DoesNotContain($"{directory}/", lines);
     }
+
+    [Fact]
+    public async Task Hosted_workflows_use_the_bounded_isolated_product_cleanup()
+    {
+        var cleanup = await File.ReadAllTextAsync(
+            Path.Combine(ProjectRoot, "build", "Remove-IsolatedProductRoot.ps1"));
+        Assert.Contains("StartsWith($resolvedParent", cleanup, StringComparison.Ordinal);
+        Assert.Contains("StartsWith($RequiredLeafPrefix", cleanup, StringComparison.Ordinal);
+        Assert.Contains("Stop-Process", cleanup, StringComparison.Ordinal);
+
+        foreach (var workflowName in new[] { "signed-release.yml", "unsigned-release-e2e.yml" })
+        {
+            var workflow = await File.ReadAllTextAsync(
+                Path.Combine(ProjectRoot, ".github", "workflows", workflowName));
+            Assert.Contains("Remove-IsolatedProductRoot.ps1", workflow, StringComparison.Ordinal);
+        }
+    }
 }

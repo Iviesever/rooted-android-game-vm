@@ -42,7 +42,10 @@ public sealed class MagiskCliPatchService
         var remoteScript = $"{WorkDirectory}/rgvm-direct-patch-{operationId}.sh";
         try
         {
-            await File.WriteAllTextAsync(localScript, BuildPatchScript(), cancellationToken);
+            await File.WriteAllBytesAsync(
+                localScript,
+                UnixShellScriptEncoding.Encode(BuildPatchScript()),
+                cancellationToken);
             EnsureSuccess(await _runner.RunAsync(
                 AndroidCommandFactory.Adb(
                     _layout,
