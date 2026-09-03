@@ -9,17 +9,20 @@ public sealed class AndroidVmController
     private readonly AndroidVmOptions _options;
     private readonly IProcessRunner _runner;
     private readonly DetachedProcessLauncher _detachedLauncher;
+    private readonly AndroidVmStartupPolicy _startupPolicy;
 
     public AndroidVmController(
         AndroidSdkLayout? layout = null,
         AndroidVmOptions? options = null,
         IProcessRunner? runner = null,
-        DetachedProcessLauncher? detachedLauncher = null)
+        DetachedProcessLauncher? detachedLauncher = null,
+        AndroidVmStartupPolicy? startupPolicy = null)
     {
         _layout = layout ?? AndroidSdkLayout.Discover();
         _options = options ?? AndroidVmOptions.Default;
         _runner = runner ?? new ProcessRunner();
         _detachedLauncher = detachedLauncher ?? new DetachedProcessLauncher();
+        _startupPolicy = startupPolicy ?? AndroidVmStartupPolicy.Default;
     }
 
     public async Task<VmStatus> GetStatusAsync(CancellationToken cancellationToken = default)
@@ -74,7 +77,7 @@ public sealed class AndroidVmController
             AndroidCommandFactory.StartEmulator(_layout, _options),
             CreateAvdEnvironment());
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromMinutes(3));
+        timeout.CancelAfter(_startupPolicy.Timeout);
 
         try
         {
@@ -83,7 +86,7 @@ public sealed class AndroidVmController
                 timeout.Token);
             EnsureSuccess(wait, "等待安卓虚拟机连接");
 
-            for (var attempt = 0; attempt < 90; attempt++)
+            while (true)
             {
                 timeout.Token.ThrowIfCancellationRequested();
                 var boot = await _runner.RunAsync(
@@ -98,12 +101,10 @@ public sealed class AndroidVmController
                     return;
                 }
 
-                await Task.Delay(TimeSpan.FromSeconds(2), timeout.Token);
+                await Task.Delay(_startupPolicy.PollInterval, timeout.Token);
             }
-
-            throw new TimeoutException("安卓虚拟机未能在三分钟内完成启动。");
         }
-        catch
+        catch (Exception exception)
         {
             if (!emulatorProcess.HasExited)
             {
@@ -111,6 +112,12 @@ public sealed class AndroidVmController
                 await emulatorProcess.WaitForExitAsync(CancellationToken.None);
             }
 
+            if (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested)
+            {
+                throw new TimeoutException(
+                    $"安卓虚拟机未能在 {_startupPolicy.Timeout.TotalMinutes:0} 分钟内完成启动。",
+                    exception);
+            }
             throw;
         }
     }

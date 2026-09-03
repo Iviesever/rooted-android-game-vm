@@ -130,4 +130,13 @@ public sealed class AndroidControlContractTests
         Assert.Contains("RootedAndroidGameVM", options.AvdHome, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(".android", options.AvdHome, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void Default_startup_policy_allows_a_slow_clean_cloud_boot()
+    {
+        var policy = AndroidVmStartupPolicy.Default;
+
+        Assert.Equal(TimeSpan.FromMinutes(8), policy.Timeout);
+        Assert.Equal(TimeSpan.FromSeconds(2), policy.PollInterval);
+    }
 }
