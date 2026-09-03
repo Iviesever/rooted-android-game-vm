@@ -2,8 +2,8 @@
 .idea/
 bin/
 obj/
-artifacts/
-tasks/
+/artifacts/
+/tasks/
 TestResults/
 .dotnet/
 *.user
@@ -22,9 +22,9 @@ TestResults/
 *.cer
 *.key
 *.log
-userdata*/
-exports/
-downloads/
-cache/
+/userdata*/
+/exports/
+/downloads/
+/cache/
 secrets.json
 appsettings.Local.json

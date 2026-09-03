@@ -136,4 +136,19 @@ public sealed class ReleaseScriptContractTests
             }
         }
     }
+
+    [Theory]
+    [InlineData("artifacts")]
+    [InlineData("downloads")]
+    [InlineData("exports")]
+    [InlineData("cache")]
+    [InlineData("tasks")]
+    public async Task Root_generated_data_ignores_are_anchored_and_cannot_hide_source_folders(
+        string directory)
+    {
+        var lines = await File.ReadAllLinesAsync(Path.Combine(ProjectRoot, ".gitignore"));
+
+        Assert.Contains($"/{directory}/", lines);
+        Assert.DoesNotContain($"{directory}/", lines);
+    }
 }
