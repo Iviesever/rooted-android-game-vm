@@ -20,7 +20,7 @@ $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
 $innoScript = Join-Path $projectRoot 'installer\RootedAndroidGameVM.iss'
 $versionMatch = [regex]::Match(
     (Get-Content -Raw -LiteralPath $innoScript),
-    '(?m)^#define AppVersion "([^"]+)"$')
+    '(?m)^#define AppVersion "([^"]+)"\r?$')
 if (-not $versionMatch.Success) { throw 'Unable to read the product version from the Inno script.' }
 $productVersion = $versionMatch.Groups[1].Value
 

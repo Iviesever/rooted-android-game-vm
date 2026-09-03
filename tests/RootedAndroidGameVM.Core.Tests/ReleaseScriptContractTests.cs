@@ -86,6 +86,18 @@ public sealed class ReleaseScriptContractTests
     }
 
     [Fact]
+    public async Task Release_version_parser_accepts_windows_crlf_checkouts()
+    {
+        var script = await File.ReadAllTextAsync(
+            Path.Combine(ProjectRoot, "build", "Build-Release.ps1"));
+
+        Assert.Contains(
+            "'(?m)^#define AppVersion \"([^\"]+)\"\\r?$'",
+            script,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Draft_publication_requires_a_separate_protected_manual_workflow()
     {
         var workflow = await File.ReadAllTextAsync(
