@@ -46,11 +46,17 @@ public sealed partial class AndroidUiSnapshot
         return GetCenter(node, label);
     }
 
+    public bool TryFindCenter(string label, out AndroidUiPoint point) =>
+        TryGetCenter(FindNode(label, requireEnabled: true), out point);
+
     public AndroidUiPoint FindCenterByResourceId(string resourceId)
     {
         var node = FindByResourceId(resourceId);
         return GetCenter(node, resourceId);
     }
+
+    public bool TryFindCenterByResourceId(string resourceId, out AndroidUiPoint point) =>
+        TryGetCenter(FindNodeByResourceId(resourceId), out point);
 
     public bool IsCheckedByResourceId(string resourceId) =>
         FindByResourceId(resourceId).DescendantsAndSelf().Any(node =>
@@ -72,17 +78,30 @@ public sealed partial class AndroidUiSnapshot
     private static AndroidUiPoint GetCenter(XElement node, string label)
     {
         var bounds = node.Attribute("bounds")?.Value ?? string.Empty;
-        var match = BoundsPattern().Match(bounds);
-        if (!match.Success)
+        if (!TryGetCenter(node, out var point))
         {
             throw new InvalidDataException($"Android UI element '{label}' has invalid bounds '{bounds}'.");
         }
+        return point;
+    }
 
-        var left = int.Parse(match.Groups["left"].Value);
-        var top = int.Parse(match.Groups["top"].Value);
-        var right = int.Parse(match.Groups["right"].Value);
-        var bottom = int.Parse(match.Groups["bottom"].Value);
-        return new AndroidUiPoint((left + right) / 2, (top + bottom) / 2);
+    private static bool TryGetCenter(XElement? node, out AndroidUiPoint point)
+    {
+        point = default;
+        var match = BoundsPattern().Match(node?.Attribute("bounds")?.Value ?? string.Empty);
+        if (!match.Success ||
+            !int.TryParse(match.Groups["left"].Value, out var left) ||
+            !int.TryParse(match.Groups["top"].Value, out var top) ||
+            !int.TryParse(match.Groups["right"].Value, out var right) ||
+            !int.TryParse(match.Groups["bottom"].Value, out var bottom) ||
+            right <= left ||
+            bottom <= top)
+        {
+            return false;
+        }
+
+        point = new AndroidUiPoint(left + ((right - left) / 2), top + ((bottom - top) / 2));
+        return true;
     }
 
     private XElement? FindNode(string label, bool requireEnabled) =>
@@ -91,11 +110,13 @@ public sealed partial class AndroidUiSnapshot
             (string.Equals(node.Attribute("text")?.Value, label, StringComparison.Ordinal) ||
              string.Equals(node.Attribute("content-desc")?.Value, label, StringComparison.Ordinal)));
 
-    private XElement FindByResourceId(string resourceId) =>
+    private XElement? FindNodeByResourceId(string resourceId) =>
         _document.Descendants("node").FirstOrDefault(candidate =>
             candidate.Attribute("enabled")?.Value != "false" &&
-            string.Equals(candidate.Attribute("resource-id")?.Value, resourceId, StringComparison.Ordinal))
-        ?? throw new InvalidOperationException(
+            string.Equals(candidate.Attribute("resource-id")?.Value, resourceId, StringComparison.Ordinal));
+
+    private XElement FindByResourceId(string resourceId) =>
+        FindNodeByResourceId(resourceId) ?? throw new InvalidOperationException(
             $"Android UI resource '{resourceId}' was not found or enabled.");
 
     [GeneratedRegex(@"^\[(?<left>\d+),(?<top>\d+)\]\[(?<right>\d+),(?<bottom>\d+)\]$")]

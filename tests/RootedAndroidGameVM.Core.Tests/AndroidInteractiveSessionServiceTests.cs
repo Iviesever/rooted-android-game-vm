@@ -70,6 +70,120 @@ public sealed class AndroidInteractiveSessionServiceTests
         Assert.False(MagiskPolicyAutomator.IsRecoverableSystemAppAnrDialog(AndroidUiSnapshot.Parse(xml)));
     }
 
+    [Fact]
+    public async Task Magisk_actions_reuse_the_snapshot_that_selected_each_state()
+    {
+        var projectRoot = Path.GetFullPath(
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        var source = await File.ReadAllTextAsync(Path.Combine(
+            projectRoot,
+            "src",
+            "RootedAndroidGameVM.Core",
+            "Android",
+            "MagiskPolicyAutomator.cs"));
+
+        Assert.Contains("PrepareMagiskHomeAsync", source, StringComparison.Ordinal);
+        Assert.Contains("snapshot.FindCenter(\"OK\")", source, StringComparison.Ordinal);
+        Assert.Contains("snapshot.FindCenter(\"Allow\")", source, StringComparison.Ordinal);
+        Assert.Contains("actionCount <= maxSetupActions", source, StringComparison.Ordinal);
+        Assert.Contains("if (actionCount == maxSetupActions)", source, StringComparison.Ordinal);
+        Assert.Contains("beforePolicy.FindCenter(\"Superuser\")", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "policySnapshot.FindCenterByResourceId(PolicyIndicatorResourceId)",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains("if (setupRestarted)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("WaitForLabelAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("WaitForResourceAsync", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Magisk_home_state_requires_an_actionable_control_in_the_same_snapshot()
+    {
+        const string partialXml = """
+            <hierarchy>
+              <node text="Allow Magisk to send you notifications?" enabled="true" bounds="[0,0][100,40]" />
+              <node text="Allow" enabled="false" bounds="[50,40][100,80]" />
+              <node text="Superuser" enabled="true" bounds="[0,80][100,120]" />
+            </hierarchy>
+            """;
+        const string additionalSetupPartialXml = """
+            <hierarchy>
+              <node text="Requires additional setup" enabled="true" bounds="[0,0][100,40]" />
+              <node text="OK" enabled="false" bounds="[50,40][100,80]" />
+              <node text="Allow Magisk to send you notifications?" enabled="true" bounds="[0,80][100,120]" />
+              <node text="Allow" enabled="true" bounds="[50,120][100,160]" />
+            </hierarchy>
+            """;
+        const string actionableXml = """
+            <hierarchy>
+              <node text="Allow Magisk to send you notifications?" enabled="true" bounds="[0,0][100,40]" />
+              <node text="Allow" enabled="true" bounds="[50,40][100,80]" />
+            </hierarchy>
+            """;
+
+        Assert.False(InvokeSnapshotPredicate(
+            "IsActionableMagiskHomeSnapshot",
+            AndroidUiSnapshot.Parse(partialXml)));
+        Assert.False(InvokeSnapshotPredicate(
+            "IsActionableMagiskHomeSnapshot",
+            AndroidUiSnapshot.Parse(additionalSetupPartialXml)));
+        Assert.True(InvokeSnapshotPredicate(
+            "IsActionableMagiskHomeSnapshot",
+            AndroidUiSnapshot.Parse(actionableXml)));
+    }
+
+    [Fact]
+    public void Magisk_policy_state_requires_an_enabled_indicator_with_valid_bounds()
+    {
+        const string partialXml = """
+            <hierarchy>
+              <node text="[SharedUID] Shell" enabled="true" bounds="[0,0][100,40]" />
+              <node resource-id="com.topjohnwu.magisk:id/policy_indicator" enabled="false" bounds="[0,40][100,80]" />
+            </hierarchy>
+            """;
+        const string invalidBoundsXml = """
+            <hierarchy>
+              <node text="[SharedUID] Shell" enabled="true" bounds="[0,0][100,40]" />
+              <node resource-id="com.topjohnwu.magisk:id/policy_indicator" enabled="true" bounds="invalid" />
+            </hierarchy>
+            """;
+        const string completeXml = """
+            <hierarchy>
+              <node text="[SharedUID] Shell" enabled="true" bounds="[0,0][100,40]" />
+              <node resource-id="com.topjohnwu.magisk:id/policy_indicator" enabled="true" bounds="[0,40][100,80]" />
+            </hierarchy>
+            """;
+        const string zeroAreaXml = """
+            <hierarchy>
+              <node text="[SharedUID] Shell" enabled="true" bounds="[0,0][100,40]" />
+              <node resource-id="com.topjohnwu.magisk:id/policy_indicator" enabled="true" bounds="[0,0][0,0]" />
+            </hierarchy>
+            """;
+
+        Assert.False(InvokeSnapshotPredicate(
+            "IsActionableMagiskPolicySnapshot",
+            AndroidUiSnapshot.Parse(partialXml)));
+        Assert.False(InvokeSnapshotPredicate(
+            "IsActionableMagiskPolicySnapshot",
+            AndroidUiSnapshot.Parse(invalidBoundsXml)));
+        Assert.False(InvokeSnapshotPredicate(
+            "IsActionableMagiskPolicySnapshot",
+            AndroidUiSnapshot.Parse(zeroAreaXml)));
+        Assert.True(InvokeSnapshotPredicate(
+            "IsActionableMagiskPolicySnapshot",
+            AndroidUiSnapshot.Parse(completeXml)));
+    }
+
+    private static bool InvokeSnapshotPredicate(string methodName, AndroidUiSnapshot snapshot)
+    {
+        var method = typeof(MagiskPolicyAutomator).GetMethod(
+            methodName,
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+        Assert.NotNull(method);
+        return Assert.IsType<bool>(method.Invoke(null, new object[] { snapshot }));
+    }
+
     private sealed class RecordingRunner : IProcessRunner
     {
         public List<ProcessSpec> Commands { get; } = [];

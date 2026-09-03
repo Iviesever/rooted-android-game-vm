@@ -21,29 +21,14 @@ public sealed class MagiskPolicyAutomator
 
     public async Task GrantShellAsync(CancellationToken cancellationToken = default)
     {
-        var initial = await OpenMagiskAsync(includeAdditionalSetup: true, cancellationToken);
-        if (initial.Contains("Requires additional setup"))
-        {
-            await TapAsync(await WaitForLabelAsync("OK", cancellationToken), cancellationToken);
-            await WaitForBootAsync(cancellationToken);
-            initial = await OpenMagiskAsync(includeAdditionalSetup: false, cancellationToken);
-        }
-
-        if (initial.Contains("Allow Magisk to send you notifications?"))
-        {
-            await TapAsync(await WaitForLabelAsync("Allow", cancellationToken), cancellationToken);
-        }
-
+        _ = await PrepareMagiskHomeAsync(cancellationToken);
         var granted = await TryGrantShellPromptAsync(cancellationToken);
 
-        var beforePolicy = await OpenMagiskAsync(includeAdditionalSetup: true, cancellationToken);
-        if (beforePolicy.Contains("Requires additional setup"))
+        var (beforePolicy, setupRestarted) = await PrepareMagiskHomeAsync(cancellationToken);
+        if (setupRestarted)
         {
-            await TapAsync(await WaitForLabelAsync("OK", cancellationToken), cancellationToken);
-            await WaitForBootAsync(cancellationToken);
-            beforePolicy = await OpenMagiskAsync(includeAdditionalSetup: false, cancellationToken);
             granted = await TryGrantShellPromptAsync(cancellationToken);
-            beforePolicy = await OpenMagiskAsync(includeAdditionalSetup: false, cancellationToken);
+            (beforePolicy, _) = await PrepareMagiskHomeAsync(cancellationToken);
         }
         if (granted)
         {
@@ -51,14 +36,16 @@ public sealed class MagiskPolicyAutomator
             return;
         }
 
-        await TapAsync(await WaitForLabelAsync("Superuser", cancellationToken), cancellationToken);
+        await TapAsync(beforePolicy.FindCenter("Superuser"), cancellationToken);
         var policySnapshot = await WaitForSnapshotAsync(
-            snapshot => snapshot.Contains("[SharedUID] Shell"),
+            IsActionableMagiskPolicySnapshot,
             TimeSpan.FromSeconds(30),
             cancellationToken);
         if (!policySnapshot.IsCheckedByResourceId(PolicyIndicatorResourceId))
         {
-            await TapAsync(await WaitForResourceAsync(PolicyIndicatorResourceId, cancellationToken), cancellationToken);
+            await TapAsync(
+                policySnapshot.FindCenterByResourceId(PolicyIndicatorResourceId),
+                cancellationToken);
         }
         await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
         await PersistShellPolicyAsync(cancellationToken);
@@ -136,12 +123,13 @@ public sealed class MagiskPolicyAutomator
         try
         {
             var prompt = await WaitForSnapshotAsync(
-                snapshot => snapshot.Contains("Grant") || snapshot.Contains("Deny"),
+                snapshot => snapshot.TryFindCenter("Grant", out _) ||
+                            snapshot.TryFindCenter("Deny", out _),
                 TimeSpan.FromSeconds(12),
                 cancellationToken);
-            if (prompt.Contains("Grant"))
+            if (prompt.TryFindCenter("Grant", out var grantPoint))
             {
-                await TapAsync(prompt.FindCenter("Grant"), cancellationToken);
+                await TapAsync(grantPoint, cancellationToken);
             }
         }
         catch (TimeoutException)
@@ -161,9 +149,41 @@ public sealed class MagiskPolicyAutomator
         }
     }
 
-    private async Task<AndroidUiSnapshot> OpenMagiskAsync(
-        bool includeAdditionalSetup,
+    private async Task<(AndroidUiSnapshot Snapshot, bool SetupRestarted)> PrepareMagiskHomeAsync(
         CancellationToken cancellationToken)
+    {
+        const int maxSetupActions = 4;
+        var setupRestarted = false;
+        for (var actionCount = 0; actionCount <= maxSetupActions; actionCount++)
+        {
+            var snapshot = await OpenMagiskAsync(cancellationToken);
+            if (!snapshot.Contains("Requires additional setup") &&
+                !snapshot.Contains("Allow Magisk to send you notifications?"))
+            {
+                return (snapshot, setupRestarted);
+            }
+            if (actionCount == maxSetupActions)
+            {
+                break;
+            }
+            if (snapshot.Contains("Requires additional setup"))
+            {
+                await TapAsync(snapshot.FindCenter("OK"), cancellationToken);
+                await WaitForBootAsync(cancellationToken);
+                setupRestarted = true;
+                continue;
+            }
+            if (snapshot.Contains("Allow Magisk to send you notifications?"))
+            {
+                await TapAsync(snapshot.FindCenter("Allow"), cancellationToken);
+                continue;
+            }
+        }
+
+        throw new TimeoutException("Magisk 初始设置在有限次状态转换后仍未进入授权主页。");
+    }
+
+    private async Task<AndroidUiSnapshot> OpenMagiskAsync(CancellationToken cancellationToken)
     {
         var deadline = DateTimeOffset.UtcNow + (
             _options.Headless ? TimeSpan.FromMinutes(2) : TimeSpan.FromSeconds(40));
@@ -175,9 +195,7 @@ public sealed class MagiskPolicyAutomator
             {
                 await LaunchAsync(cancellationToken);
                 return await WaitForSnapshotAsync(
-                    snapshot => (includeAdditionalSetup && snapshot.Contains("Requires additional setup")) ||
-                                snapshot.Contains("Allow Magisk to send you notifications?") ||
-                                snapshot.Contains("Superuser"),
+                    IsActionableMagiskHomeSnapshot,
                     _options.Headless ? TimeSpan.FromSeconds(15) : TimeSpan.FromSeconds(5),
                     cancellationToken);
             }
@@ -204,6 +222,27 @@ public sealed class MagiskPolicyAutomator
                 snapshot.Contains("Digital Wellbeing isn't responding")) &&
                snapshot.Contains("Close app") &&
                snapshot.Contains("Wait");
+    }
+
+    public static bool IsActionableMagiskHomeSnapshot(AndroidUiSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        if (snapshot.Contains("Requires additional setup"))
+        {
+            return snapshot.TryFindCenter("OK", out _);
+        }
+        if (snapshot.Contains("Allow Magisk to send you notifications?"))
+        {
+            return snapshot.TryFindCenter("Allow", out _);
+        }
+        return snapshot.TryFindCenter("Superuser", out _);
+    }
+
+    public static bool IsActionableMagiskPolicySnapshot(AndroidUiSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        return snapshot.Contains("[SharedUID] Shell") &&
+               snapshot.TryFindCenterByResourceId(PolicyIndicatorResourceId, out _);
     }
 
     private async Task LaunchAsync(CancellationToken cancellationToken)
@@ -266,43 +305,6 @@ public sealed class MagiskPolicyAutomator
 
         throw new TimeoutException(
             $"Magisk 额外设置重启未在 {AndroidVmStartupPolicy.Default.Timeout.TotalMinutes:0} 分钟内完成。");
-    }
-
-    private async Task<AndroidUiPoint> WaitForLabelAsync(
-        string label,
-        CancellationToken cancellationToken) =>
-        await WaitForPointAsync(
-            snapshot => snapshot.FindCenter(label),
-            TimeSpan.FromSeconds(30),
-            cancellationToken);
-
-    private async Task<AndroidUiPoint> WaitForResourceAsync(
-        string resourceId,
-        CancellationToken cancellationToken) =>
-        await WaitForPointAsync(
-            snapshot => snapshot.FindCenterByResourceId(resourceId),
-            TimeSpan.FromSeconds(30),
-            cancellationToken);
-
-    private async Task<AndroidUiPoint> WaitForPointAsync(
-        Func<AndroidUiSnapshot, AndroidUiPoint> selector,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
-    {
-        AndroidUiPoint? point = null;
-        await WaitForSnapshotAsync(snapshot =>
-        {
-            try
-            {
-                point = selector(snapshot);
-                return true;
-            }
-            catch (InvalidOperationException)
-            {
-                return false;
-            }
-        }, timeout, cancellationToken);
-        return point ?? throw new TimeoutException("等待 Magisk 控件超时。");
     }
 
     private async Task<AndroidUiSnapshot> WaitForSnapshotAsync(
