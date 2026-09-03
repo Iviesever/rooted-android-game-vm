@@ -1,0 +1,61 @@
+name: Unsigned Release E2E
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-release-pipeline:
+    runs-on: windows-2025
+    timeout-minutes: 90
+    steps:
+      - name: Check out source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install pinned .NET SDK
+        uses: actions/setup-dotnet@d4c94342e560b34958eacfc5d055d21461ed1c5d # v5.0.0
+        with:
+          dotnet-version: '10.0.400'
+
+      - name: Install pinned Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13.0'
+
+      - name: Provision hash-verified build tools
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          .\build\Prepare-InnoSetup.ps1
+          .\build\Prepare-SpdxValidator.ps1
+
+      - name: Run the complete clean unsigned Release gate
+        shell: pwsh
+        run: |
+          $cleanRoot = Join-Path $env:RUNNER_TEMP "rgvm-clean-$([Guid]::NewGuid().ToString('N'))"
+          "RGVM_CLEAN_ROOT=$cleanRoot" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          .\build\Build-Release.ps1 `
+            -CleanInstallRoot $cleanRoot `
+            -AllowUnsignedLocalCandidate
+
+      - name: Remove isolated E2E data
+        if: always()
+        shell: pwsh
+        run: |
+          if ($env:RGVM_CLEAN_ROOT) {
+            $runnerTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\') + '\'
+            $cleanRoot = [IO.Path]::GetFullPath($env:RGVM_CLEAN_ROOT)
+            if ($cleanRoot.StartsWith($runnerTemp, [StringComparison]::OrdinalIgnoreCase) -and
+                (Split-Path $cleanRoot -Leaf).StartsWith('rgvm-clean-', [StringComparison]::Ordinal)) {
+              $adb = Join-Path $cleanRoot 'runtime\android-sdk\platform-tools\adb.exe'
+              if (Test-Path -LiteralPath $adb) { & $adb kill-server }
+              if (Test-Path -LiteralPath $cleanRoot) {
+                Get-ChildItem -LiteralPath $cleanRoot -Recurse -Force -File -ErrorAction SilentlyContinue |
+                  ForEach-Object { [IO.File]::SetAttributes($_.FullName, [IO.FileAttributes]::Normal) }
+                [IO.Directory]::Delete($cleanRoot, $true)
+              }
+            }
+          }

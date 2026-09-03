@@ -21,4 +21,4 @@
 - Added Windows push/PR CI and automatic discovery of the installed Windows SDK x64 signing tool.
 - Added verified runtime dependency downloads, Release content audit, SPDX SBOM and SHA-256 output.
 
-The local candidate remains intentionally unpublished until a trusted Authenticode certificate is supplied and the signed self-hosted Windows Release workflow passes.
+The local candidate remains intentionally unpublished until a trusted Authenticode certificate is supplied and the signed GitHub-hosted Windows Release workflow passes.

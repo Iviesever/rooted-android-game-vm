@@ -55,4 +55,20 @@ public sealed class DependencyManifestContractTests
             Assert.Equal(runtimeVersion, project.Descendants("RuntimeFrameworkVersion").Single().Value);
         }
     }
+
+    [Fact]
+    public void Inno_setup_build_tool_uses_the_immutable_official_release_asset()
+    {
+        var inno = DependencyManifest.LoadEmbedded().Required("inno-setup");
+
+        Assert.Equal("6.7.3", inno.Version);
+        Assert.Equal("innosetup-6.7.3.exe", inno.ArchiveFileName);
+        Assert.StartsWith(
+            "https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/",
+            inno.Url,
+            StringComparison.Ordinal);
+        Assert.Equal(64, inno.Sha256.Length);
+        Assert.True(inno.Sha256.All(Uri.IsHexDigit));
+        Assert.Equal(10592232, inno.Size);
+    }
 }

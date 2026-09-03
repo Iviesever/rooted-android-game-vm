@@ -29,4 +29,4 @@
 
 CleanInstallRoot 默认必须不存在或为空；ReuseE2EState 和 E2EDependencyCache 只用于本地未签名迭代，签名路径会拒绝复用状态。AllowUnsignedLocalCandidate 只允许生成带 UNSIGNED 文件名、不可公开的候选；公开 Release 必须提供受信任代码签名证书的 SigningCertificateThumbprint，否则门禁失败。
 
-`.github/workflows/signed-release.yml` 只在带 `rgvm-hyperv` 标签的自托管 Windows x64 Runner 上响应版本标签。Runner 必须具备虚拟化、Python 3.13 x64、Windows SDK `signtool.exe` 与 Inno Setup 6.7.3；`release` 环境必须配置 `RGVM_CODESIGN_PFX_BASE64` 和 `RGVM_CODESIGN_PFX_PASSWORD`。工作流只有在空产品目录全链 E2E、内外层 Authenticode、来源证明和最终资产审计全部通过后才创建 Draft。公开发布必须再由 `release-publish` 环境的人工审批者运行独立工作流；该环境还需设置预期签名者变量 `RGVM_RELEASE_CERT_THUMBPRINT`。
+`.github/workflows/signed-release.yml` 在 GitHub 托管的 `windows-2025` Runner 上响应版本标签。该环境的 Android 加速、磁盘空间、Windows SDK 签名工具和两个真实 WPF 窗口已经由独立探针验证；工作流会固定 Python 3.13，并在接触签名密钥前从官方、哈希与来源证明均通过的资产安装 Inno Setup 6.7.3。`release` 环境必须配置 `RGVM_CODESIGN_PFX_BASE64` 和 `RGVM_CODESIGN_PFX_PASSWORD`。只有空产品目录全链 E2E、内外层 Authenticode、来源证明和最终资产审计全部通过后才创建 Draft。公开发布必须再由 `release-publish` 环境的人工审批者运行独立工作流；该环境还需设置预期签名者变量 `RGVM_RELEASE_CERT_THUMBPRINT`。

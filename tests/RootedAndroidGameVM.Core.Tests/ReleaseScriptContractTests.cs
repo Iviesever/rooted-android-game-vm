@@ -42,12 +42,12 @@ public sealed class ReleaseScriptContractTests
     }
 
     [Fact]
-    public async Task Github_release_requires_a_signed_clean_self_hosted_gate()
+    public async Task Github_release_requires_a_signed_clean_hosted_gate()
     {
         var workflow = await File.ReadAllTextAsync(
             Path.Combine(ProjectRoot, ".github", "workflows", "signed-release.yml"));
 
-        Assert.Contains("runs-on: [self-hosted, Windows, X64, rgvm-hyperv]", workflow, StringComparison.Ordinal);
+        Assert.Contains("runs-on: windows-2025", workflow, StringComparison.Ordinal);
         Assert.Contains("RGVM_CODESIGN_PFX_BASE64", workflow, StringComparison.Ordinal);
         Assert.Contains("-SigningCertificateThumbprint", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("-ReuseE2EState", workflow, StringComparison.Ordinal);
@@ -56,6 +56,33 @@ public sealed class ReleaseScriptContractTests
         Assert.Contains("--draft", workflow, StringComparison.Ordinal);
         Assert.Contains("-DeleteKey", workflow, StringComparison.Ordinal);
         Assert.Contains("attest-build-provenance", workflow, StringComparison.Ordinal);
+        Assert.True(
+            workflow.IndexOf("Prepare-InnoSetup.ps1", StringComparison.Ordinal) <
+            workflow.IndexOf("Import trusted Authenticode certificate", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Hosted_unsigned_workflow_runs_the_full_clean_release_gate_without_publishing()
+    {
+        var workflow = await File.ReadAllTextAsync(
+            Path.Combine(ProjectRoot, ".github", "workflows", "unsigned-release-e2e.yml"));
+
+        Assert.Contains("runs-on: windows-2025", workflow, StringComparison.Ordinal);
+        Assert.Contains("Prepare-InnoSetup.ps1", workflow, StringComparison.Ordinal);
+        Assert.Contains("Build-Release.ps1", workflow, StringComparison.Ordinal);
+        Assert.Contains("-AllowUnsignedLocalCandidate", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("gh release create", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("upload-artifact", workflow, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Inno_preparation_verifies_the_exact_manifest_release_tag()
+    {
+        var script = await File.ReadAllTextAsync(
+            Path.Combine(ProjectRoot, "build", "Prepare-InnoSetup.ps1"));
+
+        Assert.Contains("$releaseTag", script, StringComparison.Ordinal);
+        Assert.Contains("release verify-asset $releaseTag $installer", script, StringComparison.Ordinal);
     }
 
     [Fact]
