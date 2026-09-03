@@ -4,7 +4,7 @@ public static class ReleaseContentAuditor
 {
     private static readonly HashSet<string> ForbiddenExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".apk", ".apks", ".xapk", ".aff", ".img", ".vhd", ".vhdx", ".qcow2",
+        ".apk", ".apks", ".xapk", ".img", ".vhd", ".vhdx", ".qcow2",
         ".keystore", ".jks", ".pfx", ".key"
     };
 

@@ -174,7 +174,10 @@ public sealed class ReleaseScriptContractTests
         var gameSpecificIdentifiers = new[]
         {
             string.Concat("Arc", "aea"),
+            string.Concat("arc", "moe"),
+            string.Concat("low", "iro"),
             string.Concat("moe", ".low", ".arc"),
+            string.Concat(".", "aff"),
             string.Concat("质", "感"),
             string.Concat("谱", "面")
         };

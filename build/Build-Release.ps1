@@ -170,7 +170,7 @@ if ($sbom.spdxVersion -ne 'SPDX-2.3' -or
 & (Join-Path $projectRoot 'build\Validate-Spdx.ps1') -SbomPath $sbomPath
 if ($LASTEXITCODE -ne 0) { throw 'Official SPDX semantic validation failed.' }
 
-$forbiddenExtensions = @('.apk', '.apks', '.xapk', '.aff', '.img', '.vhd', '.vhdx', '.qcow2', '.keystore', '.jks', '.pfx', '.key')
+$forbiddenExtensions = @('.apk', '.apks', '.xapk', '.img', '.vhd', '.vhdx', '.qcow2', '.keystore', '.jks', '.pfx', '.key')
 $forbidden = Get-ChildItem -LiteralPath $releaseDirectory -Recurse -File |
     Where-Object { $forbiddenExtensions -contains $_.Extension.ToLowerInvariant() -or $_.Name -in @('secrets.json', 'appsettings.Local.json') }
 if ($forbidden) {

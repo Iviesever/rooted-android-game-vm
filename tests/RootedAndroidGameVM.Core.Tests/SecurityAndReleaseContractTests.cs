@@ -18,7 +18,7 @@ public sealed class SecurityAndReleaseContractTests
         {
             File.WriteAllText(Path.Combine(root, "RootedAndroidGameVM.exe"), "allowed");
             File.WriteAllText(Path.Combine(root, "nested", "game.APK"), "forbidden");
-            File.WriteAllText(Path.Combine(root, "chart.aff"), "forbidden");
+            File.WriteAllText(Path.Combine(root, "system.img"), "forbidden");
             File.WriteAllText(Path.Combine(root, "userdata.qcow2"), "forbidden");
             File.WriteAllText(Path.Combine(root, "signing.pfx"), "forbidden");
 
