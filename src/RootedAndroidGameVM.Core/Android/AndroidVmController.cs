@@ -83,7 +83,7 @@ public sealed class AndroidVmController
             : null;
         var emulatorHandle = _detachedLauncher.Start(
             AndroidCommandFactory.StartEmulator(_layout, _options),
-            CreateAvdEnvironment(),
+            AndroidEmulatorEnvironment.Create(_layout, _options),
             diagnosticLogPath);
         _activeEmulatorHandle = emulatorHandle;
         var emulatorProcess = emulatorHandle.Process;
@@ -322,11 +322,4 @@ public sealed class AndroidVmController
         }
     }
 
-    private IReadOnlyDictionary<string, string>? CreateAvdEnvironment() =>
-        string.IsNullOrWhiteSpace(_options.AvdHome)
-            ? null
-            : new Dictionary<string, string>
-            {
-                ["ANDROID_AVD_HOME"] = _options.AvdHome
-            };
 }

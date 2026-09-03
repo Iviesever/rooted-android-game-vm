@@ -157,4 +157,17 @@ public sealed class AndroidControlContractTests
         Assert.DoesNotContain("-no-window", normal.Arguments);
         Assert.DoesNotContain("-verbose", normal.Arguments);
     }
+
+    [Fact]
+    public void Emulator_environment_overrides_host_sdk_and_avd_locations()
+    {
+        var layout = AndroidSdkLayout.FromRoot(@"D:\Product\Sdk");
+        var options = AndroidVmOptions.Default with { AvdHome = @"D:\Product\Avd" };
+
+        var environment = AndroidEmulatorEnvironment.Create(layout, options);
+
+        Assert.Equal(layout.Root, environment["ANDROID_HOME"]);
+        Assert.Equal(layout.Root, environment["ANDROID_SDK_ROOT"]);
+        Assert.Equal(@"D:\Product\Avd", environment["ANDROID_AVD_HOME"]);
+    }
 }
