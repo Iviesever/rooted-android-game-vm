@@ -28,6 +28,34 @@ public sealed class AndroidInteractiveSessionServiceTests
         Assert.Contains("Welcome | Continue", message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void System_ui_anr_with_a_wait_action_is_recoverable()
+    {
+        const string xml = """
+            <hierarchy>
+              <node text="System UI isn't responding" enabled="true" bounds="[0,0][100,40]" />
+              <node text="Close app" enabled="true" bounds="[0,40][50,80]" />
+              <node text="Wait" enabled="true" bounds="[50,40][100,80]" />
+            </hierarchy>
+            """;
+
+        Assert.True(MagiskPolicyAutomator.IsRecoverableSystemUiDialog(AndroidUiSnapshot.Parse(xml)));
+    }
+
+    [Fact]
+    public void Unrelated_wait_dialog_is_never_auto_accepted()
+    {
+        const string xml = """
+            <hierarchy>
+              <node text="Network isn't responding" enabled="true" bounds="[0,0][100,40]" />
+              <node text="Cancel" enabled="true" bounds="[0,40][50,80]" />
+              <node text="Wait" enabled="true" bounds="[50,40][100,80]" />
+            </hierarchy>
+            """;
+
+        Assert.False(MagiskPolicyAutomator.IsRecoverableSystemUiDialog(AndroidUiSnapshot.Parse(xml)));
+    }
+
     private sealed class RecordingRunner : IProcessRunner
     {
         public List<ProcessSpec> Commands { get; } = [];

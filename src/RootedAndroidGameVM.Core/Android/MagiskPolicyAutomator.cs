@@ -165,7 +165,8 @@ public sealed class MagiskPolicyAutomator
         bool includeAdditionalSetup,
         CancellationToken cancellationToken)
     {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(40);
+        var deadline = DateTimeOffset.UtcNow + (
+            _options.Headless ? TimeSpan.FromMinutes(2) : TimeSpan.FromSeconds(40));
         Exception? lastError = null;
         while (DateTimeOffset.UtcNow < deadline)
         {
@@ -177,7 +178,7 @@ public sealed class MagiskPolicyAutomator
                     snapshot => (includeAdditionalSetup && snapshot.Contains("Requires additional setup")) ||
                                 snapshot.Contains("Allow Magisk to send you notifications?") ||
                                 snapshot.Contains("Superuser"),
-                    TimeSpan.FromSeconds(5),
+                    _options.Headless ? TimeSpan.FromSeconds(15) : TimeSpan.FromSeconds(5),
                     cancellationToken);
             }
             catch (Exception exception) when (exception is TimeoutException or InvalidOperationException)
@@ -195,6 +196,14 @@ public sealed class MagiskPolicyAutomator
         lastError is null
             ? "多次启动 Magisk 后仍未出现授权主页。"
             : $"多次启动 Magisk 后仍未出现授权主页。最后错误：{lastError.Message}";
+
+    public static bool IsRecoverableSystemUiDialog(AndroidUiSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        return snapshot.Contains("System UI isn't responding") &&
+               snapshot.Contains("Close app") &&
+               snapshot.Contains("Wait");
+    }
 
     private async Task LaunchAsync(CancellationToken cancellationToken)
     {
@@ -234,7 +243,7 @@ public sealed class MagiskPolicyAutomator
             AndroidCommandFactory.Adb(_layout, _options, "wait-for-device"),
             cancellationToken);
         EnsureSuccess(wait, "等待 Magisk 额外设置重启");
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(3);
+        var deadline = DateTimeOffset.UtcNow + AndroidVmStartupPolicy.Default.Timeout;
         while (DateTimeOffset.UtcNow < deadline)
         {
             var boot = await _runner.RunAsync(
@@ -254,7 +263,8 @@ public sealed class MagiskPolicyAutomator
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
         }
 
-        throw new TimeoutException("Magisk 额外设置重启未在三分钟内完成。");
+        throw new TimeoutException(
+            $"Magisk 额外设置重启未在 {AndroidVmStartupPolicy.Default.Timeout.TotalMinutes:0} 分钟内完成。");
     }
 
     private async Task<AndroidUiPoint> WaitForLabelAsync(
@@ -320,6 +330,11 @@ public sealed class MagiskPolicyAutomator
                     var snapshot = AndroidUiSnapshot.Parse(dump.StandardOutput);
                     var labels = snapshot.DescribeVisibleLabels();
                     if (!string.IsNullOrWhiteSpace(labels)) lastVisibleLabels = labels;
+                    if (IsRecoverableSystemUiDialog(snapshot))
+                    {
+                        await TapAsync(snapshot.FindCenter("Wait"), cancellationToken);
+                        continue;
+                    }
                     if (predicate(snapshot)) return snapshot;
                 }
                 catch (InvalidDataException)
