@@ -1,0 +1,85 @@
+name: Hosted Release Runner Probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install pinned .NET SDK
+        uses: actions/setup-dotnet@d4c94342e560b34958eacfc5d055d21461ed1c5d # v5.0.0
+        with:
+          dotnet-version: '10.0.400'
+
+      - name: Probe Windows release capabilities
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $drive = [IO.DriveInfo]::new([IO.Path]::GetPathRoot($env:GITHUB_WORKSPACE))
+          if ($drive.AvailableFreeSpace -lt 24GB) {
+            throw "Release runner has only $([math]::Round($drive.AvailableFreeSpace / 1GB, 1)) GB free."
+          }
+          $emulator = Join-Path $env:ANDROID_HOME 'emulator\emulator.exe'
+          if (-not (Test-Path -LiteralPath $emulator)) { throw 'Android Emulator is unavailable.' }
+          $acceleration = & $emulator -accel-check 2>&1
+          $acceleration | Write-Output
+          if ($LASTEXITCODE -ne 0) { throw 'Android Emulator acceleration is unavailable.' }
+          $signTool = Get-ChildItem -LiteralPath (Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin') `
+            -Filter signtool.exe -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName.EndsWith('x64\signtool.exe', [StringComparison]::OrdinalIgnoreCase) } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if (-not $signTool) { throw 'Windows SDK x64 signtool.exe is unavailable.' }
+          Write-Output "FreeGB=$([math]::Round($drive.AvailableFreeSpace / 1GB, 1))"
+          Write-Output "Windows=$([Environment]::OSVersion.Version)"
+          Write-Output "Python=$(& python.exe --version 2>&1)"
+          Write-Output "SignTool=$($signTool.FullName)"
+
+      - name: Prove both WPF executables can open a real window
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $publishRoot = Join-Path $env:RUNNER_TEMP 'rgvm-gui-probe'
+          dotnet publish 'src\RootedAndroidGameVM.Launcher\RootedAndroidGameVM.Launcher.csproj' `
+            -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true `
+            -o (Join-Path $publishRoot 'Launcher')
+          if ($LASTEXITCODE -ne 0) { throw 'Launcher publish failed.' }
+          dotnet publish 'src\RootedAndroidGameVM.Setup\RootedAndroidGameVM.Setup.csproj' `
+            -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true `
+            -o (Join-Path $publishRoot 'Setup')
+          if ($LASTEXITCODE -ne 0) { throw 'Setup publish failed.' }
+          foreach ($gui in @(
+            @{ Path = (Join-Path $publishRoot 'Launcher\RootedAndroidGameVM.exe'); Title = 'Rooted Android Game VM' },
+            @{ Path = (Join-Path $publishRoot 'Setup\RootedAndroidGameVM.Setup.exe'); Title = '安装 Rooted Android Game VM' }
+          )) {
+            $process = Start-Process -FilePath $gui.Path -PassThru
+            try {
+              $deadline = (Get-Date).AddSeconds(30)
+              do {
+                Start-Sleep -Milliseconds 500
+                $process.Refresh()
+              } while (-not $process.HasExited -and
+                       $process.MainWindowHandle -eq 0 -and
+                       (Get-Date) -lt $deadline)
+              if ($process.HasExited -or
+                  $process.MainWindowHandle -eq 0 -or
+                  $process.MainWindowTitle -ne $gui.Title) {
+                throw "GUI window probe failed for $($gui.Path)."
+              }
+              Write-Output "GUI=$($gui.Title)|Handle=$($process.MainWindowHandle)"
+            }
+            finally {
+              if (-not $process.HasExited) {
+                Stop-Process -Id $process.Id -Force
+                $process.WaitForExit()
+              }
+            }
+          }
