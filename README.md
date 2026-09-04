@@ -3,9 +3,11 @@
 一个面向 Windows 11 x64 的图形化安卓游戏虚拟机管理器。安装、日常启动、APK 更新、Root 诊断和私有数据导出都通过 .exe 窗口完成，普通用户无需输入终端命令。
 项目不针对、不捆绑任何单一应用或游戏；所有 APK 安装、应用启动和私有数据导出都使用通用的 Android 包名与相对路径。
 
-> 0.1.2 按项目政策明确以 unsigned 形式发布，安装器文件名包含 `UNSIGNED`，Windows 可能显示 unknown publisher（未知发布者）警告。请只从本仓库 GitHub Release 下载，并核对随 Release 发布的 SHA-256 或 GitHub provenance。
+> 安装包按项目政策明确标注 `UNSIGNED`，Windows 可能显示 unknown publisher（未知发布者）警告。公开版本请从本仓库 GitHub Release 下载，并核对 SHA-256 或 GitHub provenance；本地候选包不等同于已公开发布的版本。
 
 ## 日常使用
+
+首次运行安装包时，可以在图形配置窗口选择“资源存储位置”，例如其他磁盘上的独立空文件夹。SDK、系统镜像、Root 工具、下载缓存、模拟器和安卓应用数据都会放在该目录；程序安装目录单独选择。
 
 1. 双击桌面的 **Rooted Android Game VM**。
 2. 点击“启动虚拟机”。
@@ -13,11 +15,21 @@
 4. 打开“应用与数据”，选择任意已安装应用及其私有目录，将数据导出到 Windows。
 5. 也可以把单个 APK 直接拖到启动器窗口；应用页支持第三方包列表、启动、强停、确认卸载和任意安全相对目录导出。
 
+## 迁移资源和覆盖更新
+
+打开启动器右上角“设置”，在“资源位置”窗口查看当前位置与大小，选择空目标文件夹并点击“开始迁移”。迁移会关闭产品模拟器，复制并逐文件校验资源，调整 AVD/虚拟磁盘路径，再从新位置验证启动和 Root。成功后自动切换位置并清理旧副本，之后直接使用原桌面快捷方式。
+
+复制或启动验证失败时保留原资源；界面提供恢复按钮。复制过程中可以取消，切换成功后的原副本清理会完成当前事务。占用或发生变化的旧文件会保留并提示重试清理。迁移期间不要手动移动或删除资源文件夹。
+
+运行新版本安装包即可覆盖更新，安装标识和程序路径保持不变。已完成且与当前固定组件兼容的运行环境会被复用，不重新下载或重建安卓应用数据；需要更新组件时沿用原资源位置进行配置。迁移后的目录同样用于更新、修复、性能设置及数据访问。
+
+卸载默认可选择仅删除程序、保留资源。选择删除运行环境或全部资源时，卸载器会读取当前资源位置，检查目录归属并关闭对应产品模拟器；不会处理个人的全局 Android Studio AVD。
+
 ## 安全与兼容边界
 
 - Release 不包含第三方 APK、账号或应用数据、音视频、Google 系统镜像、Magisk APK 或 AVD 用户磁盘。
 - 安装器只在用户接受 Android SDK 许可后，从固定 HTTPS 地址下载组件并校验 SHA-256。
-- 产品使用独立的 `%LOCALAPPDATA%\RootedAndroidGameVM\runtime\avd` 和 `rooted_android_game_vm_api35`，不会接管或卸载用户已有的全局 Android Studio AVD。
+- 产品使用独立的资源目录及 `rooted_android_game_vm_api35`，不会接管或卸载用户已有的全局 Android Studio AVD。未选择新位置的旧安装仍使用 `%LOCALAPPDATA%\RootedAndroidGameVM`；迁移后这里只保留很小的位置配置、操作锁及最近一次校验记录。
 - Platform Tools、Emulator 和 Android System Image 使用固定 archive URL、官方 SHA-1与产品侧 SHA-256，不跟随 sdkmanager latest。
 - Root 允许访问应用私有目录，请只处理你有权访问的数据。
 - Play Integrity、反模拟器、反 Root、专有 Vulkan 或特殊硬件依赖可能使个别游戏无法运行；项目不承诺兼容所有 APK。

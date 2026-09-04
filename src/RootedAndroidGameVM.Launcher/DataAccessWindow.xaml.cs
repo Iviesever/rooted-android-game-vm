@@ -2,6 +2,7 @@ using Microsoft.Win32;
 using System.Windows;
 using RootedAndroidGameVM.Core.Android;
 using RootedAndroidGameVM.Core.Security;
+using RootedAndroidGameVM.Core.Storage;
 
 namespace RootedAndroidGameVM.Launcher;
 
@@ -22,6 +23,7 @@ public partial class DataAccessWindow : Window
         try
         {
             StatusText.Text = "正在打开 Material Files 文件管理器…";
+            using var lease = StorageOperationLease.Acquire();
             await _controller.LaunchPackageAsync("me.zhanghai.android.files");
             StatusText.Text = "文件管理器已打开。可使用 Root 权限浏览各应用私有目录。";
         }
@@ -41,6 +43,7 @@ public partial class DataAccessWindow : Window
         try
         {
             StatusText.Text = "正在读取第三方应用列表…";
+            using var lease = StorageOperationLease.Acquire();
             var packages = await _controller.ListThirdPartyPackagesAsync();
             PackageComboBox.ItemsSource = packages;
             if (packages.Count > 0)
@@ -61,6 +64,7 @@ public partial class DataAccessWindow : Window
         try
         {
             var packageName = GetSelectedPackage();
+            using var lease = StorageOperationLease.Acquire();
             await _controller.LaunchPackageAsync(packageName);
             StatusText.Text = $"已启动 {packageName}";
         }
@@ -75,6 +79,7 @@ public partial class DataAccessWindow : Window
         try
         {
             var packageName = GetSelectedPackage();
+            using var lease = StorageOperationLease.Acquire();
             await _controller.ForceStopPackageAsync(packageName);
             StatusText.Text = $"已停止 {packageName}";
         }
@@ -123,7 +128,8 @@ public partial class DataAccessWindow : Window
                 return;
             }
 
-            await _controller.UninstallPackageAsync(packageName);
+            using (var lease = StorageOperationLease.Acquire())
+                await _controller.UninstallPackageAsync(packageName);
             StatusText.Text = $"已卸载 {packageName}";
             await RefreshPackagesAsync();
         }
@@ -146,6 +152,7 @@ public partial class DataAccessWindow : Window
         StatusText.Text = $"正在导出 /data/data/{packageName}/{relativePath}…";
         try
         {
+            using var lease = StorageOperationLease.Acquire();
             var exportedPath = await _dataService.ExportDirectoryAsync(
                 packageName,
                 relativePath,

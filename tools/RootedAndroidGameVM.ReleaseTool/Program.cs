@@ -4,6 +4,54 @@ using RootedAndroidGameVM.Core.Downloads;
 using RootedAndroidGameVM.Core.Processes;
 using RootedAndroidGameVM.Core.Release;
 using RootedAndroidGameVM.Core.Security;
+using RootedAndroidGameVM.Core.Setup;
+using RootedAndroidGameVM.Core.Storage;
+using System.Text.Json;
+
+if (args.Length == 2 && args[0] == "inspect-storage")
+{
+    var location = new ProductStorageLocation(args[1]);
+    var root = location.ReadRoot();
+    var inventory = VerifiedDirectoryCopy.ReadInventory(root, StorageOwnership.ControlFiles);
+    Console.WriteLine(JsonSerializer.Serialize(new
+    {
+        resourceRoot = root, fileCount = inventory.Files.Count, bytes = inventory.TotalBytes,
+        compatibleRuntime = await ProgramUpgradeProbe.CanReuseAsync(InstallPaths.FromProductRoot(root)),
+        pendingMigration = MigrationJournal.Read(location)
+    }, new JsonSerializerOptions { WriteIndented = true }));
+    return 0;
+}
+
+if (args.Length == 2 && args[0] == "stop-storage")
+{
+    var paths = InstallPaths.FromProductRoot(args[1]);
+    if (!StorageOwnership.IsOwned(paths.ProductRoot)) throw new InvalidOperationException("Unknown product resource root.");
+    await new AndroidStorageRuntime().StopAsync(paths, CancellationToken.None);
+    Console.WriteLine("Product resource processes stopped.");
+    return 0;
+}
+
+if (args.Length == 3 && args[0] == "migrate-storage")
+{
+    var lastStage = string.Empty;
+    var progress = new Progress<ResourceTransferProgress>(value =>
+    {
+        if (value.Stage == lastStage) return;
+        lastStage = value.Stage;
+        Console.WriteLine($"{value.Stage}: {value.CompletedBytes}/{value.TotalBytes}");
+    });
+    var result = await new ResourceMigrationService(new ProductStorageLocation(args[1]))
+        .MigrateAsync(args[2], progress);
+    Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+    return result.HasPendingCleanup ? 1 : 0;
+}
+
+if (args.Length == 2 && args[0] == "recover-storage")
+{
+    var result = await new ResourceMigrationService(new ProductStorageLocation(args[1])).RecoverAsync();
+    Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+    return result.HasPendingCleanup ? 1 : 0;
+}
 
 if (args.Length == 6 && args[0] == "generate-sbom")
 {
@@ -54,6 +102,10 @@ Console.Error.WriteLine(
     "Commands:\n" +
     "  generate-sbom <version> <launcher.exe> <setup.exe> <installer.exe> <output.json>\n" +
     "  verify-apk-export <sdk-root> <avd-home> <avd-name> <port> <apk> <export-root>\n" +
+    "  inspect-storage <control-root>\n" +
+    "  stop-storage <product-root>\n" +
+    "  migrate-storage <control-root> <target-root>\n" +
+    "  recover-storage <control-root>\n" +
     "  download <dependency-id> <destination>");
 return 2;
 

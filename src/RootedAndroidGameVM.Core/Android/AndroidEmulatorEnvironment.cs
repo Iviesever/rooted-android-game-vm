@@ -11,7 +11,8 @@ public static class AndroidEmulatorEnvironment
         var environment = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["ANDROID_HOME"] = layout.Root,
-            ["ANDROID_SDK_ROOT"] = layout.Root
+            ["ANDROID_SDK_ROOT"] = layout.Root,
+            ["ANDROID_SERIAL"] = options.Serial
         };
         if (!string.IsNullOrWhiteSpace(options.AvdHome))
         {

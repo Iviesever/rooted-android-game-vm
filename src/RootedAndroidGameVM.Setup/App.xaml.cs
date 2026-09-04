@@ -4,6 +4,7 @@ using System.Windows;
 using RootedAndroidGameVM.Core.Android;
 using RootedAndroidGameVM.Core.Security;
 using RootedAndroidGameVM.Core.Setup;
+using RootedAndroidGameVM.Core.Storage;
 
 namespace RootedAndroidGameVM.Setup;
 
@@ -12,9 +13,21 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        if (e.Args.Length == 2 && e.Args[0] == "--remove-resources" && e.Args[1] is "runtime" or "all")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            _ = RemoveResourcesAsync(e.Args[1]);
+            return;
+        }
         SetupE2eOptions? options;
         try
         {
+            var gui = SetupGuiTestOptions.TryParse(e.Args, Environment.GetEnvironmentVariable);
+            if (gui is not null)
+            {
+                new MainWindow(new ProductStorageLocation(gui.ControlRoot), createShortcuts: false, port: gui.Port).Show();
+                return;
+            }
             options = SetupE2eOptions.TryParse(
                 e.Args,
                 Environment.GetEnvironmentVariable);
@@ -32,7 +45,12 @@ public partial class App : Application
 
         if (options is null)
         {
-            new MainWindow().Show();
+            try { new MainWindow(programUpdate: e.Args.SequenceEqual(["--configure-or-upgrade"])).Show(); }
+            catch (Exception exception)
+            {
+                MessageBox.Show(LogRedactor.RedactLocalPaths(exception.Message), "资源位置不可用", MessageBoxButton.OK, MessageBoxImage.Error);
+                Shutdown(1);
+            }
             return;
         }
 
@@ -102,6 +120,20 @@ public partial class App : Application
             {
                 // The E2E result is already recorded; shutdown cleanup remains best effort.
             }
+        }
+    }
+
+    private async Task RemoveResourcesAsync(string scope)
+    {
+        try
+        {
+            await new ResourceRemovalService().RemoveAsync(scope);
+            Shutdown(0);
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(LogRedactor.RedactLocalPaths(exception.Message), "资源卸载未完成", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(1);
         }
     }
 }

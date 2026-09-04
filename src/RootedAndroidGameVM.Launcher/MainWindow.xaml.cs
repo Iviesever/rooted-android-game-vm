@@ -7,6 +7,7 @@ using System.Windows.Media;
 using RootedAndroidGameVM.Core.Android;
 using RootedAndroidGameVM.Core.Security;
 using RootedAndroidGameVM.Core.Ui;
+using RootedAndroidGameVM.Core.Storage;
 
 namespace RootedAndroidGameVM.Launcher;
 
@@ -21,6 +22,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         ApplyState(LauncherDashboardState.From(_status));
         Loaded += async (_, _) => await RefreshStatusAsync();
+        Closing += (_, e) => { if (_busy) e.Cancel = true; };
     }
 
     private void ApplyState(LauncherDashboardState state)
@@ -120,6 +122,7 @@ public partial class MainWindow : Window
     {
         try
         {
+            using var lease = StorageOperationLease.Acquire();
             FooterStatusText.Text = "正在检查 ADB 与 Root…";
             var report = await _controller.DiagnoseAsync();
             MessageBox.Show(this, report, "环境诊断", MessageBoxButton.OK,
@@ -156,6 +159,7 @@ public partial class MainWindow : Window
             : PerformanceProfile.Stable;
         try
         {
+            using var lease = StorageOperationLease.Acquire();
             await new PerformanceProfileService(AndroidVmOptions.Default).ApplyAsync(profile);
             _controller = new AndroidVmController();
             FooterStatusText.Text = profile == PerformanceProfile.HighPerformance
@@ -168,7 +172,23 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OpenSettings_Click(object sender, RoutedEventArgs e) => await ShowSettingsAsync();
+    private async void OpenSettings_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy) return;
+        _busy = true;
+        try { new StorageWindow { Owner = this }.ShowDialog(); }
+        catch (Exception exception) { ShowError("资源位置不可用", exception); }
+        finally
+        {
+            _busy = false;
+            try
+            {
+                _controller = new AndroidVmController();
+                await RefreshStatusAsync();
+            }
+            catch (Exception exception) { ShowError("资源位置不可用", exception); }
+        }
+    }
 
     private void OpenRepair()
     {
@@ -233,6 +253,8 @@ public partial class MainWindow : Window
         FooterStatusText.Text = busyText;
         try
         {
+            using var lease = StorageOperationLease.Acquire();
+            _controller = new AndroidVmController();
             await operation();
             if (refreshStatus) await RefreshStatusAsync();
             FooterStatusText.Text = successMessage ?? "操作完成";

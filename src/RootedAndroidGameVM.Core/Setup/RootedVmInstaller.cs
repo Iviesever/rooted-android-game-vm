@@ -705,11 +705,8 @@ public sealed class RootedVmInstaller
     private IReadOnlyDictionary<string, string> CreateSdkEnvironment(AndroidSdkLayout layout)
     {
         var inheritedPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-        return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        return new Dictionary<string, string>(AndroidEmulatorEnvironment.Create(layout, _options), StringComparer.OrdinalIgnoreCase)
         {
-            ["ANDROID_HOME"] = layout.Root,
-            ["ANDROID_SDK_ROOT"] = layout.Root,
-            ["ANDROID_AVD_HOME"] = _options.AvdHome ?? string.Empty,
             ["JAVA_HOME"] = _paths.JavaHome,
             ["PATH"] = string.Join(Path.PathSeparator,
                 Path.Combine(_paths.JavaHome, "bin"),

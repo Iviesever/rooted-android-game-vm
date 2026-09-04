@@ -1,5 +1,5 @@
 #define AppName "Rooted Android Game VM"
-#define AppVersion "0.1.2"
+#define AppVersion "0.2.0"
 #define Publisher "RootedAndroidGameVM contributors"
 
 [Setup]
@@ -11,6 +11,8 @@ DefaultDirName={localappdata}\Programs\RootedAndroidGameVM
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
+AppMutex=Local\RootedAndroidGameVM.Launcher
+UsePreviousAppDir=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\artifacts\release
@@ -91,13 +93,17 @@ end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   ResultCode: Integer;
+  ResourceScope: String;
 begin
   if (CurUninstallStep = usUninstall) and (UninstallMode >= 1) then
   begin
-    Exec(
-      ExpandConstant('{localappdata}\RootedAndroidGameVM\runtime\android-sdk\platform-tools\adb.exe'),
-      '-s emulator-5554 emu kill', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-    Sleep(3000);
+    if UninstallMode = 2 then ResourceScope := 'all' else ResourceScope := 'runtime';
+    if not Exec(ExpandConstant('{app}\RootedAndroidGameVM.Setup.exe'),
+      '--remove-resources ' + ResourceScope, ExpandConstant('{app}'),
+      SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      RaiseException('无法启动资源卸载程序，已停止卸载。');
+    if ResultCode <> 0 then
+      RaiseException('资源卸载未完成，程序文件已保留。请处理提示后重试。');
   end;
 
   if CurUninstallStep <> usPostUninstall then exit;
@@ -105,13 +111,6 @@ begin
   DeleteFile(ExpandConstant('{userdesktop}\Rooted Android Game VM.lnk'));
   DelTree(ExpandConstant('{userprograms}\Rooted Android Game VM'), True, True, True);
 
-  if UninstallMode >= 1 then
-  begin
-    DelTree(ExpandConstant('{localappdata}\RootedAndroidGameVM\runtime'), True, True, True);
-  end;
-
-  if UninstallMode = 2 then
-    DelTree(ExpandConstant('{localappdata}\RootedAndroidGameVM'), True, True, True);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -122,7 +121,7 @@ begin
   begin
     if not Exec(
       ExpandConstant('{app}\RootedAndroidGameVM.Setup.exe'),
-      '', ExpandConstant('{app}'), SW_SHOWNORMAL, ewWaitUntilTerminated, ResultCode) then
+      '--configure-or-upgrade', ExpandConstant('{app}'), SW_SHOWNORMAL, ewWaitUntilTerminated, ResultCode) then
       RaiseException('无法启动 Rooted Android Game VM 图形配置程序。');
     if ResultCode <> 0 then
       RaiseException('安卓虚拟机配置未完成。未创建日常启动快捷方式，请重新运行安装包。');

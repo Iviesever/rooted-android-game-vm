@@ -169,6 +169,8 @@ public sealed class AndroidControlContractTests
         Assert.Equal(layout.Root, environment["ANDROID_HOME"]);
         Assert.Equal(layout.Root, environment["ANDROID_SDK_ROOT"]);
         Assert.Equal(@"D:\Product\Avd", environment["ANDROID_AVD_HOME"]);
+        Assert.True(environment.TryGetValue("ANDROID_SERIAL", out var serial));
+        Assert.Equal(options.Serial, serial);
     }
 
     [Fact]
