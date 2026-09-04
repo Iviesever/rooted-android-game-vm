@@ -81,7 +81,19 @@ public static class AndroidCommandFactory
         Adb(layout, options, "uninstall", packageName.Value);
 
     public static ProcessSpec RootIdentity(AndroidSdkLayout layout, AndroidVmOptions options) =>
-        Adb(layout, options, "shell", "su", "-c", "id");
+        RootShell(layout, options, "id");
+
+    // Magisk's early-boot mount is not necessarily on Android's default shell PATH.
+    // Apply the path in both shells because su may reset the environment.
+    private const string RootPath = "export PATH=/debug_ramdisk:/sbin:$PATH; ";
+
+    public static ProcessSpec RootShell(AndroidSdkLayout layout, AndroidVmOptions options, string script) =>
+        Adb(layout, options, "shell", RootPath + "exec su -c " + QuoteShell(RootPath + script));
+
+    public static ProcessSpec FindRootShell(AndroidSdkLayout layout, AndroidVmOptions options) =>
+        Adb(layout, options, "shell", RootPath + "command -v su");
+
+    private static string QuoteShell(string value) => "'" + value.Replace("'", "'\"'\"'", StringComparison.Ordinal) + "'";
 
     public static ProcessSpec WakeDevice(AndroidSdkLayout layout, AndroidVmOptions options) =>
         Adb(layout, options, "shell", "input", "keyevent", "KEYCODE_WAKEUP");

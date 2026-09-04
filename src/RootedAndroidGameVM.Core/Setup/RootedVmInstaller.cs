@@ -135,7 +135,7 @@ public sealed class RootedVmInstaller
             AndroidCommandFactory.RootIdentity(layout, _options),
             cancellationToken);
         var su = await _runner.RunAsync(
-            AndroidCommandFactory.Adb(layout, _options, "shell", "which", "su"),
+            AndroidCommandFactory.FindRootShell(layout, _options),
             cancellationToken);
         return RootPreparationClassifier.Classify(ramdiskMatchesStock, identity, su);
     }
@@ -589,12 +589,9 @@ public sealed class RootedVmInstaller
         }
 
         var version = await _runner.RunAsync(
-            AndroidCommandFactory.Adb(
+            AndroidCommandFactory.RootShell(
                 layout,
                 _options,
-                "shell",
-                "su",
-                "-c",
                 "magisk -v"),
             cancellationToken);
         EnsureSuccess(version, "验证 Magisk 版本");
@@ -606,31 +603,22 @@ public sealed class RootedVmInstaller
 
         const string healthFile = "/data/adb/rgvm-health";
         EnsureSuccess(await _runner.RunAsync(
-            AndroidCommandFactory.Adb(
+            AndroidCommandFactory.RootShell(
                 layout,
                 _options,
-                "shell",
-                "su",
-                "-c",
                 $"touch {healthFile}"),
             cancellationToken), "验证 Root 数据写入");
         var readBack = await _runner.RunAsync(
-            AndroidCommandFactory.Adb(
+            AndroidCommandFactory.RootShell(
                 layout,
                 _options,
-                "shell",
-                "su",
-                "-c",
                 $"test -f {healthFile}"),
             cancellationToken);
         EnsureSuccess(readBack, "验证 Root 数据读取");
         await _runner.RunAsync(
-            AndroidCommandFactory.Adb(
+            AndroidCommandFactory.RootShell(
                 layout,
                 _options,
-                "shell",
-                "su",
-                "-c",
                 $"rm -f {healthFile}"),
             CancellationToken.None);
 

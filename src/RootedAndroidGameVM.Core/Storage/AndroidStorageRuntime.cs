@@ -114,8 +114,8 @@ public sealed class AndroidStorageRuntime
         if (!diagnostics.Contains("Root：正常（uid=0）", StringComparison.Ordinal))
             throw new InvalidOperationException("新位置未通过 Root 验证，原目录仍然保留。" + Environment.NewLine + diagnostics);
         await Guard(verified.StarterProcessId, token).ConfigureAwait(false);
-        var result = await _runner.RunAsync(AndroidCommandFactory.Adb(layout, options,
-            "shell", "su", "-c", "test -d /data/data"), token).ConfigureAwait(false);
+        var result = await _runner.RunAsync(AndroidCommandFactory.RootShell(layout, options,
+            "test -d /data/data"), token).ConfigureAwait(false);
         if (result.ExitCode != 0) throw new InvalidOperationException("新位置的私有数据目录不可访问，原目录仍然保留。");
     }
 

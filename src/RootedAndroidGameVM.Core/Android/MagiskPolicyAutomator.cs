@@ -111,12 +111,9 @@ public sealed class MagiskPolicyAutomator
                     remoteScript),
                 cancellationToken), "准备 Magisk 授权策略");
             EnsureSuccess(await _runner.RunAsync(
-                AndroidCommandFactory.Adb(
+                AndroidCommandFactory.RootShell(
                     _layout,
                     _options,
-                    "shell",
-                    "su",
-                    "-c",
                     $"sh {remoteScript}"),
                 cancellationToken), "持久化 Magisk Shell 授权");
         }

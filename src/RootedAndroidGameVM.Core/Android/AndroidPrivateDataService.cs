@@ -48,7 +48,7 @@ public sealed class AndroidPrivateDataService
         try
         {
             EnsureSuccess(await _runner.RunAsync(
-                AndroidCommandFactory.Adb(_layout, _options, "shell", "su", "-c", createScript),
+                AndroidCommandFactory.RootShell(_layout, _options, createScript),
                 cancellationToken), "打包应用私有数据");
             EnsureSuccess(await _runner.RunAsync(
                 AndroidCommandFactory.Adb(_layout, _options, "pull", remoteArchive, localArchive),
@@ -73,7 +73,7 @@ public sealed class AndroidPrivateDataService
             try
             {
                 await _runner.RunAsync(
-                    AndroidCommandFactory.Adb(_layout, _options, "shell", "su", "-c", $"rm -f {remoteArchive}"),
+                    AndroidCommandFactory.RootShell(_layout, _options, $"rm -f {remoteArchive}"),
                     CancellationToken.None);
             }
             catch

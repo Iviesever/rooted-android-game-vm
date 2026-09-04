@@ -155,7 +155,7 @@ static async Task<int> VerifyApkExportAsync(string[] arguments)
             AndroidCommandFactory.Adb(layout, options, "push", localScript, remoteScript)),
             "push E2E private-data probe");
         EnsureSuccess(await runner.RunAsync(
-            AndroidCommandFactory.Adb(layout, options, "shell", "su", "-c", $"sh {remoteScript}")),
+            AndroidCommandFactory.RootShell(layout, options, $"sh {remoteScript}")),
             "create E2E private-data probe");
 
         var exported = await new AndroidPrivateDataService(layout, options)
