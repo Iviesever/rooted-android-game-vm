@@ -1,4 +1,5 @@
 using RootedAndroidGameVM.Core.IO;
+using RootedAndroidGameVM.Core.Storage;
 
 namespace RootedAndroidGameVM.Core.Setup;
 
@@ -11,9 +12,8 @@ public sealed record InstallPaths(
     string RootAvdRoot,
     string DownloadCache)
 {
-    public static InstallPaths CreateDefault() => FromProductRoot(Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "RootedAndroidGameVM"));
+    public static InstallPaths CreateDefault(string? controlRoot = null) =>
+        FromProductRoot(new ProductStorageLocation(controlRoot).ReadRoot());
 
     public static InstallPaths FromProductRoot(string productRoot)
     {

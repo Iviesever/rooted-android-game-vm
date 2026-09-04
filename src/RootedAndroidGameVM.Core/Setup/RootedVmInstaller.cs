@@ -23,7 +23,7 @@ public sealed class RootedVmInstaller
     {
         _paths = paths ?? InstallPaths.CreateDefault();
         _runner = runner ?? new ProcessRunner();
-        _options = options ?? AndroidVmOptions.ProductDefault;
+        _options = options ?? AndroidVmOptions.ForPaths(_paths);
         _downloader = new VerifiedDownloader(httpClient ?? new HttpClient
         {
             Timeout = TimeSpan.FromMinutes(30)

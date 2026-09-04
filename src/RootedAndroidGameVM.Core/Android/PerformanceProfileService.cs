@@ -1,3 +1,5 @@
+using RootedAndroidGameVM.Core.Setup;
+
 namespace RootedAndroidGameVM.Core.Android;
 
 public enum PerformanceProfile
@@ -10,9 +12,7 @@ public sealed class PerformanceProfileService(
     AndroidVmOptions options,
     string? productRoot = null)
 {
-    private readonly string _productRoot = productRoot ?? Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "RootedAndroidGameVM");
+    private readonly string _productRoot = productRoot ?? InstallPaths.CreateDefault().ProductRoot;
 
     public async Task ApplyAsync(
         PerformanceProfile profile,
@@ -41,11 +41,10 @@ public sealed class PerformanceProfileService(
             cancellationToken);
     }
 
-    public static PerformanceProfile ReadCurrent()
+    public static PerformanceProfile ReadCurrent(string? productRoot = null)
     {
         var path = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "RootedAndroidGameVM",
+            productRoot ?? InstallPaths.CreateDefault().ProductRoot,
             "performance-profile.txt");
         return File.Exists(path) &&
                Enum.TryParse<PerformanceProfile>(File.ReadAllText(path).Trim(), out var profile)

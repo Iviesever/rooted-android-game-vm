@@ -1,3 +1,5 @@
+using RootedAndroidGameVM.Core.Setup;
+
 namespace RootedAndroidGameVM.Core.Android;
 
 public sealed record AndroidSdkLayout(string Root, string AdbPath, string EmulatorPath)
@@ -12,29 +14,8 @@ public sealed record AndroidSdkLayout(string Root, string AdbPath, string Emulat
             Path.Combine(normalizedRoot, "emulator", "emulator.exe"));
     }
 
-    public static AndroidSdkLayout Discover()
-    {
-        var configured = Environment.GetEnvironmentVariable("ANDROID_SDK_ROOT");
-        if (string.IsNullOrWhiteSpace(configured))
-        {
-            configured = Environment.GetEnvironmentVariable("ANDROID_HOME");
-        }
-
-        if (string.IsNullOrWhiteSpace(configured))
-        {
-            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var productSdk = Path.Combine(localAppData, "RootedAndroidGameVM", "runtime", "android-sdk");
-            var productLayout = FromRoot(productSdk);
-            if (productLayout.HasRequiredTools)
-            {
-                return productLayout;
-            }
-
-            configured = Path.Combine(localAppData, "Android", "Sdk");
-        }
-
-        return FromRoot(configured);
-    }
+    public static AndroidSdkLayout Discover(InstallPaths? paths = null) =>
+        FromRoot((paths ?? InstallPaths.CreateDefault()).SdkRoot);
 
     public bool HasRequiredTools => File.Exists(AdbPath) && File.Exists(EmulatorPath);
 }
