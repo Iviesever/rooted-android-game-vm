@@ -194,6 +194,11 @@ public sealed class AndroidVmController : IAndroidVmLifecycle
             return;
         }
 
+        // The emulator shutdown command does not flush Android's delayed filesystem
+        // writes. Complete guest sync before closing the process or copying its disks.
+        var flush = await _runner.RunAsync(
+            AndroidCommandFactory.Adb(_layout, _options, "shell", "sync"), cancellationToken);
+        EnsureSuccess(flush, "保存安卓数据；未完成保存时保留运行中的虚拟机");
         var result = await _runner.RunAsync(AndroidCommandFactory.StopEmulator(_layout, _options), cancellationToken);
         EnsureSuccess(result, "停止安卓虚拟机");
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(1);

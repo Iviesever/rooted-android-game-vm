@@ -165,7 +165,8 @@ static async Task<int> VerifyApkExportAsync(string[] arguments)
                 $"cat /data/data/{packageName}/files/rgvm_e2e/probe.txt"));
             EnsureSuccess(before, "read preserved E2E private-data probe before APK update");
             if (before.StandardOutput != probeText)
-                throw new InvalidDataException("Pre-existing private-data probe did not survive migration.");
+                throw new InvalidDataException("Pre-existing dummy probe output mismatch: " +
+                    Convert.ToHexString(System.Text.Encoding.UTF8.GetBytes(before.StandardOutput)));
         }
         await controller.InstallApkAsync(apk);
         var packages = await controller.ListThirdPartyPackagesAsync();

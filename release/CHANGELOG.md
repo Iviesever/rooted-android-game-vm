@@ -7,6 +7,7 @@
 - Upgrade program files in place using the existing installation identity and resource location, without recreating a compatible Android environment.
 - Resolve startup, repair, performance settings, private data access and optional resource uninstall through the same saved location.
 - Resolve Magisk's mount paths for Root commands, and verify both windowed and headless emulator processes using repeatable Windows process queries.
+- Flush pending Android filesystem writes before stopping or migrating the emulator, preserving recently written application data across cold restarts.
 - Keep the existing unsigned labeling and protected public Release gates. Local candidates do not imply public publication.
 
 # 0.1.2
