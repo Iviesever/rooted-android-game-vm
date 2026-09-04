@@ -153,6 +153,16 @@ public sealed class ResourceMigrationTests : IDisposable
         Assert.Equal(64, document.RootElement.GetProperty("verifiedFiles")[0].GetProperty("sha256").GetString()!.Length);
     }
 
+    [Fact]
+    public async Task Installer_cannot_select_an_empty_replacement_for_existing_resources()
+    {
+        await SeedAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => StorageOwnership.InitializeAsync(Target, Location));
+        Assert.Equal(Source, Location.ReadRoot());
+        Assert.True(File.Exists(UserData));
+        Assert.False(Directory.Exists(Target));
+    }
+
     private sealed class InlineProgress(Action<ResourceTransferProgress> report) : IProgress<ResourceTransferProgress>
     {
         public void Report(ResourceTransferProgress value) => report(value);

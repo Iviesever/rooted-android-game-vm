@@ -33,8 +33,19 @@ public sealed class StoragePathRelocator(IProcessRunner? runner = null)
             {
                 var separator = lines[index].IndexOf('=');
                 if (separator < 0) continue;
+                var key = lines[index][..separator].Trim();
                 var value = lines[index][(separator + 1)..];
                 var replacement = Remap(value, source.ProductRoot, target.ProductRoot);
+                if (key.Equals("path.rel", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!lines.Any(line => line.StartsWith("path=", StringComparison.OrdinalIgnoreCase)))
+                        throw new InvalidDataException("AVD 注册缺少明确的资源目录路径。");
+                    lines[index] = string.Empty;
+                    changed = true;
+                    continue;
+                }
+                if (IsStartupPath(key))
+                    replacement = ValidateStartupPath(replacement, key, path, target);
                 if (replacement == value) continue;
                 lines[index] = lines[index][..(separator + 1)] + replacement;
                 changed = true;
@@ -66,6 +77,7 @@ public sealed class StoragePathRelocator(IProcessRunner? runner = null)
             {
                 var relativeBacking = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(path)!, backing));
                 PathBoundary.EnsureWithinRoot(target.ProductRoot, relativeBacking);
+                StoragePathPolicy.RejectReparsePoints(relativeBacking);
                 if (!File.Exists(relativeBacking)) throw new FileNotFoundException("相对基础文件缺失。", relativeBacking);
                 continue;
             }
@@ -73,6 +85,8 @@ public sealed class StoragePathRelocator(IProcessRunner? runner = null)
             PathBoundary.EnsureWithinRoot(source.ProductRoot, backing);
             var replacement = Remap(backing, source.ProductRoot, target.ProductRoot);
             PathBoundary.EnsureWithinRoot(target.ProductRoot, replacement);
+            StoragePathPolicy.RejectReparsePoints(backing);
+            StoragePathPolicy.RejectReparsePoints(replacement);
             var format = document.RootElement.GetProperty("backing-filename-format").GetString();
             if (format is not ("raw" or "qcow2")) throw new InvalidDataException("不支持的虚拟磁盘基础文件格式。");
             // Validate all old/new bases before rewriting any headers in a backing chain.
@@ -112,11 +126,35 @@ public sealed class StoragePathRelocator(IProcessRunner? runner = null)
 
     private static string Remap(string value, string source, string target)
     {
-        if (string.Equals(value, source, StringComparison.OrdinalIgnoreCase)) return target;
-        if (value.StartsWith(source + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
-            value.StartsWith(source + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-            return target + value[source.Length..];
-        return value;
+        var path = value.Trim().Trim('"');
+        if (!Path.IsPathFullyQualified(path)) return value;
+        var fullPath = Path.GetFullPath(path);
+        if (!StoragePathPolicy.Contains(source, fullPath)) return value;
+        return Path.GetFullPath(Path.Combine(target, Path.GetRelativePath(source, fullPath)));
+    }
+
+    private static bool IsStartupPath(string key) =>
+        key.Equals("path", StringComparison.OrdinalIgnoreCase) || key.EndsWith(".path", StringComparison.OrdinalIgnoreCase) ||
+        key.EndsWith(".initPath", StringComparison.OrdinalIgnoreCase) || key.StartsWith("image.sysdir.", StringComparison.OrdinalIgnoreCase) ||
+        key.Equals("fastboot.chosenSnapshotFile", StringComparison.OrdinalIgnoreCase);
+
+    private static string ValidateStartupPath(string value, string key, string configuration, InstallPaths target)
+    {
+        var path = value.Trim().Trim('"');
+        if (path.Length == 0 || path is "<temp>" or "<init>" or "_no_skin") return value;
+        try
+        {
+            var basis = key.StartsWith("image.sysdir.", StringComparison.OrdinalIgnoreCase)
+                ? target.SdkRoot : Path.GetDirectoryName(configuration)!;
+            var fullPath = Path.GetFullPath(path, basis);
+            PathBoundary.EnsureWithinRoot(target.ProductRoot, fullPath);
+            StoragePathPolicy.RejectReparsePoints(fullPath);
+            return fullPath;
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or IOException)
+        {
+            throw new InvalidDataException($"AVD 配置 {key} 指向资源目录之外或包含目录链接；已停止迁移验证。", exception);
+        }
     }
 
     private static void EnsureSuccess(ProcessResult result)

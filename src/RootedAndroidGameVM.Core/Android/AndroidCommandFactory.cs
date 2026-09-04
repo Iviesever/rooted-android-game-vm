@@ -30,6 +30,8 @@ public static class AndroidCommandFactory
             "-memory", options.MemoryMb.ToString(),
             "-no-snapshot-load"
         };
+        if (!string.IsNullOrWhiteSpace(options.AvdHome))
+            arguments.AddRange(["-datadir", Path.Combine(options.AvdHome, options.AvdName + ".avd")]);
         if (options.Headless)
         {
             arguments.AddRange(["-no-window", "-no-audio", "-no-boot-anim"]);

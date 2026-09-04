@@ -74,6 +74,42 @@ public sealed class StoragePathRelocatorTests : IDisposable
         Assert.Equal("personal data", File.ReadAllText(external));
     }
 
+    [Theory]
+    [InlineData("path", "test.ini")]
+    [InlineData("disk.dataPartition.path", "test.avd/config.ini")]
+    [InlineData("disk.dataPartition.initPath", "test.avd/hardware-qemu.ini")]
+    public async Task External_registration_or_userdata_path_is_rejected(string key, string relative)
+    {
+        var path = Path.Combine(Target.AvdHome, relative);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var external = Path.Combine(_root, "personal", "userdata.img");
+        File.WriteAllText(path, key + "=" + external);
+        await Assert.ThrowsAsync<InvalidDataException>(() => new StoragePathRelocator().RelocateAsync(Source, Target));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Forward_slashes_and_dot_segments_are_normalized_before_mapping(bool forwardSlashes)
+    {
+        Directory.CreateDirectory(Target.AvdHome);
+        var sourcePath = Path.Combine(Source.AvdHome, "unused", "..", "test.avd");
+        if (forwardSlashes) sourcePath = sourcePath.Replace('\\', '/');
+        var path = Path.Combine(Target.AvdHome, "test.ini");
+        File.WriteAllText(path, "path=" + sourcePath);
+        await new StoragePathRelocator().RelocateAsync(Source, Target);
+        Assert.Equal("path=" + Path.Combine(Target.AvdHome, "test.avd"), File.ReadAllText(path).Trim());
+    }
+
+    [Fact]
+    public async Task Relative_disk_path_cannot_escape_the_target_root()
+    {
+        var path = Path.Combine(Target.AvdHome, "test.avd", "config.ini");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "disk.dataPartition.path=../../../../personal.img");
+        await Assert.ThrowsAsync<InvalidDataException>(() => new StoragePathRelocator().RelocateAsync(Source, Target));
+    }
+
     private void SeedImages()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(OldBase)!);

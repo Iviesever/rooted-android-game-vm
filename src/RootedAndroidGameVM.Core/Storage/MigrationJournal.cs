@@ -7,7 +7,7 @@ namespace RootedAndroidGameVM.Core.Storage;
 public enum MigrationStage { Copying, Prepared, Verified, Cleaning }
 
 public sealed record MigrationJournal(Guid Id, string SourceRoot, string TargetRoot, string StagingRoot,
-    MigrationStage Stage, ResourceInventory Inventory)
+    MigrationStage Stage, ResourceInventory Inventory, StorageVerificationBinding? Verification = null)
 {
     public const string FileName = "storage-migration.json";
 

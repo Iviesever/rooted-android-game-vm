@@ -27,7 +27,12 @@ public sealed class ResourceMigrationService
         Func<InstallPaths, CancellationToken, Task>? verify = null)
     {
         _location = location ?? new ProductStorageLocation();
-        var runtime = new AndroidStorageRuntime();
+        var runtime = new AndroidStorageRuntime(recordBinding: async (binding, token) =>
+        {
+            var journal = MigrationJournal.Read(_location) ?? throw new InvalidDataException("迁移验证记录丢失。");
+            if (journal.Verification != binding)
+                await SaveJournalAsync(journal with { Verification = binding }, token).ConfigureAwait(false);
+        }, readBinding: () => MigrationJournal.Read(_location)?.Verification);
         _stop = stop ?? runtime.StopAsync;
         _relocate = relocate ?? new StoragePathRelocator().RelocateAsync;
         _verify = verify ?? runtime.VerifyAsync;
@@ -84,7 +89,7 @@ public sealed class ResourceMigrationService
         }
         AssertSameInventory(copy.Inventory, VerifiedDirectoryCopy.ReadInventory(source, StorageOwnership.ControlFiles));
         cancellationToken.ThrowIfCancellationRequested();
-        journal = journal with { Stage = MigrationStage.Verified };
+        journal = (MigrationJournal.Read(_location) ?? journal) with { Stage = MigrationStage.Verified };
         await SaveJournalAsync(journal, cancellationToken).ConfigureAwait(false);
         // Once verified is durable, recovery finishes the switch; it never falls back after source cleanup starts.
         await _location.SaveRootAsync(target, CancellationToken.None).ConfigureAwait(false);
@@ -193,7 +198,8 @@ public sealed class ResourceMigrationService
         {
             migrationId = journal.Id, sourceRoot = journal.SourceRoot, resourceRoot = journal.TargetRoot,
             checkedAtUtc = DateTimeOffset.UtcNow, transferredBytes = journal.Inventory.TotalBytes,
-            reclaimedBytes = reclaimed, remainingSourceFiles = remaining, verifiedFiles = journal.Inventory.Files
+            reclaimedBytes = reclaimed, remainingSourceFiles = remaining, verifiedFiles = journal.Inventory.Files,
+            verification = journal.Verification
         }, cancellationToken).ConfigureAwait(false);
         if (remaining.Count == 0)
         {

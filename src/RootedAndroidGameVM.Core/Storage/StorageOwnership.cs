@@ -51,6 +51,9 @@ public static class StorageOwnership
     {
         root = StoragePathPolicy.NormalizeRoot(root);
         AssertSafeRoot(root, location.ControlRoot);
+        var current = location.ReadRoot();
+        if (!string.Equals(root, current, StringComparison.OrdinalIgnoreCase) && Directory.Exists(current) && IsOwned(current))
+            throw new InvalidOperationException("已有模拟器资源。更新会沿用原位置；如需更换位置，请在启动器中使用“迁移资源”。");
         if (Directory.Exists(root) && VerifiedDirectoryCopy.ReadInventory(root, ControlFiles) is var inventory &&
             (inventory.Files.Count > 0 || inventory.Directories.Count > 0) && !IsOwned(root))
             throw new IOException("这个文件夹已有其他文件，请为模拟器选择一个独立的空文件夹。");
