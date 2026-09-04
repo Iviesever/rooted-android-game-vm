@@ -3,6 +3,7 @@ using System.Data;
 using System.Windows;
 using System.Threading;
 using RootedAndroidGameVM.Core.Security;
+using RootedAndroidGameVM.Core.Storage;
 
 namespace RootedAndroidGameVM.Launcher;
 
@@ -24,7 +25,14 @@ public partial class App : Application
             Shutdown();
             return;
         }
-        try { new MainWindow().Show(); }
+        try
+        {
+            // A recoverable transaction must remain reachable even when the active location is damaged or offline.
+            if (MigrationJournal.Read(new ProductStorageLocation()) is not null)
+                new StorageWindow { WindowStartupLocation = WindowStartupLocation.CenterScreen }.Show();
+            else
+                new MainWindow().Show();
+        }
         catch (Exception exception)
         {
             MessageBox.Show(LogRedactor.RedactLocalPaths(exception.Message), "资源位置不可用", MessageBoxButton.OK, MessageBoxImage.Error);

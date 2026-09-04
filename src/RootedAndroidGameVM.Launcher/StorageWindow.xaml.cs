@@ -31,6 +31,14 @@ public partial class StorageWindow : Window
     {
         try
         {
+            var pending = MigrationJournal.Read(_location);
+            _hasPending = pending is not null;
+            RecoverButton.Visibility = _hasPending ? Visibility.Visible : Visibility.Collapsed;
+            RecoverButton.Content = pending?.Stage is MigrationStage.Cleaning or MigrationStage.Verified
+                ? "继续完成迁移 / 清理原副本" : "恢复未完成的迁移";
+            if (pending is not null)
+                CurrentPathTextBox.Text = pending.Stage is MigrationStage.Verified or MigrationStage.Cleaning
+                    ? pending.TargetRoot : pending.SourceRoot;
             _currentRoot = _location.ReadRoot();
             CurrentPathTextBox.Text = _currentRoot;
             var inventory = await Task.Run(() => Directory.Exists(_currentRoot)
@@ -39,18 +47,14 @@ public partial class StorageWindow : Window
             _totalBytes = inventory.TotalBytes;
             _hasResources = inventory.Files.Count > 0 && StorageOwnership.IsOwned(_currentRoot);
             CurrentSizeText.Text = $"{FormatBytes(_totalBytes)} · {inventory.Files.Count:N0} 个文件";
-            var pending = MigrationJournal.Read(_location);
-            _hasPending = pending is not null;
-            RecoverButton.Visibility = _hasPending ? Visibility.Visible : Visibility.Collapsed;
-            RecoverButton.Content = pending?.Stage is MigrationStage.Cleaning or MigrationStage.Verified
-                ? "继续完成迁移 / 清理原副本" : "恢复未完成的迁移";
             UpdateButtons();
         }
         catch (Exception exception)
         {
             _hasResources = false;
-            MoveButton.IsEnabled = false;
+            CurrentSizeText.Text = _hasPending ? "当前位置暂不可用，可使用下方按钮恢复迁移。" : "当前位置不可用。";
             ShowStatus("无法读取资源位置", exception.Message);
+            UpdateButtons();
         }
     }
 
