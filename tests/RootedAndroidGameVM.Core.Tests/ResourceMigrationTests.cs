@@ -65,6 +65,21 @@ public sealed class ResourceMigrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Verification_and_stop_failures_are_both_reported_without_switching_the_source()
+    {
+        await SeedAsync();
+        var service = new ResourceMigrationService(Location,
+            (paths, _) => paths.ProductRoot == Source ? Task.CompletedTask : throw new IOException("stop failure"),
+            (_, _, _) => Task.CompletedTask,
+            (_, _) => throw new InvalidOperationException("verification failure"));
+        var error = await Assert.ThrowsAsync<AggregateException>(() => service.MigrateAsync(Target));
+        Assert.Contains(error.InnerExceptions, item => item.Message == "verification failure");
+        Assert.Contains(error.InnerExceptions, item => item.Message == "stop failure");
+        Assert.Equal(Source, Location.ReadRoot());
+        Assert.True(File.Exists(UserData));
+    }
+
+    [Fact]
     public async Task Existing_target_files_are_never_overwritten()
     {
         await SeedAsync();

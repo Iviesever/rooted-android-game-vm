@@ -13,7 +13,21 @@ public sealed class StorageRuntimeIdentityTests : IDisposable
     private readonly string _root = Path.Combine(Path.GetTempPath(), "rgvm-identity-tests", Guid.NewGuid().ToString("N"));
     private InstallPaths Paths => InstallPaths.FromProductRoot(_root);
     private string Qemu => Path.Combine(Paths.SdkRoot, "emulator", "qemu", "windows-x86_64", "qemu-system-x86_64.exe");
+    private string HeadlessQemu => Path.Combine(Paths.SdkRoot, "emulator", "qemu", "windows-x86_64", "qemu-system-x86_64-headless.exe");
     private string AvdDirectory => Path.Combine(Paths.AvdHome, "rooted_android_game_vm_api35.avd");
+
+    [Fact]
+    public async Task Dedicated_headless_binary_is_verified_and_stopped_by_its_own_identity()
+    {
+        var host = new FakeCatalog();
+        var factory = new FakeFactory(host, HeadlessQemu, AvdDirectory);
+        var runtime = Runtime(host, factory);
+        await runtime.VerifyAsync(Paths, CancellationToken.None);
+        Assert.True(factory.GuestPrepared);
+        await runtime.StopAsync(Paths, CancellationToken.None);
+        Assert.Equal([5570], factory.StoppedPorts);
+        Assert.Empty(host.Processes);
+    }
 
     [Fact]
     public async Task Same_name_device_in_another_sdk_is_left_alone_and_verification_uses_a_new_port()
@@ -96,6 +110,18 @@ public sealed class StorageRuntimeIdentityTests : IDisposable
         using var process = System.Diagnostics.Process.GetCurrentProcess();
         Assert.Equal(process.StartTime.ToUniversalTime().Ticks / 10, current.StartedAtUtcTicks / 10);
         Assert.Equal(Path.GetFullPath(Environment.ProcessPath!), current.ExecutablePath, ignoreCase: true);
+    }
+
+    [Fact]
+    public void Windows_process_catalog_can_repeat_queries_with_fresh_wmi_objects()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var catalog = new WindowsEmulatorProcessCatalog();
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var identities = catalog.FindByExecutable(Environment.ProcessPath!);
+            Assert.Contains(identities, process => process.ProcessId == Environment.ProcessId);
+        }
     }
 
     private AndroidStorageRuntime Runtime(FakeCatalog host, FakeFactory factory, StorageVerificationBinding? binding = null)

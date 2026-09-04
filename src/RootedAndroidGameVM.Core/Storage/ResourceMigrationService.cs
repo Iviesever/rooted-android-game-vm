@@ -83,10 +83,16 @@ public sealed class ResourceMigrationService
         {
             await _verify(targetPaths, cancellationToken).ConfigureAwait(false);
         }
-        finally
+        catch (Exception verificationError)
         {
-            await _stop(targetPaths, CancellationToken.None).ConfigureAwait(false);
+            try { await _stop(targetPaths, CancellationToken.None).ConfigureAwait(false); }
+            catch (Exception stopError)
+            {
+                throw new AggregateException("新位置验证及停止均未完成，原资源仍然保留。", verificationError, stopError);
+            }
+            throw;
         }
+        await _stop(targetPaths, CancellationToken.None).ConfigureAwait(false);
         AssertSameInventory(copy.Inventory, VerifiedDirectoryCopy.ReadInventory(source, StorageOwnership.ControlFiles));
         cancellationToken.ThrowIfCancellationRequested();
         journal = (MigrationJournal.Read(_location) ?? journal) with { Stage = MigrationStage.Verified };

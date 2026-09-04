@@ -37,7 +37,7 @@ public sealed class AndroidStorageRuntime
         var layout = AndroidSdkLayout.FromRoot(paths.SdkRoot);
         var expected = AndroidVmOptions.ForPaths(paths);
         var avdDirectory = Path.Combine(paths.AvdHome, expected.AvdName + ".avd");
-        var processes = _catalog.FindByExecutable(QemuPath(paths));
+        var processes = FindQemuProcesses(paths);
         var stops = new List<(HostProcessIdentity Process, IAndroidVmLifecycle Controller)>();
         var binding = _bindings.GetValueOrDefault(paths.ProductRoot) ?? _readBinding?.Invoke();
         foreach (var process in processes)
@@ -64,7 +64,7 @@ public sealed class AndroidStorageRuntime
             deadline.CancelAfter(TimeSpan.FromSeconds(40));
             await _catalog.WaitForExitAsync(process, deadline.Token).ConfigureAwait(false);
         }
-        if (_catalog.FindByExecutable(QemuPath(paths)).Count != 0)
+        if (FindQemuProcesses(paths).Count != 0)
             throw new IOException("资源目录仍被模拟器使用，已停止复制或清理。");
         foreach (var process in _catalog.FindByExecutable(layout.AdbPath))
             await _catalog.TerminateAsync(process, cancellationToken).ConfigureAwait(false);
@@ -74,7 +74,7 @@ public sealed class AndroidStorageRuntime
     public async Task VerifyAsync(InstallPaths paths, CancellationToken cancellationToken)
     {
         if (!File.Exists(Path.Combine(paths.ProductRoot, "install.json"))) return;
-        if (_catalog.FindByExecutable(QemuPath(paths)).Count != 0)
+        if (FindQemuProcesses(paths).Count != 0)
             throw new InvalidOperationException("新位置已有模拟器运行，不能代替本次迁移验证。");
         var port = Enumerable.Range(0, 8).Select(index => 5570 + index * 2)
             .FirstOrDefault(candidate => _catalog.GetListenerOwners(candidate).Count == 0 &&
@@ -86,12 +86,12 @@ public sealed class AndroidStorageRuntime
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(TimeSpan.FromMinutes(10));
         var token = deadline.Token;
-        var planned = new StorageVerificationBinding(0, 0, 0, port, directory, QemuPath(paths));
+        var planned = new StorageVerificationBinding(0, 0, 0, port, directory, QemuPath(paths, headless: true));
         if (_recordBinding is not null) await _recordBinding(planned, token).ConfigureAwait(false);
 
         async Task Guard(int starterProcessId, CancellationToken guardToken)
         {
-            var candidates = _catalog.FindByExecutable(QemuPath(paths)).Where(process =>
+            var candidates = FindQemuProcesses(paths).Where(process =>
                 process.ConsolePort == port && process.AvdName == options.AvdName && SamePath(process.AvdDirectory, directory) &&
                 (process.ParentProcessId == starterProcessId || process.ProcessId == starterProcessId)).ToList();
             if (candidates.Count != 1) throw new IOException("验证实例不属于本次目标目录启动，已停止操作。");
@@ -135,8 +135,12 @@ public sealed class AndroidStorageRuntime
         }
     }
 
-    private static string QemuPath(InstallPaths paths) =>
-        Path.Combine(paths.SdkRoot, "emulator", "qemu", "windows-x86_64", "qemu-system-x86_64.exe");
+    private IReadOnlyList<HostProcessIdentity> FindQemuProcesses(InstallPaths paths) =>
+        [.. _catalog.FindByExecutable(QemuPath(paths)), .. _catalog.FindByExecutable(QemuPath(paths, headless: true))];
+
+    private static string QemuPath(InstallPaths paths, bool headless = false) =>
+        Path.Combine(paths.SdkRoot, "emulator", "qemu", "windows-x86_64",
+            headless ? "qemu-system-x86_64-headless.exe" : "qemu-system-x86_64.exe");
 
     private static bool SamePath(string? left, string right) => left is not null &&
         string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(left)),

@@ -30,19 +30,19 @@ public sealed class WindowsEmulatorProcessCatalog : IEmulatorProcessCatalog
             {
                 try
                 {
-                    dynamic row = item;
-                    string? path = row.ExecutablePath;
+                    object row = item;
+                    string? path = (string?)ReadProperty(row, "ExecutablePath");
                     if (path is null) throw new IOException("无法读取模拟器进程归属，请关闭相关运行时后重试。");
                     if (!string.Equals(Path.GetFullPath(path), Path.GetFullPath(executablePath), StringComparison.OrdinalIgnoreCase)) continue;
-                    string? commandLine = row.CommandLine;
+                    string? commandLine = (string?)ReadProperty(row, "CommandLine");
                     if (commandLine is null) throw new IOException("无法确认运行时启动参数。");
                     var args = SplitCommandLine(commandLine);
                     var avdDirectory = ReadArgument(args, "-datadir");
                     if (avdDirectory is not null && Path.IsPathFullyQualified(avdDirectory))
                         avdDirectory = Path.TrimEndingDirectorySeparator(Path.GetFullPath(avdDirectory));
                     else avdDirectory = null;
-                    result.Add(new HostProcessIdentity(Convert.ToInt32((object)row.ProcessId), Convert.ToInt32((object)row.ParentProcessId), path,
-                        ReadCreationTicks((string)row.CreationDate), ReadArgument(args, "-avd"), avdDirectory,
+                    result.Add(new HostProcessIdentity(Convert.ToInt32(ReadProperty(row, "ProcessId")), Convert.ToInt32(ReadProperty(row, "ParentProcessId")), path,
+                        ReadCreationTicks((string)ReadProperty(row, "CreationDate")!), ReadArgument(args, "-avd"), avdDirectory,
                         int.TryParse(ReadArgument(args, "-port"), out var port) ? port : null));
                 }
                 finally { Marshal.FinalReleaseComObject(item); }
@@ -54,6 +54,24 @@ public sealed class WindowsEmulatorProcessCatalog : IEmulatorProcessCatalog
             if (rowsObject is not null) Marshal.FinalReleaseComObject(rowsObject);
             if (connectionObject is not null) Marshal.FinalReleaseComObject(connectionObject);
             Marshal.FinalReleaseComObject(locator);
+        }
+    }
+
+    private static object? ReadProperty(object row, string name)
+    {
+        // SWbemObject's dynamic field DISPIDs vary between instances. The C# dynamic
+        // binder caches them, so use the stable SWbemPropertySet interface instead.
+        dynamic properties = ((dynamic)row).Properties_;
+        object? property = null;
+        try
+        {
+            property = properties.Item(name);
+            return ((dynamic)property).Value;
+        }
+        finally
+        {
+            if (property is not null) Marshal.FinalReleaseComObject(property);
+            Marshal.FinalReleaseComObject(properties);
         }
     }
 

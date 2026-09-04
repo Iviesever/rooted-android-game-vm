@@ -6,6 +6,7 @@
 - Recover interrupted migrations and retain changed or locked source files instead of deleting them.
 - Upgrade program files in place using the existing installation identity and resource location, without recreating a compatible Android environment.
 - Resolve startup, repair, performance settings, private data access and optional resource uninstall through the same saved location.
+- Resolve Magisk's mount paths for Root commands, and verify both windowed and headless emulator processes using repeatable Windows process queries.
 - Keep the existing unsigned labeling and protected public Release gates. Local candidates do not imply public publication.
 
 # 0.1.2
