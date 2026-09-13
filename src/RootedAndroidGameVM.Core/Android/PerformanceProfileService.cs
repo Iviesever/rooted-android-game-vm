@@ -1,3 +1,5 @@
+using RootedAndroidGameVM.Core.Setup;
+
 namespace RootedAndroidGameVM.Core.Android;
 
 public enum PerformanceProfile
@@ -10,9 +12,7 @@ public sealed class PerformanceProfileService(
     AndroidVmOptions options,
     string? productRoot = null)
 {
-    private readonly string _productRoot = productRoot ?? Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "RootedAndroidGameVM");
+    private readonly string _productRoot = productRoot ?? InstallPaths.CreateDefault().ProductRoot;
 
     public async Task ApplyAsync(
         PerformanceProfile profile,
@@ -41,11 +41,19 @@ public sealed class PerformanceProfileService(
             cancellationToken);
     }
 
-    public static PerformanceProfile ReadCurrent()
+    public static PerformanceProfile ReadCurrent(string? productRoot = null)
     {
+        var root = productRoot ?? InstallPaths.CreateDefault().ProductRoot;
+        var config = Path.Combine(InstallPaths.FromProductRoot(root).AvdHome, "rooted_android_game_vm_api35.avd", "config.ini");
+        // The AVD config travels with cold checkpoints. Prefer its restored GPU setting over a stale UI preference file.
+        if (File.Exists(config))
+        {
+            var mode = File.ReadLines(config).FirstOrDefault(line => line.StartsWith("hw.gpu.mode=", StringComparison.Ordinal))?.Split('=', 2)[1].Trim();
+            if (mode == "host") return PerformanceProfile.HighPerformance;
+            if (mode == "swiftshader_indirect") return PerformanceProfile.Stable;
+        }
         var path = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "RootedAndroidGameVM",
+            root,
             "performance-profile.txt");
         return File.Exists(path) &&
                Enum.TryParse<PerformanceProfile>(File.ReadAllText(path).Trim(), out var profile)

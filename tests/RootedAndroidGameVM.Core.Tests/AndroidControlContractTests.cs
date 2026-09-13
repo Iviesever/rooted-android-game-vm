@@ -13,15 +13,17 @@ public sealed class AndroidControlContractTests
         Assert.Equal(Path.GetFullPath(@"C:\Android\Sdk\emulator\emulator.exe"), layout.EmulatorPath);
     }
 
-    [Fact]
-    public void Start_command_has_stable_game_friendly_arguments()
+    [Theory]
+    [InlineData("swiftshader_indirect")]
+    [InlineData("host")]
+    public void Start_command_has_stable_game_friendly_arguments(string gpu)
     {
         var layout = AndroidSdkLayout.FromRoot(@"C:\Android\Sdk");
-        var command = AndroidCommandFactory.StartEmulator(layout, AndroidVmOptions.Default);
+        var command = AndroidCommandFactory.StartEmulator(layout, AndroidVmOptions.Default with { GpuMode = gpu });
 
         Assert.Equal(layout.EmulatorPath, command.FileName);
         Assert.Contains("rooted_android_game_vm_api35", command.Arguments);
-        Assert.Contains("swiftshader_indirect", command.Arguments);
+        Assert.Contains(gpu, command.Arguments);
         Assert.Contains("-no-snapshot-load", command.Arguments);
     }
 
@@ -169,6 +171,8 @@ public sealed class AndroidControlContractTests
         Assert.Equal(layout.Root, environment["ANDROID_HOME"]);
         Assert.Equal(layout.Root, environment["ANDROID_SDK_ROOT"]);
         Assert.Equal(@"D:\Product\Avd", environment["ANDROID_AVD_HOME"]);
+        Assert.True(environment.TryGetValue("ANDROID_SERIAL", out var serial));
+        Assert.Equal(options.Serial, serial);
     }
 
     [Fact]

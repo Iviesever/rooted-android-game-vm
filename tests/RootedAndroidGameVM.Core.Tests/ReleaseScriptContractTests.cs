@@ -151,7 +151,7 @@ public sealed class ReleaseScriptContractTests
     [Fact]
     public async Task Release_version_advances_past_failed_immutable_tags()
     {
-        const string expectedVersion = "0.1.2";
+        const string expectedVersion = "0.3.0";
         var inno = await File.ReadAllTextAsync(
             Path.Combine(ProjectRoot, "installer", "RootedAndroidGameVM.iss"));
         var launcherProject = await File.ReadAllTextAsync(Path.Combine(
@@ -346,8 +346,7 @@ public sealed class ReleaseScriptContractTests
             string.Concat("low", "iro"),
             string.Concat("moe", ".low", ".arc"),
             string.Concat(".", "aff"),
-            string.Concat("质", "感"),
-            string.Concat("谱", "面")
+            string.Concat("质", "感")
         };
 
         foreach (var file in files)

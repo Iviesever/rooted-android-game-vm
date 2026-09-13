@@ -23,7 +23,7 @@ public sealed class RootedVmInstaller
     {
         _paths = paths ?? InstallPaths.CreateDefault();
         _runner = runner ?? new ProcessRunner();
-        _options = options ?? AndroidVmOptions.ProductDefault;
+        _options = options ?? AndroidVmOptions.ForPaths(_paths);
         _downloader = new VerifiedDownloader(httpClient ?? new HttpClient
         {
             Timeout = TimeSpan.FromMinutes(30)
@@ -36,6 +36,8 @@ public sealed class RootedVmInstaller
         CancellationToken cancellationToken = default,
         bool adoptExistingEnvironment = false)
     {
+        if (File.Exists(Path.Combine(_paths.ProductRoot, "debug-restore.json")))
+            throw new InvalidOperationException("存在未完成的检查点恢复。请先在调试工作台恢复中断操作；不会重新初始化虚拟机。");
         if (!sdkLicenseAccepted)
         {
             throw new InvalidOperationException("必须先阅读并接受 Android SDK 许可协议。");
@@ -135,7 +137,7 @@ public sealed class RootedVmInstaller
             AndroidCommandFactory.RootIdentity(layout, _options),
             cancellationToken);
         var su = await _runner.RunAsync(
-            AndroidCommandFactory.Adb(layout, _options, "shell", "which", "su"),
+            AndroidCommandFactory.FindRootShell(layout, _options),
             cancellationToken);
         return RootPreparationClassifier.Classify(ramdiskMatchesStock, identity, su);
     }
@@ -589,12 +591,9 @@ public sealed class RootedVmInstaller
         }
 
         var version = await _runner.RunAsync(
-            AndroidCommandFactory.Adb(
+            AndroidCommandFactory.RootShell(
                 layout,
                 _options,
-                "shell",
-                "su",
-                "-c",
                 "magisk -v"),
             cancellationToken);
         EnsureSuccess(version, "验证 Magisk 版本");
@@ -606,31 +605,22 @@ public sealed class RootedVmInstaller
 
         const string healthFile = "/data/adb/rgvm-health";
         EnsureSuccess(await _runner.RunAsync(
-            AndroidCommandFactory.Adb(
+            AndroidCommandFactory.RootShell(
                 layout,
                 _options,
-                "shell",
-                "su",
-                "-c",
                 $"touch {healthFile}"),
             cancellationToken), "验证 Root 数据写入");
         var readBack = await _runner.RunAsync(
-            AndroidCommandFactory.Adb(
+            AndroidCommandFactory.RootShell(
                 layout,
                 _options,
-                "shell",
-                "su",
-                "-c",
                 $"test -f {healthFile}"),
             cancellationToken);
         EnsureSuccess(readBack, "验证 Root 数据读取");
         await _runner.RunAsync(
-            AndroidCommandFactory.Adb(
+            AndroidCommandFactory.RootShell(
                 layout,
                 _options,
-                "shell",
-                "su",
-                "-c",
                 $"rm -f {healthFile}"),
             CancellationToken.None);
 
@@ -705,11 +695,8 @@ public sealed class RootedVmInstaller
     private IReadOnlyDictionary<string, string> CreateSdkEnvironment(AndroidSdkLayout layout)
     {
         var inheritedPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-        return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        return new Dictionary<string, string>(AndroidEmulatorEnvironment.Create(layout, _options), StringComparer.OrdinalIgnoreCase)
         {
-            ["ANDROID_HOME"] = layout.Root,
-            ["ANDROID_SDK_ROOT"] = layout.Root,
-            ["ANDROID_AVD_HOME"] = _options.AvdHome ?? string.Empty,
             ["JAVA_HOME"] = _paths.JavaHome,
             ["PATH"] = string.Join(Path.PathSeparator,
                 Path.Combine(_paths.JavaHome, "bin"),

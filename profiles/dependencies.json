@@ -174,6 +174,97 @@
       "downloadAtInstall": false,
       "license": "Apache-2.0",
       "delivery": "build-tool"
+    },
+    {
+      "id": "nuget-google.protobuf",
+      "name": "google.protobuf",
+      "version": "3.33.5",
+      "url": "https://api.nuget.org/v3-flatcontainer/google.protobuf/3.33.5/google.protobuf.3.33.5.nupkg",
+      "archiveFileName": "google.protobuf.3.33.5.nupkg",
+      "sha256": "7746b27bf78fb0abcb0adb786f7f6ad68d3ad18ff009fda1e67f1b429abea2b9",
+      "upstreamSha1": "",
+      "size": 1411204,
+      "downloadAtInstall": false,
+      "license": "BSD-3-Clause",
+      "delivery": "bundled"
+    },
+    {
+      "id": "nuget-grpc.net.client",
+      "name": "grpc.net.client",
+      "version": "2.76.0",
+      "url": "https://api.nuget.org/v3-flatcontainer/grpc.net.client/2.76.0/grpc.net.client.2.76.0.nupkg",
+      "archiveFileName": "grpc.net.client.2.76.0.nupkg",
+      "sha256": "46c2c622e82a46fe4f5211bf48c51d5c062c3e065ffe03e1bc87e5e6b071b26d",
+      "upstreamSha1": "",
+      "size": 1050116,
+      "downloadAtInstall": false,
+      "license": "Apache-2.0",
+      "delivery": "bundled"
+    },
+    {
+      "id": "nuget-grpc.net.common",
+      "name": "grpc.net.common",
+      "version": "2.76.0",
+      "url": "https://api.nuget.org/v3-flatcontainer/grpc.net.common/2.76.0/grpc.net.common.2.76.0.nupkg",
+      "archiveFileName": "grpc.net.common.2.76.0.nupkg",
+      "sha256": "4d2a0d3af50c464b32d81cff546dc9e64efa4a735a654007ca49d4290cbd12d7",
+      "upstreamSha1": "",
+      "size": 162648,
+      "downloadAtInstall": false,
+      "license": "Apache-2.0",
+      "delivery": "bundled"
+    },
+    {
+      "id": "nuget-grpc.core.api",
+      "name": "grpc.core.api",
+      "version": "2.76.0",
+      "url": "https://api.nuget.org/v3-flatcontainer/grpc.core.api/2.76.0/grpc.core.api.2.76.0.nupkg",
+      "archiveFileName": "grpc.core.api.2.76.0.nupkg",
+      "sha256": "0fd55c36301d3370cf17ab82ea1aec88926c37b511eaebde4785e338145b405e",
+      "upstreamSha1": "",
+      "size": 253315,
+      "downloadAtInstall": false,
+      "license": "Apache-2.0",
+      "delivery": "bundled"
+    },
+    {
+      "id": "nuget-grpc.tools",
+      "name": "grpc.tools",
+      "version": "2.76.0",
+      "url": "https://api.nuget.org/v3-flatcontainer/grpc.tools/2.76.0/grpc.tools.2.76.0.nupkg",
+      "archiveFileName": "grpc.tools.2.76.0.nupkg",
+      "sha256": "ff5360353c746a0892946d0ef2b17a74ffa82ec236d2f5f47bf9da8939836a28",
+      "upstreamSha1": "",
+      "size": 22560324,
+      "downloadAtInstall": false,
+      "license": "Apache-2.0",
+      "delivery": "build-tool"
+    },
+    {
+      "id": "nuget-microsoft.extensions.logging.abstractions",
+      "name": "microsoft.extensions.logging.abstractions",
+      "version": "8.0.0",
+      "url": "https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.abstractions/8.0.0/microsoft.extensions.logging.abstractions.8.0.0.nupkg",
+      "archiveFileName": "microsoft.extensions.logging.abstractions.8.0.0.nupkg",
+      "sha256": "26675d8de83c5394be8814f046554054b7881f1738cabacd82a54c381ec48cce",
+      "upstreamSha1": "",
+      "size": 795935,
+      "downloadAtInstall": false,
+      "license": "MIT",
+      "delivery": "bundled"
+    },
+    {
+      "id": "nuget-microsoft.extensions.dependencyinjection.abstractions",
+      "name": "microsoft.extensions.dependencyinjection.abstractions",
+      "version": "8.0.0",
+      "url": "https://api.nuget.org/v3-flatcontainer/microsoft.extensions.dependencyinjection.abstractions/8.0.0/microsoft.extensions.dependencyinjection.abstractions.8.0.0.nupkg",
+      "archiveFileName": "microsoft.extensions.dependencyinjection.abstractions.8.0.0.nupkg",
+      "sha256": "ef92b31065a36d110b7332690a226e6fe96d35430c6f3e40ff529053ee5d80ff",
+      "upstreamSha1": "",
+      "size": 276886,
+      "downloadAtInstall": false,
+      "license": "MIT",
+      "delivery": "bundled"
     }
   ]
 }

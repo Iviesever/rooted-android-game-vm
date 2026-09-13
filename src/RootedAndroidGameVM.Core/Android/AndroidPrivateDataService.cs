@@ -37,24 +37,25 @@ public sealed class AndroidPrivateDataService
             destinationRoot,
             Path.Combine(destinationRoot, exportName));
         Directory.CreateDirectory(exportDirectory);
+        if (OperatingSystem.IsWindows()) Debugging.ColdCheckpoint.Restrict(exportDirectory);
 
         var archiveName = $"rgvm-{operationId}.tar";
         var remoteArchive = $"/data/local/tmp/{archiveName}";
         var localArchive = PathBoundary.EnsureWithinRoot(exportDirectory, Path.Combine(exportDirectory, archiveName));
         var sourceRoot = $"/data/data/{package.Value}";
-        var createScript = $"tar -C {sourceRoot} -cf {remoteArchive} {dataPath.Value}";
+        var createScript = $"umask 077; tar -C {sourceRoot} -cf {remoteArchive} {dataPath.Value} && chown 2000:2000 {remoteArchive} && chmod 600 {remoteArchive}";
 
         var completed = false;
         try
         {
             EnsureSuccess(await _runner.RunAsync(
-                AndroidCommandFactory.Adb(_layout, _options, "shell", "su", "-c", createScript),
+                AndroidCommandFactory.RootShell(_layout, _options, createScript),
                 cancellationToken), "打包应用私有数据");
             EnsureSuccess(await _runner.RunAsync(
                 AndroidCommandFactory.Adb(_layout, _options, "pull", remoteArchive, localArchive),
                 cancellationToken), "复制应用私有数据");
 
-            TarFile.ExtractToDirectory(localArchive, exportDirectory, overwriteFiles: false);
+            SafeTarExtractor.Extract(localArchive, exportDirectory);
             completed = true;
             return PathBoundary.EnsureWithinRoot(exportDirectory, Path.Combine(exportDirectory, dataPath.Value));
         }
@@ -72,13 +73,16 @@ public sealed class AndroidPrivateDataService
 
             try
             {
-                await _runner.RunAsync(
-                    AndroidCommandFactory.Adb(_layout, _options, "shell", "su", "-c", $"rm -f {remoteArchive}"),
+                var cleanup = await _runner.RunAsync(
+                    AndroidCommandFactory.RootShell(_layout, _options, $"rm -f {remoteArchive}"),
                     CancellationToken.None);
+                EnsureSuccess(cleanup, "清理敏感归档");
             }
             catch
             {
-                // Cleanup is best effort; the randomized file contains no credentials and lives in /data/local/tmp.
+                // A private-data archive may contain credentials and keys. Track failed cleanup explicitly.
+                File.WriteAllText(Path.Combine(destinationRoot, $"cleanup-required-{operationId}.txt"),
+                    $"Sensitive temporary archive could not be removed: {remoteArchive}");
             }
         }
     }

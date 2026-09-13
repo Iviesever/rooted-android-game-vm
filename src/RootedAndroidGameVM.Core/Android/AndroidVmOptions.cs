@@ -1,3 +1,5 @@
+using RootedAndroidGameVM.Core.Setup;
+
 namespace RootedAndroidGameVM.Core.Android;
 
 public sealed record AndroidVmOptions(
@@ -8,27 +10,19 @@ public sealed record AndroidVmOptions(
     int MemoryMb,
     string? AvdHome = null,
     bool Headless = false,
-    bool Verbose = false)
+    bool Verbose = false,
+    int? GrpcPort = null)
 {
-    public static AndroidVmOptions ProductDefault
+    public static AndroidVmOptions ForPaths(InstallPaths paths)
     {
-        get
-        {
-            var productAvdHome = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "RootedAndroidGameVM",
-                "runtime",
-                "avd");
-            var profile = PerformanceProfileService.ReadCurrent();
-            return new(
-                "rooted_android_game_vm_api35",
-                "emulator-5554",
-                5554,
-                profile == PerformanceProfile.HighPerformance ? "host" : "swiftshader_indirect",
-                4096,
-                productAvdHome);
-        }
+        var profile = PerformanceProfileService.ReadCurrent(paths.ProductRoot);
+        return new(
+            "rooted_android_game_vm_api35", "emulator-5554", 5554,
+            profile == PerformanceProfile.HighPerformance ? "host" : "swiftshader_indirect",
+            4096, paths.AvdHome);
     }
+
+    public static AndroidVmOptions ProductDefault => ForPaths(InstallPaths.CreateDefault());
 
     public static AndroidVmOptions Default => ProductDefault;
 }

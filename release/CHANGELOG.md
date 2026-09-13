@@ -1,3 +1,19 @@
+# 0.3.0
+
+新增 GUI 与 JSON CLI 共用的安卓调试工作台、产品实例边界校验、认证 gRPC 多指输入和截图、文件传输、应用日志、Malody 可选流程和停机磁盘检查点。第三方 APK、皮肤、谱面和设备数据不随程序分发。
+
+# 0.2.0
+
+- Choose the resource location before the first download in graphical Setup.
+- Move the runtime, download cache, AVD and Android application data from the launcher's storage window.
+- Verify every copied file before switching paths; validate AVD and disk references, then verify a newly launched, process-bound emulator and Root.
+- Recover interrupted migrations and retain changed or locked source files instead of deleting them.
+- Upgrade program files in place using the existing installation identity and resource location, without recreating a compatible Android environment.
+- Resolve startup, repair, performance settings, private data access and optional resource uninstall through the same saved location.
+- Resolve Magisk's mount paths for Root commands, and verify both windowed and headless emulator processes using repeatable Windows process queries.
+- Flush pending Android filesystem writes before stopping or migrating the emulator, preserving recently written application data across cold restarts.
+- Keep the existing unsigned labeling and protected public Release gates. Local candidates do not imply public publication.
+
 # 0.1.2
 
 This Windows installer is intentionally not Authenticode-signed and its filename includes `UNSIGNED`. Windows may show an unknown publisher warning. Download only from this repository's GitHub Release page and verify the accompanying SHA-256 checksum or GitHub build provenance before running it.

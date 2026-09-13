@@ -3,7 +3,7 @@ using RootedAndroidGameVM.Core.Ui;
 
 namespace RootedAndroidGameVM.Core.Android;
 
-public sealed class AndroidVmController
+public sealed class AndroidVmController : IAndroidVmLifecycle
 {
     private readonly AndroidSdkLayout _layout;
     private readonly AndroidVmOptions _options;
@@ -11,19 +11,25 @@ public sealed class AndroidVmController
     private readonly DetachedProcessLauncher _detachedLauncher;
     private readonly AndroidVmStartupPolicy _startupPolicy;
     private DetachedProcessHandle? _activeEmulatorHandle;
+    private readonly bool _requireFreshStart;
+    private readonly Func<int, CancellationToken, Task>? _validateStartedProcess;
 
     public AndroidVmController(
         AndroidSdkLayout? layout = null,
         AndroidVmOptions? options = null,
         IProcessRunner? runner = null,
         DetachedProcessLauncher? detachedLauncher = null,
-        AndroidVmStartupPolicy? startupPolicy = null)
+        AndroidVmStartupPolicy? startupPolicy = null,
+        bool requireFreshStart = false,
+        Func<int, CancellationToken, Task>? validateStartedProcess = null)
     {
         _layout = layout ?? AndroidSdkLayout.Discover();
         _options = options ?? AndroidVmOptions.Default;
         _runner = runner ?? new ProcessRunner();
         _detachedLauncher = detachedLauncher ?? new DetachedProcessLauncher();
         _startupPolicy = startupPolicy ?? AndroidVmStartupPolicy.Default;
+        _requireFreshStart = requireFreshStart;
+        _validateStartedProcess = validateStartedProcess;
     }
 
     public async Task<VmStatus> GetStatusAsync(CancellationToken cancellationToken = default)
@@ -71,6 +77,8 @@ public sealed class AndroidVmController
 
         if (status == VmStatus.Running)
         {
+            if (_requireFreshStart)
+                throw new InvalidOperationException("验证端口已有模拟器连接，不能用既有实例替代新位置验证。");
             return;
         }
 
@@ -100,6 +108,8 @@ public sealed class AndroidVmController
             while (true)
             {
                 timeout.Token.ThrowIfCancellationRequested();
+                if (_validateStartedProcess is not null)
+                    await _validateStartedProcess(emulatorProcess.Id, timeout.Token);
                 var boot = await _runner.RunAsync(
                     AndroidCommandFactory.Adb(_layout, _options, "shell", "getprop", "sys.boot_completed"),
                     timeout.Token);
@@ -113,6 +123,8 @@ public sealed class AndroidVmController
                         await Task.Delay(_startupPolicy.PollInterval, timeout.Token);
                         continue;
                     }
+                    if (_validateStartedProcess is not null)
+                        await _validateStartedProcess(emulatorProcess.Id, timeout.Token);
                     await new AndroidInteractiveSessionService(_layout, _options, _runner)
                         .PrepareAsync(timeout.Token);
                     await _runner.RunAsync(
@@ -182,6 +194,11 @@ public sealed class AndroidVmController
             return;
         }
 
+        // The emulator shutdown command does not flush Android's delayed filesystem
+        // writes. Complete guest sync before closing the process or copying its disks.
+        var flush = await _runner.RunAsync(
+            AndroidCommandFactory.Adb(_layout, _options, "shell", "sync"), cancellationToken);
+        EnsureSuccess(flush, "保存安卓数据；未完成保存时保留运行中的虚拟机");
         var result = await _runner.RunAsync(AndroidCommandFactory.StopEmulator(_layout, _options), cancellationToken);
         EnsureSuccess(result, "停止安卓虚拟机");
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(1);

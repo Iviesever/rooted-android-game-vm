@@ -90,3 +90,25 @@ Final public-download verification:
 - Official SPDX Tools Python 0.8.5 accepted the downloaded SBOM, whose installer entry matched the downloaded installer SHA-256.
 - Strict GitHub attestation verification passed for the exact tag commit, the repository Release workflow, the tag ref and GitHub-hosted runners only.
 - Main-branch CI passed after the protected publication workflow was corrected to bind all GitHub CLI Release commands explicitly to this repository.
+
+## 2026-09-04 — Local 0.2.0 storage candidate
+
+This is local acceptance evidence, not a public Release gate result. The prior published assets were not changed.
+
+- Added selectable first-download storage, a launcher migration window, durable location/recovery records, and compatible program-only overlay updates.
+- 169 non-integration tests passed, including real Windows process/TCP-owner queries, repeated WMI property reads, ordinary/headless process identity, path and disk backing boundaries, interrupted migration recovery, and fail-closed guest filesystem synchronization.
+- A fresh isolated GUI setup downloaded the locked SDK, image and Root tools to the selected D-drive root. Root checks and cold restart completed successfully. The path text field was exercised; opening the native folder picker was checked, but automated selection inside that picker was not completed.
+- Real migration copied and hashed 14,235,227,624 bytes, cold-started the relocated runtime, verified Root, switched location and removed the old test resources. A pre-existing dummy private-data probe survived another cold start, APK `install -r`, and exact export. The test did not recreate the probe during retention verification.
+- The GUI installer updated the existing 0.1.2 installation to 0.2.0 at the same program path/AppId. The installed executable hashes matched the candidate, and all pre-existing resource file sizes and modification times were unchanged during the program-only update.
+- Installer: `RootedAndroidGameVM-Setup-0.2.0-x64-UNSIGNED.exe`, 59,950,820 bytes; SHA-256 `95afd8420802b6c783c6a8f01ce99c7e65de57273c29b671a562c94eef579a87`. Five allowed assets, PE GUI subsystem, unsigned status and official SPDX 0.8.5 validation passed.
+- Detailed local TRX, screenshots, migration receipts and package audit: `D:\program\Magisk\tasks\20260904-storage-relocation`. These local machine records are not part of the installer.
+
+The public clean-runner, provenance and protected publication gates remain required for a public release. Windows physical keyboard input in the pre-existing third-party game was not evaluated by this storage task.
+
+Actual product acceptance completed on the same date:
+
+- The installed launcher's migration window moved 1,115 original resource files (16,164,719,483 bytes) from the legacy C-drive root to the selected D-drive directory. Every source file was hashed, the fresh target runtime passed Root verification, and all original payload files were reclaimed. No pending migration or cleanup remained.
+- The C-drive root retained only the location file, operation lock and approximately 289 KiB verification receipt. Observed available C-drive space increased from 13.99 GiB to 28.95 GiB; unrelated OS activity may affect this measurement.
+- After closing and reopening the installed launcher, normal windowed startup used the D-drive SDK and explicit D-drive AVD datadir on port 5554. The launcher GUI reported SDK normal, ADB connected and Root uid=0. Original the pre-existing third-party game package and private directory presence were confirmed without reading its contents or touching login state.
+- All 68 protected personal AVD/export files retained the same paths, lengths and modification times. No real account credential was read or captured.
+- The isolated test SDK/AVD was retained because automatic approval rejected its recursive cleanup with a policy-blocked result. It is separate from the installed product data; test export and migration evidence remains available locally.
