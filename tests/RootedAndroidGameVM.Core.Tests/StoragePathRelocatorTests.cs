@@ -21,7 +21,10 @@ public sealed class StoragePathRelocatorTests : IDisposable
         File.WriteAllText(registration, $"path={Source.AvdHome}\\test.avd\ntarget=android-35\n");
         File.WriteAllText(Path.Combine(Target.ProductRoot, "install.json"), JsonSerializer.Serialize(new
         {
-            sdkRoot = Source.SdkRoot, avdHome = Source.AvdHome, version = "0.1.2", description = Source.ProductRoot + "-unrelated"
+            sdkRoot = Source.SdkRoot,
+            avdHome = Source.AvdHome,
+            version = "0.1.2",
+            description = Source.ProductRoot + "-unrelated"
         }));
         await new StoragePathRelocator().RelocateAsync(Source, Target);
         Assert.Contains("path=" + Path.Combine(Target.AvdHome, "test.avd"), File.ReadAllText(registration));
@@ -134,7 +137,9 @@ public sealed class StoragePathRelocatorTests : IDisposable
             var json = spec.Arguments[^1].EndsWith(".qcow2", StringComparison.Ordinal)
                 ? JsonSerializer.Serialize(new Dictionary<string, string>
                 {
-                    ["format"] = "qcow2", ["backing-filename"] = backing, ["backing-filename-format"] = "raw"
+                    ["format"] = "qcow2",
+                    ["backing-filename"] = backing,
+                    ["backing-filename-format"] = "raw"
                 })
                 : "{\"format\":\"raw\"}";
             return Task.FromResult(new ProcessResult(0, json, ""));

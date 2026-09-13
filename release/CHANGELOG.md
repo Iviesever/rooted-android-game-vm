@@ -1,3 +1,7 @@
+# 0.3.0
+
+新增 GUI 与 JSON CLI 共用的安卓调试工作台、产品实例边界校验、认证 gRPC 多指输入和截图、文件传输、应用日志、Malody 可选流程和停机磁盘检查点。第三方 APK、皮肤、谱面和设备数据不随程序分发。
+
 # 0.2.0
 
 - Choose the resource location before the first download in graphical Setup.

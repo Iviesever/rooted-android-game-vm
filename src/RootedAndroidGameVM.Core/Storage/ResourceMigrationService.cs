@@ -202,9 +202,14 @@ public sealed class ResourceMigrationService
             .Where(file => !File.Exists(Path.Combine(journal.SourceRoot, file.RelativePath))).Sum(file => file.Length);
         await AtomicJsonFile.WriteAsync(Path.Combine(_location.ControlRoot, ReceiptFileName), new
         {
-            migrationId = journal.Id, sourceRoot = journal.SourceRoot, resourceRoot = journal.TargetRoot,
-            checkedAtUtc = DateTimeOffset.UtcNow, transferredBytes = journal.Inventory.TotalBytes,
-            reclaimedBytes = reclaimed, remainingSourceFiles = remaining, verifiedFiles = journal.Inventory.Files,
+            migrationId = journal.Id,
+            sourceRoot = journal.SourceRoot,
+            resourceRoot = journal.TargetRoot,
+            checkedAtUtc = DateTimeOffset.UtcNow,
+            transferredBytes = journal.Inventory.TotalBytes,
+            reclaimedBytes = reclaimed,
+            remainingSourceFiles = remaining,
+            verifiedFiles = journal.Inventory.Files,
             verification = journal.Verification
         }, cancellationToken).ConfigureAwait(false);
         if (remaining.Count == 0)

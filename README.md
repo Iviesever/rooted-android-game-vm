@@ -1,9 +1,18 @@
 # Rooted Android Game VM
 
-一个面向 Windows 11 x64 的图形化安卓游戏虚拟机管理器。安装、日常启动、APK 更新、Root 诊断和私有数据导出都通过 .exe 窗口完成，普通用户无需输入终端命令。
+一个面向 Windows 11 x64 的安卓游戏虚拟机与调试工作台。安装、日常启动、APK 更新、Root 诊断和私有数据导出都通过 .exe 窗口完成，普通用户无需输入终端命令。
 项目不针对、不捆绑任何单一应用或游戏；所有 APK 安装、应用启动和私有数据导出都使用通用的 Android 包名与相对路径。
 
 > 安装包按项目政策明确标注 `UNSIGNED`，Windows 可能显示 unknown publisher（未知发布者）警告。公开版本请从本仓库 GitHub Release 下载，并核对 SHA-256 或 GitHub provenance；本地候选包不等同于已公开发布的版本。
+
+## 0.3.0 调试工作台
+
+保留原启动首页和模拟器窗口，新增 GUI 与 JSON CLI 共用的截图、多指输入、应用日志、双向文件、Malody 可选导入和停机检查点。
+
+- [日常操作说明](docs/debug-workbench.md)
+- [CLI 请求与输入示例](docs/cli.md)
+
+本次本机升级为 UNSIGNED 本地候选，不发布 GitHub Release。原有公开发布门禁继续保留。
 
 ## 日常使用
 

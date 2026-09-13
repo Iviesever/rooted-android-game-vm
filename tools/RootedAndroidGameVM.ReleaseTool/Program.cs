@@ -15,7 +15,9 @@ if (args.Length == 2 && args[0] == "inspect-storage")
     var inventory = VerifiedDirectoryCopy.ReadInventory(root, StorageOwnership.ControlFiles);
     Console.WriteLine(JsonSerializer.Serialize(new
     {
-        resourceRoot = root, fileCount = inventory.Files.Count, bytes = inventory.TotalBytes,
+        resourceRoot = root,
+        fileCount = inventory.Files.Count,
+        bytes = inventory.TotalBytes,
         compatibleRuntime = await ProgramUpgradeProbe.CanReuseAsync(InstallPaths.FromProductRoot(root)),
         pendingMigration = MigrationJournal.Read(location)
     }, new JsonSerializerOptions { WriteIndented = true }));
@@ -71,16 +73,19 @@ if (args.Length == 2 && args[0] == "recover-storage")
     return result.HasPendingCleanup ? 1 : 0;
 }
 
-if (args.Length == 6 && args[0] == "generate-sbom")
+if (args.Length is 6 or 7 && args[0] == "generate-sbom")
 {
+    var files = new List<SbomInputFile>
+    {
+        new("RootedAndroidGameVM.exe", args[2]),
+        new("RootedAndroidGameVM.Setup.exe", args[3]),
+        new(Path.GetFileName(args[4]), args[4])
+    };
+    if (args.Length == 7) files.Add(new("RootedAndroidGameVM.Cli.exe", args[6]));
     await SbomGenerator.GenerateAsync(
         DependencyManifest.LoadEmbedded(),
         args[1],
-        [
-            new("RootedAndroidGameVM.exe", args[2]),
-            new("RootedAndroidGameVM.Setup.exe", args[3]),
-            new(Path.GetFileName(args[4]), args[4])
-        ],
+        files,
         args[5]);
     Console.WriteLine($"Generated SPDX SBOM: {args[5]}");
     return 0;
@@ -189,7 +194,7 @@ static async Task<int> VerifyApkExportAsync(string[] arguments)
             EnsureSuccess(await runner.RunAsync(
                 AndroidCommandFactory.RootShell(layout, options, $"sh {remoteScript}")),
                 "create E2E private-data probe");
-            }
+        }
 
         var exported = await new AndroidPrivateDataService(layout, options)
             .ExportDirectoryAsync(packageName, "files/rgvm_e2e", exportRoot);

@@ -38,7 +38,10 @@ public sealed class ProgramUpgradeTests : IDisposable
         File.WriteAllText(Path.Combine(Paths.RuntimeRoot, "userdata-preserve.bin"), "existing application data");
         File.WriteAllText(Path.Combine(_root, "install.json"), JsonSerializer.Serialize(new
         {
-            version = "0.1.2", sdkRoot = Paths.SdkRoot, avdHome = Paths.AvdHome, avdName = "rooted_android_game_vm_api35"
+            version = "0.1.2",
+            sdkRoot = Paths.SdkRoot,
+            avdHome = Paths.AvdHome,
+            avdName = "rooted_android_game_vm_api35"
         }));
         await new InstallJournalStore(Path.Combine(_root, "install-state.json")).UpdateAsync(SetupStage.Complete,
             Paths.SdkRoot, Paths.AvdHome, "rooted_android_game_vm_api35", new string('a', 64), await Sha256Verifier.ComputeAsync(Ramdisk));

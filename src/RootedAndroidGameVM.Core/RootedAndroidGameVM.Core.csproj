@@ -7,9 +7,18 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="..\..\profiles\dependencies.json"
-                      Link="Profiles\dependencies.json"
-                      LogicalName="RootedAndroidGameVM.dependencies.json" />
+    <EmbeddedResource Include="..\..\profiles\dependencies.json" Link="Profiles\dependencies.json" LogicalName="RootedAndroidGameVM.dependencies.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\licenses\*.txt" Link="Licenses\%(Filename)%(Extension)" />
+    <Protobuf Include="Debugging\Protocol\emulator_controller.proto" GrpcServices="Client" />
+    <PackageReference Include="Google.Protobuf" Version="3.33.5" />
+    <PackageReference Include="Grpc.Net.Client" Version="2.76.0" />
+    <PackageReference Include="Grpc.Tools" Version="2.76.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
   </ItemGroup>
 
 </Project>

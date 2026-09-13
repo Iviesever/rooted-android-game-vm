@@ -36,6 +36,8 @@ public sealed class RootedVmInstaller
         CancellationToken cancellationToken = default,
         bool adoptExistingEnvironment = false)
     {
+        if (File.Exists(Path.Combine(_paths.ProductRoot, "debug-restore.json")))
+            throw new InvalidOperationException("存在未完成的检查点恢复。请先在调试工作台恢复中断操作；不会重新初始化虚拟机。");
         if (!sdkLicenseAccepted)
         {
             throw new InvalidOperationException("必须先阅读并接受 Android SDK 许可协议。");

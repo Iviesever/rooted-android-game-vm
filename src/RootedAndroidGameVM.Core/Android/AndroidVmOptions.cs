@@ -10,7 +10,8 @@ public sealed record AndroidVmOptions(
     int MemoryMb,
     string? AvdHome = null,
     bool Headless = false,
-    bool Verbose = false)
+    bool Verbose = false,
+    int? GrpcPort = null)
 {
     public static AndroidVmOptions ForPaths(InstallPaths paths)
     {

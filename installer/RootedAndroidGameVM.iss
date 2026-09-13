@@ -1,9 +1,17 @@
 #define AppName "Rooted Android Game VM"
-#define AppVersion "0.2.0"
+#define AppVersion "0.3.0"
 #define Publisher "RootedAndroidGameVM contributors"
+#ifdef RgvmSandbox
+  #undef AppName
+  #define AppName "Rooted Android Game VM Upgrade Test"
+#endif
 
 [Setup]
+#ifdef RgvmSandbox
+AppId={{C218718D-510A-42A0-BFCB-16F546DAB90B}
+#else
 AppId={{2B456CBE-77EC-4F4B-911A-32D78A42F287}
+#endif
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#Publisher}
@@ -36,17 +44,34 @@ SignedUninstaller=no
 [Files]
 Source: "..\artifacts\publish\Launcher\RootedAndroidGameVM.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\artifacts\publish\Setup\RootedAndroidGameVM.Setup.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\artifacts\publish\Cli\RootedAndroidGameVM.Cli.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Tasks]
 Name: "desktopicon"; Description: "创建桌面快捷方式"
 
 [Icons]
 Name: "{group}\配置 Rooted Android Game VM"; Filename: "{app}\RootedAndroidGameVM.Setup.exe"
-Name: "{userdesktop}\Rooted Android Game VM"; Filename: "{app}\RootedAndroidGameVM.exe"; Tasks: desktopicon
+Name: "{userdesktop}\{#AppName}"; Filename: "{app}\RootedAndroidGameVM.exe"; Tasks: desktopicon
 
 [Code]
 var
   UninstallMode: Integer;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ResultCode: Integer;
+begin
+  Result := '';
+#ifndef RgvmSandbox
+  if FileExists(ExpandConstant('{app}\RootedAndroidGameVM.Cli.exe')) then
+  begin
+    if not Exec(ExpandConstant('{app}\RootedAndroidGameVM.Cli.exe'), 'shutdown', ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      Result := '无法停止调试协调进程，请关闭调试任务后重试。'
+    else if ResultCode <> 0 then Result := '调试任务尚未停止，升级已暂停。';
+    Sleep(1000);
+  end;
+#endif
+end;
 
 function InitializeUninstall(): Boolean;
 var
@@ -108,8 +133,8 @@ begin
 
   if CurUninstallStep <> usPostUninstall then exit;
 
-  DeleteFile(ExpandConstant('{userdesktop}\Rooted Android Game VM.lnk'));
-  DelTree(ExpandConstant('{userprograms}\Rooted Android Game VM'), True, True, True);
+  DeleteFile(ExpandConstant('{userdesktop}\{#AppName}.lnk'));
+  DelTree(ExpandConstant('{userprograms}\{#AppName}'), True, True, True);
 
 end;
 
@@ -117,6 +142,7 @@ procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
 begin
+#ifndef RgvmSandbox
   if (CurStep = ssPostInstall) and (not WizardSilent) then
   begin
     if not Exec(
@@ -126,4 +152,5 @@ begin
     if ResultCode <> 0 then
       RaiseException('安卓虚拟机配置未完成。未创建日常启动快捷方式，请重新运行安装包。');
   end;
+#endif
 end;

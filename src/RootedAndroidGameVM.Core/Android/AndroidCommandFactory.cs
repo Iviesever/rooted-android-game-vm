@@ -40,6 +40,8 @@ public static class AndroidCommandFactory
         {
             arguments.Add("-verbose");
         }
+        if (options.GrpcPort is int grpcPort)
+            arguments.AddRange(["-grpc", grpcPort.ToString(), "-grpc-use-token"]);
         return new(
             layout.EmulatorPath,
             arguments,

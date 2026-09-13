@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using RootedAndroidGameVM.Core.Debugging;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
@@ -14,8 +15,11 @@ namespace RootedAndroidGameVM.Launcher;
 public partial class MainWindow : Window
 {
     private AndroidVmController _controller = new();
+    private void OpenWorkbench_Click(object sender, RoutedEventArgs e) => new DebugWorkbench { Owner = this }.Show();
     private VmStatus _status = VmStatus.NotInstalled;
     private bool _busy;
+    private bool _refreshing;
+    private readonly System.Windows.Threading.DispatcherTimer _statusTimer = new() { Interval = TimeSpan.FromSeconds(4) };
 
     public MainWindow()
     {
@@ -23,6 +27,8 @@ public partial class MainWindow : Window
         ApplyState(LauncherDashboardState.From(_status));
         Loaded += async (_, _) => await RefreshStatusAsync();
         Closing += (_, e) => { if (_busy) e.Cancel = true; };
+        _statusTimer.Tick += async (_, _) => { if (!_busy && !_refreshing) await RefreshStatusAsync(); };
+        _statusTimer.Start(); Closed += (_, _) => _statusTimer.Stop();
     }
 
     private void ApplyState(LauncherDashboardState state)
@@ -41,6 +47,8 @@ public partial class MainWindow : Window
 
     private async Task RefreshStatusAsync()
     {
+        if (_refreshing) return;
+        _refreshing = true;
         try
         {
             FooterStatusText.Text = "正在检查运行环境…";
@@ -51,6 +59,7 @@ public partial class MainWindow : Window
         {
             FooterStatusText.Text = $"检查失败：{exception.Message}";
         }
+        finally { _refreshing = false; }
     }
 
     private async void PrimaryAction_Click(object sender, RoutedEventArgs e)
@@ -66,8 +75,8 @@ public partial class MainWindow : Window
         await RunBusyAsync(
             _status == VmStatus.Running ? "正在停止虚拟机…" : "正在启动虚拟机…",
             _status == VmStatus.Running
-                ? () => _controller.StopAsync()
-                : () => _controller.StartAsync());
+                ? () => new DebugClient().ExecuteAndWaitAsync(new("stop"))
+                : () => new DebugClient().ExecuteAndWaitAsync(new("start")));
     }
 
     private async void ActionCard_Click(object sender, RoutedEventArgs e)
@@ -82,7 +91,7 @@ public partial class MainWindow : Window
                 await InstallApkAsync();
                 break;
             case "AppsAndData":
-                new DataAccessWindow(_controller) { Owner = this }.ShowDialog();
+                new DebugWorkbench { Owner = this }.Show();
                 break;
             case "Settings":
                 await ShowSettingsAsync();
@@ -114,7 +123,7 @@ public partial class MainWindow : Window
         };
         if (dialog.ShowDialog(this) != true) return;
 
-        await RunBusyAsync("正在安装 APK…", () => _controller.InstallApkAsync(dialog.FileName),
+        await RunBusyAsync("正在安装 APK…", () => new DebugClient().ExecuteAndWaitAsync(DebugRequest.Create("install", new { path = dialog.FileName })),
             successMessage: "APK 已成功安装或更新。", refreshStatus: false);
     }
 
@@ -176,7 +185,7 @@ public partial class MainWindow : Window
     {
         if (_busy) return;
         _busy = true;
-        try { new StorageWindow { Owner = this }.ShowDialog(); }
+        try { await new DebugClient().ExecuteAndWaitAsync(new("shutdown")); await Task.Delay(600); new StorageWindow { Owner = this }.ShowDialog(); }
         catch (Exception exception) { ShowError("资源位置不可用", exception); }
         finally
         {
@@ -236,7 +245,7 @@ public partial class MainWindow : Window
 
         await RunBusyAsync(
             "正在安装拖入的 APK…",
-            () => _controller.InstallApkAsync(files[0]),
+            () => new DebugClient().ExecuteAndWaitAsync(DebugRequest.Create("install", new { path = files[0] })),
             successMessage: "APK 已成功安装或更新。",
             refreshStatus: false);
     }
@@ -253,7 +262,6 @@ public partial class MainWindow : Window
         FooterStatusText.Text = busyText;
         try
         {
-            using var lease = StorageOperationLease.Acquire();
             _controller = new AndroidVmController();
             await operation();
             if (refreshStatus) await RefreshStatusAsync();

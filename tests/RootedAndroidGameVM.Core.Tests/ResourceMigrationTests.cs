@@ -19,7 +19,9 @@ public sealed class ResourceMigrationTests : IDisposable
         File.WriteAllText(UserData, "dummy private data survives migration");
         File.WriteAllText(Path.Combine(Source, "install.json"), JsonSerializer.Serialize(new
         {
-            version = "0.1.2", sdkRoot = paths.SdkRoot, avdHome = paths.AvdHome,
+            version = "0.1.2",
+            sdkRoot = paths.SdkRoot,
+            avdHome = paths.AvdHome,
             avdName = "rooted_android_game_vm_api35"
         }));
         await Location.SaveRootAsync(Source);

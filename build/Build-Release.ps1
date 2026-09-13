@@ -14,6 +14,7 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $artifacts = Join-Path $projectRoot 'artifacts'
 $launcherOutput = Join-Path $artifacts 'publish\Launcher'
 $setupOutput = Join-Path $artifacts 'publish\Setup'
+$cliOutput = Join-Path $artifacts 'publish\Cli'
 $innoCompiler = Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe'
 $releaseDirectory = Join-Path $artifacts 'release'
 $manifestPath = Join-Path $projectRoot 'profiles\dependencies.json'
@@ -72,7 +73,8 @@ if (-not $innoRegistration -or $innoRegistration.DisplayVersion -ne $expectedInn
 $expectedRuntime = $manifest.components.Where({ $_.id -eq 'dotnet-runtime' }).version
 foreach ($project in @(
     'src\RootedAndroidGameVM.Launcher\RootedAndroidGameVM.Launcher.csproj',
-    'src\RootedAndroidGameVM.Setup\RootedAndroidGameVM.Setup.csproj'
+    'src\RootedAndroidGameVM.Setup\RootedAndroidGameVM.Setup.csproj',
+    'src\RootedAndroidGameVM.Cli\RootedAndroidGameVM.Cli.csproj'
 )) {
     [xml]$projectXml = Get-Content -Raw -LiteralPath (Join-Path $projectRoot $project)
     if ([string]$projectXml.Project.PropertyGroup.Version -ne $productVersion -or
@@ -128,6 +130,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Launcher publish failed.' }
 dotnet publish (Join-Path $projectRoot 'src\RootedAndroidGameVM.Setup\RootedAndroidGameVM.Setup.csproj') -c $Configuration -r win-x64 --self-contained true -p:PublishSingleFile=true -o $setupOutput
 if ($LASTEXITCODE -ne 0) { throw 'Setup publish failed.' }
 
+dotnet publish (Join-Path $projectRoot 'src\RootedAndroidGameVM.Cli\RootedAndroidGameVM.Cli.csproj') -c $Configuration -r win-x64 --self-contained true -p:PublishSingleFile=true -o $cliOutput
+if ($LASTEXITCODE -ne 0) { throw 'CLI publish failed.' }
+
 function Assert-AuthenticodeValid {
     param(
         [Parameter(Mandatory)][string]$Path,
@@ -152,6 +157,7 @@ function Invoke-AuthenticodeSign {
 if ($SigningCertificateThumbprint) {
     Invoke-AuthenticodeSign (Join-Path $launcherOutput 'RootedAndroidGameVM.exe')
     Invoke-AuthenticodeSign (Join-Path $setupOutput 'RootedAndroidGameVM.Setup.exe')
+    Invoke-AuthenticodeSign (Join-Path $cliOutput 'RootedAndroidGameVM.Cli.exe')
 } elseif (-not $AllowUnsignedPublicRelease) {
     throw 'Choose either a signing certificate or -AllowUnsignedPublicRelease. Unsigned output is always labeled UNSIGNED.'
 }
@@ -189,13 +195,13 @@ Copy-Item -LiteralPath (Join-Path $projectRoot 'release\THIRD_PARTY_NOTICES.md')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'release\CHANGELOG.md') -Destination $releaseDirectory -Force
 
 $sbomPath = Join-Path $releaseDirectory 'SBOM.spdx.json'
-dotnet run --project (Join-Path $projectRoot 'tools\RootedAndroidGameVM.ReleaseTool\RootedAndroidGameVM.ReleaseTool.csproj') -c $Configuration --no-restore -- generate-sbom $productVersion (Join-Path $launcherOutput 'RootedAndroidGameVM.exe') (Join-Path $setupOutput 'RootedAndroidGameVM.Setup.exe') $installer.FullName $sbomPath
+dotnet run --project (Join-Path $projectRoot 'tools\RootedAndroidGameVM.ReleaseTool\RootedAndroidGameVM.ReleaseTool.csproj') -c $Configuration --no-restore -- generate-sbom $productVersion (Join-Path $launcherOutput 'RootedAndroidGameVM.exe') (Join-Path $setupOutput 'RootedAndroidGameVM.Setup.exe') $installer.FullName $sbomPath (Join-Path $cliOutput 'RootedAndroidGameVM.Cli.exe')
 if ($LASTEXITCODE -ne 0) { throw 'SPDX SBOM generation failed.' }
 
 $sbom = Get-Content -Raw -LiteralPath $sbomPath | ConvertFrom-Json
 if ($sbom.spdxVersion -ne 'SPDX-2.3' -or
     $sbom.packages.Count -ne ($manifest.components.Count + 1) -or
-    $sbom.files.Count -ne 3 -or
+    $sbom.files.Count -ne 4 -or
     $sbom.files.Where({
         $sha256 = @($_.checksums.Where({ $_.algorithm -eq 'SHA256' }).checksumValue)
         $sha1 = @($_.checksums.Where({ $_.algorithm -eq 'SHA1' }).checksumValue)
@@ -263,6 +269,9 @@ function Assert-WindowsGuiExecutable {
 Assert-WindowsGuiExecutable (Join-Path $launcherOutput 'RootedAndroidGameVM.exe')
 Assert-WindowsGuiExecutable (Join-Path $setupOutput 'RootedAndroidGameVM.Setup.exe')
 Assert-WindowsGuiExecutable $installer.FullName
+$cliBytes = [IO.File]::ReadAllBytes((Join-Path $cliOutput 'RootedAndroidGameVM.Cli.exe'))
+$cliPe = [BitConverter]::ToInt32($cliBytes, 0x3C)
+if ([BitConverter]::ToUInt16($cliBytes, $cliPe + 24 + 68) -ne 3) { throw 'CLI must use the Windows console subsystem.' }
 
 $digest = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
 $checksumPath = Join-Path $releaseDirectory ($installer.Name + '.sha256')

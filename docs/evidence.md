@@ -103,12 +103,12 @@ This is local acceptance evidence, not a public Release gate result. The prior p
 - Installer: `RootedAndroidGameVM-Setup-0.2.0-x64-UNSIGNED.exe`, 59,950,820 bytes; SHA-256 `95afd8420802b6c783c6a8f01ce99c7e65de57273c29b671a562c94eef579a87`. Five allowed assets, PE GUI subsystem, unsigned status and official SPDX 0.8.5 validation passed.
 - Detailed local TRX, screenshots, migration receipts and package audit: `D:\program\Magisk\tasks\20260904-storage-relocation`. These local machine records are not part of the installer.
 
-The public clean-runner, provenance and protected publication gates remain required for a public release. Windows physical keyboard input in Arcaea was not evaluated by this storage task.
+The public clean-runner, provenance and protected publication gates remain required for a public release. Windows physical keyboard input in the pre-existing third-party game was not evaluated by this storage task.
 
 Actual product acceptance completed on the same date:
 
 - The installed launcher's migration window moved 1,115 original resource files (16,164,719,483 bytes) from the legacy C-drive root to the selected D-drive directory. Every source file was hashed, the fresh target runtime passed Root verification, and all original payload files were reclaimed. No pending migration or cleanup remained.
 - The C-drive root retained only the location file, operation lock and approximately 289 KiB verification receipt. Observed available C-drive space increased from 13.99 GiB to 28.95 GiB; unrelated OS activity may affect this measurement.
-- After closing and reopening the installed launcher, normal windowed startup used the D-drive SDK and explicit D-drive AVD datadir on port 5554. The launcher GUI reported SDK normal, ADB connected and Root uid=0. Original Arcaea package and private directory presence were confirmed without reading its contents or touching login state.
+- After closing and reopening the installed launcher, normal windowed startup used the D-drive SDK and explicit D-drive AVD datadir on port 5554. The launcher GUI reported SDK normal, ADB connected and Root uid=0. Original the pre-existing third-party game package and private directory presence were confirmed without reading its contents or touching login state.
 - All 68 protected personal AVD/export files retained the same paths, lengths and modification times. No real account credential was read or captured.
 - The isolated test SDK/AVD was retained because automatic approval rejected its recursive cleanup with a policy-blocked result. It is separate from the installed product data; test export and migration evidence remains available locally.

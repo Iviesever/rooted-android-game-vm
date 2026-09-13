@@ -134,17 +134,20 @@ try {
 
     $installedSetup = Join-Path $programRoot 'RootedAndroidGameVM.Setup.exe'
     $installedLauncher = Join-Path $programRoot 'RootedAndroidGameVM.exe'
+    $installedCli = Join-Path $programRoot 'RootedAndroidGameVM.Cli.exe'
     $uninstaller = Join-Path $programRoot 'unins000.exe'
-    foreach ($required in @($installedSetup, $installedLauncher, $uninstaller)) {
+    foreach ($required in @($installedSetup, $installedLauncher, $installedCli, $uninstaller)) {
         if (-not (Test-Path -LiteralPath $required)) {
             throw "Installed GUI executable is missing: $required"
         }
     }
     if ($normalizedExpectedSigner) {
-        foreach ($signedExecutable in @($installedLauncher, $installedSetup, $uninstaller)) {
+        foreach ($signedExecutable in @($installedLauncher, $installedSetup, $installedCli, $uninstaller)) {
             Assert-AuthenticodeSignature $signedExecutable $normalizedExpectedSigner
         }
     }
+    $cliHelp = & $installedCli help | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or $cliHelp.schemaVersion -ne 1) { throw 'Installed console CLI protocol smoke failed.' }
     $startMenuShortcut = Join-Path $startMenuGroup '配置 Rooted Android Game VM.lnk'
     $dailyStartMenuShortcut = Join-Path $startMenuGroup 'Rooted Android Game VM.lnk'
     if (-not (Test-Path -LiteralPath $desktopShortcut) -or
