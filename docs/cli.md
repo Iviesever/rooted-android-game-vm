@@ -66,6 +66,14 @@ $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.ex
 
 所有 ADB 操作都固定到经过检查的产品实例。没有“自动选第一个设备”的逻辑，也不调用全局 `adb kill-server`。
 
+导入进度区分 `transferring`、`transferred`、`waiting_for_app`、`activity_ready`、`triggering_import`、`import_triggered`、`waiting_for_unpack`、`verifying_content`、`content_verified` 和 `waiting_for_activation`。前台 resumed Activity 只证明 Activity 就绪；`interactiveReady:false`、`activationVerified:false` 和 `runningVerified:false` 不代表页面可操作、已启用或已进入游戏。进度、原始 Activity/Intent 依据及逐文件核验保存在 `debug-runs/imports/<importId>/`。
+
+冷启动漏接时自动重触发同一已传文件，最多三次；`transferCount` 和 `triggerCount` 分开计数。失败或取消后，以 `{"command":"malody.import","arguments":{"importId":"原编号"}}` 续作已核验传输，不再次上传或换目录。若传输未完成、远端包丢失或现有解包内容异常，会明确失败并保留恢复记录。核验失败通过 `ok:false`、`error.stage` 和 `error.evidencePath` 报告，不再与等待启用混淆。
+
+`imported.verifiedFiles` 只数 SHA-256 完全相同的文件；`metadataRewrites` 单列已知 `info.json` JSON重排、已知有界目录字段补充，以及已实测的版本字段 `393216 → 394764`。其余原有字段必须相同，脚本、资源、布局、签名、缺失和额外文件均严格检查；未知差异拒绝通过。App启用后自己创建文件可能导致后续重新核验失败，该结果不能当作源包未经修改。
+
+`files.push` 的私有文件归属目标App，默认600；应用外部目录文件660；共享下载默认644。替换私有/共享文件保留合理读写位，去除执行和全局写入位。结果列出实际 `permissions`；`applicationReadVerified:false` 表示传输本身没有代替目标App执行读取验收。
+
 0.4.0 增加以下请求，完整参数以 `schema` 为准：
 
 | command | arguments 示例 | 用途 |

@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace RootedAndroidGameVM.Core.Debugging;
 
-public sealed record DebugRequest(string Command, Dictionary<string, JsonElement>? Arguments = null, int SchemaVersion = 1)
+public sealed record DebugRequest(string Command, Dictionary<string, JsonElement>? Arguments = null, int SchemaVersion = 1, string? RequestId = null)
 {
     public string Text(string key, string fallback = "") => Arguments?.TryGetValue(key, out var v) == true ? v.GetString() ?? fallback : fallback;
     public int Number(string key, int fallback = 0) => Arguments?.TryGetValue(key, out var v) == true ? v.GetInt32() : fallback;
@@ -12,8 +12,10 @@ public sealed record DebugRequest(string Command, Dictionary<string, JsonElement
     public static DebugRequest Create(string command, object? arguments = null) => new(command,
         arguments is null ? null : JsonSerializer.SerializeToElement(arguments, DebugJson.Options).Deserialize<Dictionary<string, JsonElement>>());
 }
-public sealed record DebugError(string Code, string Message);
-public sealed record DebugReply(bool Ok, object? Result = null, DebugError? Error = null, int SchemaVersion = 1)
+public sealed record DebugError(string Code, string Message, string? Stage = null, string? EvidencePath = null, string? ToolEvidencePath = null);
+public sealed record DebugReply(bool Ok, object? Result = null, DebugError? Error = null, int SchemaVersion = 1,
+    string? RequestId = null, string? JobId = null, string? Stage = null, string? Terminal = null,
+    string? Session = null, string? Pid = null, string? ArtifactDirectory = null)
 {
     public static DebugReply Failure(Exception e) => new(false, Error: new(e switch
     {
@@ -26,9 +28,17 @@ public sealed record DebugReply(bool Ok, object? Result = null, DebugError? Erro
         IOException io when (io.HResult & 0xffff) is 39 or 112 => "disk_full",
         ArgumentException => "invalid_argument",
         _ => "operation_failed"
-    }, e is Grpc.Core.RpcException rpc ? "模拟器 gRPC 调用失败：" + rpc.StatusCode + "。认证材料不会写入诊断。" : e.Message));
+    }, e is Grpc.Core.RpcException rpc ? "模拟器 gRPC 调用失败：" + rpc.StatusCode + "。认证材料不会写入诊断。" : e.Message,
+        (e as DebugException)?.Stage, (e as DebugException)?.EvidencePath, ToolEvidence(e)));
+    private static string? ToolEvidence(Exception? error) => error is null ? null :
+        error.Data["toolEvidencePath"] as string ?? ToolEvidence(error.InnerException);
 }
-public sealed class DebugException(string code, string message) : Exception(message) { public string Code { get; } = code; }
+public sealed class DebugException(string code, string message, string? stage = null, string? evidencePath = null, Exception? inner = null) : Exception(message, inner)
+{
+    public string Code { get; } = code;
+    public string? Stage { get; } = stage;
+    public string? EvidencePath { get; } = evidencePath;
+}
 public static class DebugJson
 {
     public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)

@@ -10,6 +10,9 @@ public static class BinaryProcess
     public static Task<byte[]> RunAsync(ProcessSpec spec, int limit, CancellationToken ct) =>
         RunCoreAsync(spec, (stream, token) => ReadBoundedAsync(stream, limit, token), ct);
 
+    public static async Task<string> RunTextAsync(ProcessSpec spec, int limit, CancellationToken ct) =>
+        System.Text.Encoding.UTF8.GetString(await RunCoreAsync(spec, (stream, token) => ReadBoundedAsync(stream, limit, token), ct, textEvidence: true));
+
     public static async Task<long> RunToFileAsync(ProcessSpec spec, string path, long limit, CancellationToken ct)
     {
         var temporary = path + ".partial-" + Guid.NewGuid().ToString("N");
@@ -25,16 +28,24 @@ public static class BinaryProcess
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 
-    private static async Task<T> RunCoreAsync<T>(ProcessSpec spec, Func<Stream, CancellationToken, Task<T>> read, CancellationToken ct)
+    private static async Task<T> RunCoreAsync<T>(ProcessSpec spec, Func<Stream, CancellationToken, Task<T>> read, CancellationToken ct, bool textEvidence = false)
     {
         ct.ThrowIfCancellationRequested();
+        var started = DateTimeOffset.UtcNow;
+        var ticks = Stopwatch.GetTimestamp();
+        var operation = DebugOperation.Current.Value;
+        var evidence = textEvidence ? operation?.NewToolPath() : null;
         using var process = Process.Start(ProcessStartInfoFactory.Create(spec)) ?? throw new IOException("无法启动工具。");
         void Kill() { try { if (!process.HasExited) process.Kill(true); } catch (InvalidOperationException) { } }
         using var registration = ct.Register(Kill);
         async Task<V> Guard<V>(Task<V> task) { try { return await task; } catch { Kill(); throw; } }
         // Either pipe failing must stop the producer, including a full stderr pipe.
-        var stderr = Guard(ReadBoundedAsync(process.StandardError.BaseStream, 1024 * 1024, ct));
-        var stdout = Guard(read(process.StandardOutput.BaseStream, ct));
+        // Text commands drain both bounded pipes after cancellation kills the owned tree,
+        // retaining output produced before interruption. Binary paths keep their old contract.
+        var readToken = textEvidence ? CancellationToken.None : ct;
+        var stderr = Guard(ReadBoundedAsync(process.StandardError.BaseStream, 1024 * 1024, readToken));
+        var stdout = Guard(read(process.StandardOutput.BaseStream, readToken));
+        string? failure = null;
         try
         {
             await Task.WhenAll(stdout, stderr, process.WaitForExitAsync(ct));
@@ -49,7 +60,32 @@ public static class BinaryProcess
             }
             return await stdout;
         }
-        finally { Kill(); await process.WaitForExitAsync(CancellationToken.None); }
+        catch (Exception error)
+        {
+            failure = error.GetType().Name;
+            if (evidence is not null) error.Data["toolEvidencePath"] = evidence;
+            throw;
+        }
+        finally
+        {
+            Kill(); await process.WaitForExitAsync(CancellationToken.None);
+            if (evidence is not null)
+            {
+                var stdoutPath = Path.ChangeExtension(evidence, ".stdout.txt");
+                var stderrPath = Path.ChangeExtension(evidence, ".stderr.txt");
+                if (stdout.IsCompletedSuccessfully && stdout.Result is byte[] output) await File.WriteAllBytesAsync(stdoutPath, output);
+                if (stderr.IsCompletedSuccessfully) await File.WriteAllBytesAsync(stderrPath, stderr.Result);
+                await File.WriteAllTextAsync(evidence, DebugJson.Write(new
+                {
+                    operation!.RequestId, operation.JobId, operation.Session, stage = operation.Stage,
+                    tool = Path.GetFileName(spec.FileName), pid = process.Id, startedAt = started,
+                    elapsedMs = Stopwatch.GetElapsedTime(ticks).TotalMilliseconds, exitCode = process.ExitCode,
+                    cancelled = ct.IsCancellationRequested, failure, reaped = process.HasExited,
+                    stdoutComplete = stdout.IsCompletedSuccessfully, stderrComplete = stderr.IsCompletedSuccessfully,
+                    stdoutPath = File.Exists(stdoutPath) ? stdoutPath : null, stderrPath = File.Exists(stderrPath) ? stderrPath : null
+                }));
+            }
+        }
     }
 
     public static async Task<long> CopyBoundedAsync(Stream source, Stream destination, long limit, CancellationToken ct)

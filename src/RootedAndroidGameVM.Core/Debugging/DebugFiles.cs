@@ -117,10 +117,14 @@ public sealed partial class AndroidDebugService
         {
             var child = "\"$dest\"/" + Q(segment);
             await ShellAsync("set -e; " + Containment(root, currentParent) + "test -d \"$dest\"; if ! test -e " + child + "; then mkdir " + child + "; " +
-                (rootAccess ? "chown $(stat -c %u:%g " + Q(root) + ") " + child + "; chmod 700 " + child + "; restorecon " + child + "; " : "") + "fi", rootAccess, ct);
+                "chmod " + FileAccessPolicy.DirectoryMode(scope) + " " + child + "; " +
+                (rootAccess ? "chown $(stat -c %u:%g " + Q(root) + ") " + child + "; restorecon " + child + "; " : "") + "fi", rootAccess, ct);
             currentParent += "/" + segment;
         }
         await ShellAsync(Containment(root, parent) + "test -d \"$dest\"", rootAccess, ct);
+        var previousMode = (await ShellAsync(Containment(root, parent) + "test ! -L " + Q(remote) +
+            " || exit 43; if test -e " + Q(remote) + "; then test -f " + Q(remote) + " || exit 44; stat -c %a " + Q(remote) + "; fi", rootAccess, ct)).Trim();
+        var fileMode = FileAccessPolicy.FileMode(scope, previousMode.Length == 0 ? null : previousMode);
         var hashExpected = (await ColdCheckpoint.DigestAsync(Path.GetDirectoryName(Path.GetFullPath(local))!, Path.GetFullPath(local), ct)).Sha256.ToLowerInvariant();
         var nonce = Guid.NewGuid().ToString("N"); var transit = "/data/local/tmp/rgvm-upload-" + nonce;
         var stage = parent + "/.rgvm-stage-" + nonce; var backupRemote = parent + "/.rgvm-backup-" + nonce;
@@ -133,11 +137,12 @@ public sealed partial class AndroidDebugService
                 "cp " + Q(transit) + " " + Q(stage) + "; " +
                 "test \"$(sha256sum " + Q(stage) + " | cut -d' ' -f1)\" = " + Q(hashExpected) + "; " +
                 "if test -e " + Q(remote) + "; then cp -p " + Q(remote) + " " + Q(backupRemote) + "; " +
-                "chmod $(stat -c %a " + Q(remote) + ") " + Q(stage) + "; " + (rootAccess ? "chown $(stat -c %u:%g " + Q(remote) + ") " + Q(stage) + "; " : "") +
-                "else chmod 600 " + Q(stage) + "; " + (rootAccess ? "chown $(stat -c %u:%g " + Q(root) + ") " + Q(stage) + "; " : "") + "fi; " +
+                "fi; chmod " + fileMode + " " + Q(stage) + "; " + (rootAccess ? "chown $(stat -c %u:%g " + Q(root) + ") " + Q(stage) + "; " : "") +
                 "mv -f " + Q(stage) + " " + Q(remote) + "; " + (rootAccess ? "restorecon " + Q(remote) + "; " : "") + "sync";
             var committed = await ShellAsync(script + "; if test -f " + Q(backupRemote) + "; then echo backup-created; fi", rootAccess, ct);
-            return new { remote, backup = committed.Contains("backup-created", StringComparison.Ordinal) ? backupRemote : null, sha256 = hashExpected, atomic = true };
+            var permissions = (await ShellAsync("stat -c '%u:%g:%a' " + Q(remote), rootAccess, ct)).Trim();
+            return new { remote, backup = committed.Contains("backup-created", StringComparison.Ordinal) ? backupRemote : null,
+                sha256 = hashExpected, atomic = true, scope, permissions, applicationReadVerified = false };
         }
         finally
         {

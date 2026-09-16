@@ -46,15 +46,16 @@ public sealed partial class AndroidDebugService : IDisposable
     }
     public async Task<string> AdbAsync(string[] args, CancellationToken ct, int limit = 8 * 1024 * 1024)
     {
-        Instance.Require();
-        var bytes = await BinaryProcess.RunAsync(AndroidCommandFactory.Adb(Layout, Options, args), limit, ct);
-        return Encoding.UTF8.GetString(bytes);
+        var host = Instance.Require();
+        if (DebugOperation.Current.Value is { } operation) operation.Session = $"{host.ProcessId}:{host.StartedAtUtcTicks}";
+        return await BinaryProcess.RunTextAsync(AndroidCommandFactory.Adb(Layout, Options, args), limit, ct);
     }
     public async Task<string> ShellAsync(string script, bool root, CancellationToken ct, bool strict = true)
     {
-        Instance.Require(force: strict);
+        var host = Instance.Require(force: strict);
+        if (DebugOperation.Current.Value is { } operation) operation.Session = $"{host.ProcessId}:{host.StartedAtUtcTicks}";
         var spec = root ? AndroidCommandFactory.RootShell(Layout, Options, script) : AndroidCommandFactory.Adb(Layout, Options, "shell", script);
-        return Encoding.UTF8.GetString(await BinaryProcess.RunAsync(spec, 8 * 1024 * 1024, ct));
+        return await BinaryProcess.RunTextAsync(spec, 8 * 1024 * 1024, ct);
     }
     public static string Q(string value) => "'" + value.Replace("'", "'\"'\"'") + "'";
     public async Task<object> StatusAsync(CancellationToken ct)
@@ -361,7 +362,7 @@ public sealed partial class AndroidDebugService : IDisposable
                 }
             case "checkpoint.recover": await StopAsync(ct); return await Checkpoints.RecoverPendingAsync(ct);
             case "files.list": case "files.pull": case "files.push": case "files.diff": case "files.sync": case "files.export": return await FilesAsync(request, ct);
-            case "malody.import": case "malody.reload": return await ImportAsync(request.Text("path"), request.Command == "malody.reload", ct);
+            case "malody.import": case "malody.reload": return await ImportAsync(request, ct);
             case "logs": return await LogsAsync(package, Math.Clamp(request.Number("seconds", 30), 1, 3600), ct);
             case "metrics": return await MetricsAsync(package, ct);
             case "record": case "trace": return await RecordAsync(request.Command, Math.Clamp(request.Number("seconds", 30), 1, 180), ct);

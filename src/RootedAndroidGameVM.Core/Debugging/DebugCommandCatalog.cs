@@ -33,7 +33,7 @@ public static class DebugCommandCatalog
         new("files.export", "受控导出选中目录", "{\"scope\":\"private\",\"remote\":\"files\",\"local\":\"C:\\\\output\"}"),
         new("files.diff", "目录差异比较", "{\"scope\":\"external\",\"remote\":\"files/qa\",\"local\":\"C:\\\\qa\"}"),
         new("files.sync", "同步变化文件并保留额外文件", "{\"scope\":\"external\",\"remote\":\"files/qa\",\"local\":\"C:\\\\qa\"}"),
-        new("malody.import", "由 Malody 自身导入", "{\"path\":\"C:\\\\input\\\\content.msp\"}"),
+        new("malody.import", "由 Malody 导入并核验；续作使用{importId:原编号}替代path，不再上传", "{\"path\":\"C:\\\\input\\\\content.msp\"}"),
         new("malody.reload", "重启应用后导入并验证解包", "{\"path\":\"C:\\\\input\\\\content.mcz\"}"),
         new("logs", "跟随应用 PID 的日志", "{\"package\":\"test.app\",\"seconds\":30}"),
         new("metrics", "内存、CPU 与可用诊断依据", "{\"package\":\"test.app\"}"),
