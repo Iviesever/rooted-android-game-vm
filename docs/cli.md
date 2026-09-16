@@ -15,6 +15,8 @@ $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.ex
 
 普通响应为一行 JSON，`schemaVersion` 为 1，`ok` 表示该层操作是否成功。长操作先返回 `jobId`；任务真正的结果在后续 `job` 响应的 `result` 内。`--wait` 持续输出 NDJSON 状态，直到任务结束。诊断文本写入 stderr。
 
+`launch` 发送一次启动指令后，会在最多30秒内等待 PID 出现，避免较慢启动时立即 `pidof` 返回1造成误报。返回 `stage:process_observed` 与 `interactiveReady:false` 只证明当时观察到进程，页面就绪和后续是否被低内存终止须另行核验。超时返回 `app_not_running`，取消与设备错误保留原类别。
+
 内存审计版本：完成任务的完整 `DebugReply` 存到 `debug-runs/job-results/<jobId>.json`；`jobs` 只返回摘要与路径，单个 `job` 对不超过 1 MiB 的结果保持内联。更大的结果返回 `{resultPath,resultBytes,inline:false}`，读取该本地 JSON 才是完整结果。失败仍保持 `ok:false` 与错误码。最多 16 个未完成任务、约 128 份完成任务索引；裁剪索引不删除证据文件。管道请求上限为 1 MiB，响应帧上限仍为 16 MiB。批量 `test` 的每步输出改存 `step-0000.json` 等文件，步骤索引给出 `resultPath`，避免在内存和每次响应中叠加全部输出。
 
 推荐用请求文件，避免 PowerShell 引号转义：

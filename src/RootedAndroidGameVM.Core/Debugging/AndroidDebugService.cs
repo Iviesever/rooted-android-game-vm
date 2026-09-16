@@ -322,7 +322,12 @@ public sealed partial class AndroidDebugService : IDisposable
             case "clipboard": return new { text = await Transport.ClipboardAsync(request.Arguments?.ContainsKey("text") == true ? request.Text("text") : null, ct) };
             case "shell": case "root-shell": return new { stdout = await ShellAsync(request.Text("script"), request.Command == "root-shell", ct) };
             case "apps": return await _controller.ListThirdPartyPackagesAsync(ct);
-            case "launch": AndroidPackageName.Parse(package); await _controller.LaunchPackageAsync(package, ct); return new { package, pid = (await ShellAsync("pidof " + Q(package), false, ct)).Trim() };
+            case "launch":
+                AndroidPackageName.Parse(package);
+                await _controller.LaunchPackageAsync(package, ct);
+                var launchedPid = await ApplicationProcessReadiness.WaitAsync(
+                    token => ShellAsync("pidof " + Q(package) + " || true", false, token), TimeSpan.FromSeconds(30), ct);
+                return new { package, pid = launchedPid, stage = "process_observed", interactiveReady = false };
             case "force-stop": AndroidPackageName.Parse(package); Instance.Require(); await _controller.ForceStopPackageAsync(package, ct); return new { package, stopped = true };
             case "uninstall":
                 AndroidPackageName.Parse(package); Instance.Require(force: true);

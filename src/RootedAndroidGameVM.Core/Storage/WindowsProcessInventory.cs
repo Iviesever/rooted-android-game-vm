@@ -35,28 +35,36 @@ internal static class WindowsProcessInventory
                 if (error == 87) continue; // Exited between enumeration and opening.
                 throw new Win32Exception(error, "无法确认运行时进程归属。");
             }
-            var image = new StringBuilder(512);
-            while (true)
+            try
             {
-                var size = image.Capacity;
-                if (QueryFullProcessImageNameW(process, 0, image, ref size)) break;
-                var error = Marshal.GetLastWin32Error();
-                if (error != 122 || image.Capacity >= 32768) throw new Win32Exception(error);
-                image.Capacity *= 2;
+                var image = new StringBuilder(512);
+                while (true)
+                {
+                    var size = image.Capacity;
+                    if (QueryFullProcessImageNameW(process, 0, image, ref size)) break;
+                    var error = Marshal.GetLastWin32Error();
+                    if (error != 122 || image.Capacity >= 32768) throw new Win32Exception(error);
+                    image.Capacity *= 2;
+                }
+                var path = Path.GetFullPath(image.ToString());
+                if (!paths.Contains(path)) continue;
+                if (!GetProcessTimes(process, out var created, out _, out _, out _)) throw new Win32Exception(Marshal.GetLastWin32Error());
+                var commandLine = ReadCommandLine(process);
+                if (!GetExitCodeProcess(process, out var code)) throw new Win32Exception(Marshal.GetLastWin32Error());
+                if (code != 259) continue;
+                var arguments = WindowsEmulatorProcessCatalog.SplitCommandLine(commandLine);
+                var directory = WindowsEmulatorProcessCatalog.ReadArgument(arguments, "-datadir");
+                directory = directory is not null && Path.IsPathFullyQualified(directory)
+                    ? Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory)) : null;
+                result.Add(new(checked((int)entry.Pid), checked((int)entry.ParentPid), path,
+                    DateTime.FromFileTimeUtc(created).Ticks, WindowsEmulatorProcessCatalog.ReadArgument(arguments, "-avd"), directory,
+                    int.TryParse(WindowsEmulatorProcessCatalog.ReadArgument(arguments, "-port"), out var port) ? port : null));
             }
-            var path = Path.GetFullPath(image.ToString());
-            if (!paths.Contains(path)) continue;
-            if (!GetProcessTimes(process, out var created, out _, out _, out _)) throw new Win32Exception(Marshal.GetLastWin32Error());
-            var commandLine = ReadCommandLine(process);
-            if (!GetExitCodeProcess(process, out var code)) throw new Win32Exception(Marshal.GetLastWin32Error());
-            if (code != 259) continue;
-            var arguments = WindowsEmulatorProcessCatalog.SplitCommandLine(commandLine);
-            var directory = WindowsEmulatorProcessCatalog.ReadArgument(arguments, "-datadir");
-            directory = directory is not null && Path.IsPathFullyQualified(directory)
-                ? Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory)) : null;
-            result.Add(new(checked((int)entry.Pid), checked((int)entry.ParentPid), path,
-                DateTime.FromFileTimeUtc(created).Ticks, WindowsEmulatorProcessCatalog.ReadArgument(arguments, "-avd"), directory,
-                int.TryParse(WindowsEmulatorProcessCatalog.ReadArgument(arguments, "-port"), out var port) ? port : null));
+            catch (Exception error) when ((error is Win32Exception or IOException) &&
+                                          GetExitCodeProcess(process, out var exitCode) && exitCode != 259)
+            {
+                // A short-lived tool exited while querying it; do not discard the other live identities.
+            }
         } while (Process32NextW(snapshot, ref entry));
         var lastError = Marshal.GetLastWin32Error();
         if (lastError != 18) throw new Win32Exception(lastError);
