@@ -31,7 +31,14 @@ public partial class App : Application
             if (MigrationJournal.Read(new ProductStorageLocation()) is not null)
                 new StorageWindow { WindowStartupLocation = WindowStartupLocation.CenterScreen }.Show();
             else
+            {
+                // The workbench is a low-rate control UI; avoid a second GPU/driver rendering context
+                // when the VM is configured for a small memory footprint. Android still uses its GPU.
+                if (new RootedAndroidGameVM.Core.Android.RuntimeProfileStore(
+                    RootedAndroidGameVM.Core.Setup.InstallPaths.CreateDefault()).Read().LowRam)
+                    System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
                 new WorkstationWindow().Show();
+            }
         }
         catch (Exception exception)
         {
