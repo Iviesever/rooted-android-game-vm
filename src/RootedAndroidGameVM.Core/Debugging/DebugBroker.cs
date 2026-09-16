@@ -21,8 +21,8 @@ public sealed partial class DebugBroker : IDisposable
     private int _active;
     private bool _exclusive;
     private StorageOperationLease? _storageLease;
-    private static readonly HashSet<string> Quick = ["status", "capabilities", "schema", "runtime.inspect", "screen", "preview", "apps", "metrics", "checkpoint.list", "files.list", "clipboard", "release", "wake", "key"];
-    private static readonly HashSet<string> Readers = ["status", "capabilities", "schema", "runtime.inspect", "screen", "preview", "preview.benchmark", "frames.sample", "apps", "metrics", "checkpoint.list", "files.list", "logs", "record", "trace", "licenses"];
+    private static readonly HashSet<string> Quick = ["status", "memory.snapshot", "capabilities", "schema", "runtime.inspect", "screen", "preview", "apps", "metrics", "checkpoint.list", "files.list", "clipboard", "release", "wake", "key"];
+    private static readonly HashSet<string> Readers = ["status", "memory.snapshot", "capabilities", "schema", "runtime.inspect", "screen", "preview", "preview.benchmark", "frames.sample", "apps", "metrics", "checkpoint.list", "files.list", "logs", "record", "trace", "licenses"];
     public async Task RunAsync(CancellationToken ct)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _shutdown.Token); ct = linked.Token;
@@ -53,15 +53,15 @@ public sealed partial class DebugBroker : IDisposable
             try
             {
                 using var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct); requestTimeout.CancelAfter(TimeSpan.FromMinutes(3));
-                var bytes = await ReadFrameAsync(pipe, requestTimeout.Token);
+                var bytes = await ReadFrameAsync(pipe, requestTimeout.Token, 1024 * 1024);
                 var request = JsonSerializer.Deserialize<DebugRequest>(bytes, DebugJson.Options) ?? throw new ArgumentException("空请求。");
                 var reply = await DispatchAsync(request, requestTimeout.Token);
                 if (reply.Result is PreviewFrame frame)
                 {
-                    await WriteFrameAsync(pipe, Encoding.UTF8.GetBytes(DebugJson.Write(new DebugReply(true, frame.Metadata))), requestTimeout.Token);
+                    await WriteFrameAsync(pipe, JsonSerializer.SerializeToUtf8Bytes(new DebugReply(true, frame.Metadata), DebugJson.Options), requestTimeout.Token);
                     await WriteFrameAsync(pipe, frame.Payload, requestTimeout.Token);
                 }
-                else await WriteFrameAsync(pipe, Encoding.UTF8.GetBytes(DebugJson.Write(reply)), requestTimeout.Token);
+                else await WriteFrameAsync(pipe, JsonSerializer.SerializeToUtf8Bytes(reply, DebugJson.Options), requestTimeout.Token);
             }
             catch (IOException) { /* Client disconnected. Finite input leases release its contacts. */ }
             catch (Exception e)
@@ -73,7 +73,7 @@ public sealed partial class DebugBroker : IDisposable
     public async Task<DebugReply> DispatchAsync(DebugRequest request, CancellationToken ct)
     {
         if (request.SchemaVersion != 1) return DebugReply.Failure(new ArgumentException("未知协议版本。"));
-        if (request.Command == "jobs") return new(true, _jobs.Values.Select(j => j.Snapshot()).ToArray());
+        if (request.Command == "jobs") return new(true, _jobs.Values.Select(j => j.Snapshot(includeResult: false)).ToArray());
         if (request.Command is "job" or "cancel")
         {
             if (!_jobs.TryGetValue(request.Text("id"), out var job)) return DebugReply.Failure(new ArgumentException("任务不存在。"));
@@ -104,20 +104,30 @@ public sealed partial class DebugBroker : IDisposable
         }
         if (Quick.Contains(request.Command)) return await InvokeAsync(request, ct);
         // Keep bounded task metadata. Artifacts on disk are not removed by pruning.
-        foreach (var old in _jobs.Values.Where(j => j.Completed).OrderBy(j => j.Created).Take(Math.Max(0, _jobs.Count - 127)))
-            if (_jobs.TryRemove(old.Id, out var removed)) removed.Cancel.Dispose();
-        if (_jobs.Count >= 256) return DebugReply.Failure(new DebugException("busy", "并发任务过多。"));
-        var created = new DebugJob(request.Command); _jobs[created.Id] = created;
+        DebugJob created;
+        lock (_jobs)
+        {
+            foreach (var old in _jobs.Values.Where(j => j.Completed).OrderBy(j => j.Created).Take(Math.Max(0, _jobs.Count - 127)))
+                _jobs.TryRemove(old.Id, out _);
+            if (_jobs.Values.Count(j => !j.Completed) >= 16) return DebugReply.Failure(new DebugException("busy", "并发任务过多。"));
+            created = new DebugJob(request.Command); _jobs[created.Id] = created;
+        }
+        var resultDirectory = Path.Combine(_service.Paths.ProductRoot, "debug-runs", "job-results");
         created.Work = Task.Run(async () =>
         {
             AndroidDebugService.Progress.Value = value => created.Progress = value;
             using var timeLimit = CancellationTokenSource.CreateLinkedTokenSource(created.Cancel.Token);
-            var seconds = Math.Clamp(request.Number("timeoutSeconds", request.Command is "shell" or "root-shell" ? 120 : 7200), 1, 7200);
-            timeLimit.CancelAfter(TimeSpan.FromSeconds(seconds));
-            created.Result = await InvokeAsync(request, timeLimit.Token);
-            if (timeLimit.IsCancellationRequested && !created.Cancel.IsCancellationRequested)
-                created.Result = DebugReply.Failure(new TimeoutException("调试任务超时，已停止并清理所属操作。"));
-            created.Completed = true;
+            try
+            {
+                var seconds = Math.Clamp(request.Number("timeoutSeconds", request.Command is "shell" or "root-shell" ? 120 : 7200), 1, 7200);
+                timeLimit.CancelAfter(TimeSpan.FromSeconds(seconds));
+                var result = await InvokeAsync(request, timeLimit.Token);
+                if (timeLimit.IsCancellationRequested && !created.Cancel.IsCancellationRequested)
+                    result = DebugReply.Failure(new TimeoutException("调试任务超时，已停止并清理所属操作。"));
+                created.Stored = await StoredJobResult.WriteAsync(resultDirectory, created.Id, result);
+            }
+            catch (Exception error) { created.Failure = DebugReply.Failure(error); }
+            finally { created.Progress = null; created.Completed = true; AndroidDebugService.Progress.Value = null; }
         }, CancellationToken.None);
         return new(true, new { jobId = created.Id, status = "queued", inputLeaseSeconds = request.Command == "input" ? (int?)5 : null });
     }
@@ -164,13 +174,13 @@ public sealed partial class DebugBroker : IDisposable
         }
         catch (Exception e) { return DebugReply.Failure(e); }
     }
-    public static async Task<byte[]> ReadFrameAsync(Stream stream, CancellationToken ct)
+    public static async Task<byte[]> ReadFrameAsync(Stream stream, CancellationToken ct, int limit = 16 * 1024 * 1024)
     {
         var header = new byte[4]; await stream.ReadExactlyAsync(header, ct); var length = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(header);
-        if (length is < 1 or > 16 * 1024 * 1024) throw new IOException("消息超出协议上限。");
+        if (length < 1 || length > limit) throw new IOException("消息超出协议上限。");
         var buffer = new byte[length]; await stream.ReadExactlyAsync(buffer, ct); return buffer;
     }
-    public static async Task WriteFrameAsync(Stream stream, byte[] bytes, CancellationToken ct)
+    public static async Task WriteFrameAsync(Stream stream, ReadOnlyMemory<byte> bytes, CancellationToken ct)
     {
         if (bytes.Length > 16 * 1024 * 1024) throw new IOException("响应超出协议上限。");
         await stream.WriteAsync(BitConverter.GetBytes(bytes.Length), ct); await stream.WriteAsync(bytes, ct); await stream.FlushAsync(ct);
@@ -182,17 +192,19 @@ public sealed partial class DebugBroker : IDisposable
         public DateTimeOffset Created { get; } = DateTimeOffset.UtcNow;
         public DateTimeOffset LastSeen { get; set; } = DateTimeOffset.UtcNow;
         public CancellationTokenSource Cancel { get; } = new(); public Task? Work { get; set; }
-        public volatile bool Completed; public DebugReply? Result;
+        public volatile bool Completed; public StoredJobResult? Stored; public DebugReply? Failure;
+        public DebugReply? Result => Failure ?? Stored?.Read();
         public object? Progress;
-        public object Snapshot() => new
+        public object Snapshot(bool includeResult = true) => new
         {
             jobId = Id,
             command = Command,
             created = Created,
             completed = Completed,
-            status = !Completed ? Cancel.IsCancellationRequested ? "cancelling" : "running" : Result?.Ok == true ? "succeeded" : "failed",
+            status = !Completed ? Cancel.IsCancellationRequested ? "cancelling" : "running" : Failure is null && Stored?.Ok == true ? "succeeded" : "failed",
             progress = Progress,
-            result = Result
+            result = includeResult ? Result : Failure ?? Stored?.Reference(),
+            resultPath = Stored?.Path
         };
     }
 }

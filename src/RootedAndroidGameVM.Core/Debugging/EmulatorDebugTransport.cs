@@ -71,7 +71,7 @@ public sealed class EmulatorDebugTransport(OwnedInstance instance, int port) : I
     public async Task<bool> IsBlankAsync(CancellationToken ct)
     {
         var image = await Client().getScreenshotAsync(new ImageFormat { Format = ImageFormat.Types.ImgFormat.Rgba8888, Width = 64, Height = 64 }, _headers, DateTime.UtcNow.AddSeconds(5), ct);
-        var bytes = image.Image_.ToByteArray();
+        var bytes = image.Image_.Span;
         if (bytes.Length < 4) return true;
         for (var i = 0; i + 3 < bytes.Length; i += 4) if (bytes[i] > 4 || bytes[i + 1] > 4 || bytes[i + 2] > 4) return false;
         return true;

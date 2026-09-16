@@ -27,6 +27,7 @@ public sealed partial class AndroidDebugService : IDisposable
     private AndroidVmController _controller;
     private readonly Dictionary<string, ScreenObservation> _observations = new();
     private readonly SemaphoreSlim _stateGate = new(1, 1);
+    private readonly SemaphoreSlim _captureGate = new(1, 1);
     private (bool Boot, bool Awake, bool Locked, string? Foreground, int Rotation)? _cachedState;
     private string? _cachedStateSession;
     private long _stateAt;
@@ -137,36 +138,48 @@ public sealed partial class AndroidDebugService : IDisposable
     }
     public async Task<PreviewFrame> PreviewAsync(CancellationToken ct)
     {
+        await _captureGate.WaitAsync(ct);
+        try { return await PreviewCoreAsync(ct); }
+        finally { _captureGate.Release(); }
+    }
+    private async Task<PreviewFrame> PreviewCoreAsync(CancellationToken ct)
+    {
         var host = Instance.Require(); var state = await StateAsync(ct);
         var frame = await Transport.PreviewAsync(ct);
-        var bytes = frame.Image.Image_.ToByteArray(); var size = PngSize(bytes);
+        var bytes = frame.Image.Image_.Memory; var size = PngSize(bytes.Span);
         if (bytes.Length > 8 * 1024 * 1024) throw new IOException("预览数据超限。");
         var after = Instance.Require();
         if (host.ProcessId != after.ProcessId || host.StartedAtUtcTicks != after.StartedAtUtcTicks) throw new DebugException("stale_observation", "会话已变化。");
         return new(new($"{host.ProcessId}:{host.StartedAtUtcTicks}", size.Width, size.Height, frame.Width, frame.Height,
             state.Rotation, (int)frame.Image.Format.Rotation.Rotation_ * 90, state.Foreground, state.Awake, state.Locked, DateTimeOffset.UtcNow, bytes.Length), bytes);
     }
-    public static (int Width, int Height) PngSize(byte[] png)
+    public static (int Width, int Height) PngSize(ReadOnlySpan<byte> png)
     {
-        if (png.Length < 24 || !png.AsSpan(0, 8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }) || Encoding.ASCII.GetString(png, 12, 4) != "IHDR")
+        if (png.Length < 24 || !png[..8].SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }) || !png.Slice(12, 4).SequenceEqual("IHDR"u8))
             throw new IOException("截图不是有效 PNG。");
-        var w = BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(16, 4)); var h = BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(20, 4));
+        var w = BinaryPrimitives.ReadInt32BigEndian(png.Slice(16, 4)); var h = BinaryPrimitives.ReadInt32BigEndian(png.Slice(20, 4));
         if (w < 1 || h < 1 || w > 16384 || h > 16384) throw new IOException("截图尺寸无效。");
         return (w, h);
     }
     public async Task<ScreenObservation> ScreenshotAsync(string? directory, CancellationToken ct)
     {
+        await _captureGate.WaitAsync(ct);
+        try { return await ScreenshotCoreAsync(directory, ct); }
+        finally { _captureGate.Release(); }
+    }
+    private async Task<ScreenObservation> ScreenshotCoreAsync(string? directory, CancellationToken ct)
+    {
         var host = Instance.Require(); var state = await StateAsync(ct);
-        byte[] png; var backend = "emulator-grpc"; var rotation = state.Rotation; var imageRotation = rotation; bool? blank = null;
-        try { var image = await Transport.ScreenshotAsync(ct); png = image.Image_.ToByteArray(); imageRotation = (int)image.Format.Rotation.Rotation_ * 90; blank = await Transport.IsBlankAsync(ct); }
+        ReadOnlyMemory<byte> png; var backend = "emulator-grpc"; var rotation = state.Rotation; var imageRotation = rotation; bool? blank = null;
+        try { var image = await Transport.ScreenshotAsync(ct); png = image.Image_.Memory; imageRotation = (int)image.Format.Rotation.Rotation_ * 90; blank = await Transport.IsBlankAsync(ct); }
         catch (Exception e) when (e is RpcException or DebugException { Code: "grpc_unavailable" })
         { backend = "adb-exec-out"; png = await BinaryProcess.RunAsync(AndroidCommandFactory.Adb(Layout, Options, "exec-out", "screencap", "-p"), 64 * 1024 * 1024, ct); }
-        var size = PngSize(png);
+        var size = PngSize(png.Span);
         var after = Instance.Require();
         if (after.ProcessId != host.ProcessId || after.StartedAtUtcTicks != host.StartedAtUtcTicks) throw new DebugException("stale_observation", "截图期间会话发生变化。");
         directory ??= NewRecord("screen"); Directory.CreateDirectory(directory);
         var id = Guid.NewGuid().ToString("N"); var path = Path.Combine(directory, id + ".png");
-        await File.WriteAllBytesAsync(path, png, ct);
+        await using (var file = File.Create(path)) await file.WriteAsync(png, ct);
         var result = new ScreenObservation(id, $"{host.ProcessId}:{host.StartedAtUtcTicks}", path, backend, size.Width, size.Height,
             rotation, 0, state.Foreground, state.Boot, state.Awake, state.Locked, DateTimeOffset.UtcNow, imageRotation, blank);
         await File.WriteAllTextAsync(Path.ChangeExtension(path, ".json"), DebugJson.Write(result), ct);
@@ -245,8 +258,10 @@ public sealed partial class AndroidDebugService : IDisposable
                 return assembly.GetManifestResourceNames().Where(n => n.Contains("Licenses.")).ToDictionary(n => n,
                     n => { using var reader = new StreamReader(assembly.GetManifestResourceStream(n)!); return reader.ReadToEnd(); });
             case "status": return await StatusAsync(ct);
+            case "memory.snapshot": return ProcessMemory.Read(Paths);
             case "grpc.audit": return await Transport.AuditAuthenticationAsync(ct);
-            case "schema": return new { protocolVersion = 1, commands = DebugCommandCatalog.Commands, inputLeaseSeconds = 5, inputCoordinates = "原始 PNG 像素", maxTouches = 10 };
+            case "schema": return new { protocolVersion = 1, commands = DebugCommandCatalog.Commands, inputLeaseSeconds = 5, inputCoordinates = "原始 PNG 像素", maxTouches = 10,
+                maxRequestBytes = 1024 * 1024, maxInlineJobResultBytes = StoredJobResult.MaxInlineBytes, jobResultsOnDisk = true, testStepResultsOnDisk = true };
             case "runtime.inspect":
                 var requestedProfile = new RuntimeProfileStore(Paths).Read();
                 DisplayTelemetry? observedDisplay = null;
@@ -262,7 +277,7 @@ public sealed partial class AndroidDebugService : IDisposable
                     requested = requestedProfile,
                     observed = observedDisplay,
                     host = memoryCapacity,
-                    startAdmission = observedDisplay is null ? VmMemoryPolicy.Assess(requestedProfile.MemoryMb, memoryCapacity) : null,
+                    startAdmission = observedDisplay is null ? VmMemoryPolicy.Assess(requestedProfile.MemoryMb, memoryCapacity, requestedProfile.StartAvailableMb) : null,
                     requestedRefreshConfirmed = observedDisplay?.ConfirmsRequestedRate(requestedProfile.RefreshRate) ?? false
                 };
             case "runtime.configure":
@@ -281,6 +296,8 @@ public sealed partial class AndroidDebugService : IDisposable
                     inputBackend = "authenticated-loopback-grpc",
                     screenshotFallback = "binary-adb",
                     videoAudio = false,
+                    jobResultsOnDisk = true,
+                    maxInlineJobResultBytes = StoredJobResult.MaxInlineBytes,
                     commands = DebugCommandCatalog.Commands.Select(command => command.Name).ToArray()
                 };
             case "start": await StartAsync(ct); return await StatusAsync(ct);
@@ -346,5 +363,5 @@ public sealed partial class AndroidDebugService : IDisposable
             default: throw new ArgumentException("未知命令：" + request.Command);
         }
     }
-    public void Dispose() { Transport.Dispose(); Instance.Dispose(); _stateGate.Dispose(); }
+    public void Dispose() { Transport.Dispose(); Instance.Dispose(); _stateGate.Dispose(); _captureGate.Dispose(); }
 }

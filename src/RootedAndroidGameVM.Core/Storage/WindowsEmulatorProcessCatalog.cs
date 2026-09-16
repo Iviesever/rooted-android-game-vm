@@ -41,8 +41,9 @@ public sealed class WindowsEmulatorProcessCatalog : IEmulatorProcessCatalog
                     if (avdDirectory is not null && Path.IsPathFullyQualified(avdDirectory))
                         avdDirectory = Path.TrimEndingDirectorySeparator(Path.GetFullPath(avdDirectory));
                     else avdDirectory = null;
+                    var creationDate = (string?)ReadProperty(row, "CreationDate") ?? throw new IOException("进程已退出或无法读取启动时间。");
                     result.Add(new HostProcessIdentity(Convert.ToInt32(ReadProperty(row, "ProcessId")), Convert.ToInt32(ReadProperty(row, "ParentProcessId")), path,
-                        ReadCreationTicks((string)ReadProperty(row, "CreationDate")!), ReadArgument(args, "-avd"), avdDirectory,
+                        ReadCreationTicks(creationDate), ReadArgument(args, "-avd"), avdDirectory,
                         int.TryParse(ReadArgument(args, "-port"), out var port) ? port : null));
                 }
                 finally { Marshal.FinalReleaseComObject(item); }
@@ -66,7 +67,8 @@ public sealed class WindowsEmulatorProcessCatalog : IEmulatorProcessCatalog
         try
         {
             property = properties.Item(name);
-            return ((dynamic)property).Value;
+            object? value = ((dynamic)property).Value;
+            return value is DBNull ? null : value;
         }
         finally
         {

@@ -12,12 +12,15 @@ public sealed record RuntimeProfile(
     int CpuCores,
     bool Vulkan = false,
     string Orientation = "landscape",
-    bool DesktopDisplay = true)
+    bool DesktopDisplay = true,
+    int StartAvailableMb = 0)
 {
     public static RuntimeProfile Recommended { get; } = new("host", 1920, 1080, 240, 120, 3072, 4);
 
     public RuntimeProfile Validate(long hostMemoryMb = long.MaxValue, int hostLogicalCores = 128)
     {
+        if (StartAvailableMb != 0 && (StartAvailableMb < 4096 || StartAvailableMb > hostMemoryMb))
+            throw new ArgumentException("启动物理余量门槛须为 0（自动）或至少 4096 MiB，且不超过宿主物理内存。");
         if (Renderer is not ("host" or "software" or "swiftshader" or "swiftshader_indirect"))
             throw new ArgumentException("未知图形后端。");
         if (Width is < 480 or > 3840 || Height is < 320 or > 3840 || (long)Width * Height > 8_294_400)
@@ -45,6 +48,7 @@ public sealed record RuntimeProfile(
         ["hw.initialOrientation"] = Orientation,
         ["rgvm.vulkan"] = Vulkan ? "yes" : "no",
         ["rgvm.desktopDisplay"] = DesktopDisplay ? "yes" : "no",
+        ["rgvm.startAvailableMb"] = StartAvailableMb.ToString(CultureInfo.InvariantCulture),
         ["rgvm.runtimeProfile"] = "1"
     };
 
@@ -59,6 +63,6 @@ public sealed record RuntimeProfile(
             Number("hw.lcd.width", 1920), Number("hw.lcd.height", 1080), Number("hw.lcd.density", 240),
             Number("hw.lcd.vsync", 60), Number("hw.ramSize", Recommended.MemoryMb), Number("hw.cpu.ncore", 4),
             values.GetValueOrDefault("rgvm.vulkan") == "yes", values.GetValueOrDefault("hw.initialOrientation", "landscape"),
-            values.GetValueOrDefault("rgvm.desktopDisplay") == "yes");
+            values.GetValueOrDefault("rgvm.desktopDisplay") == "yes", Number("rgvm.startAvailableMb", 0));
     }
 }

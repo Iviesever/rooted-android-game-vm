@@ -186,8 +186,9 @@ public sealed partial class AndroidDebugService
             try
             {
                 await Task.Delay(TimeSpan.FromSeconds(seconds), ct);
-                var bytes = await BinaryProcess.RunAsync(AndroidCommandFactory.Adb(Layout, Options, "exec-out", "atrace", "--async_stop", "-z"), 64 * 1024 * 1024, ct);
-                var trace = Path.Combine(dir, "system.atrace"); await File.WriteAllBytesAsync(trace, bytes, ct); return new { directory = dir, trace };
+                var trace = Path.Combine(dir, "system.atrace");
+                var bytes = await BinaryProcess.RunToFileAsync(AndroidCommandFactory.Adb(Layout, Options, "exec-out", "atrace", "--async_stop", "-z"), trace, 64 * 1024 * 1024, ct);
+                return new { directory = dir, trace, bytes };
             }
             finally
             {
@@ -225,7 +226,10 @@ public sealed partial class AndroidDebugService
             {
                 var started = DateTimeOffset.UtcNow;
                 var result = await ExecuteAsync(steps[i], ct);
-                results.Add(new { index = i, started, ended = DateTimeOffset.UtcNow, result });
+                var resultPath = Path.Combine(dir, $"step-{i:D4}.json");
+                await using (var output = File.Create(resultPath))
+                    await JsonSerializer.SerializeAsync(output, result, DebugJson.Options, ct);
+                results.Add(new { index = i, started, ended = DateTimeOffset.UtcNow, resultPath });
                 await File.WriteAllTextAsync(Path.Combine(dir, "results.json"), DebugJson.Write(results), ct);
             }
             return new { directory = dir, completed = true, results };

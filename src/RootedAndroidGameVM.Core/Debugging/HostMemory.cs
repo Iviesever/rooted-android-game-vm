@@ -4,7 +4,7 @@ using System.Runtime.Versioning;
 namespace RootedAndroidGameVM.Core.Debugging;
 
 public sealed record HostMemorySnapshot(long TotalMb, long AvailableMb, int LogicalCores, int LoadPercent,
-    long? AvailableCommitMb = null);
+    long? AvailableCommitMb = null, long? CommitLimitMb = null);
 
 [SupportedOSPlatform("windows")]
 public static class HostMemory
@@ -14,7 +14,7 @@ public static class HostMemory
         var status = new MemoryStatus { Length = (uint)Marshal.SizeOf<MemoryStatus>() };
         if (!GlobalMemoryStatusEx(ref status)) throw new System.ComponentModel.Win32Exception();
         return new((long)(status.TotalPhysical / 1024 / 1024), (long)(status.AvailablePhysical / 1024 / 1024),
-            Environment.ProcessorCount, (int)status.MemoryLoad, (long)(status.AvailablePageFile / 1024 / 1024));
+            Environment.ProcessorCount, (int)status.MemoryLoad, (long)(status.AvailablePageFile / 1024 / 1024), (long)(status.TotalPageFile / 1024 / 1024));
     }
 
     [StructLayout(LayoutKind.Sequential)]

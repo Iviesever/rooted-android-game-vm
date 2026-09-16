@@ -57,7 +57,7 @@ public sealed class VmMemoryPolicyTests
         try
         {
             var runner = new StoppedRunner();
-            var options = AndroidVmOptions.Default with { MemoryMb = 4096 };
+            var options = AndroidVmOptions.Default with { MemoryMb = 4096, StartAvailableMb = 0 };
             var controller = new AndroidVmController(AndroidSdkLayout.FromRoot(root), options, runner,
                 readHostMemory: () => new(16111, 6000, 32, 63, 16000));
             var error = await Assert.ThrowsAsync<HostMemoryInsufficientException>(() => controller.StartAsync());

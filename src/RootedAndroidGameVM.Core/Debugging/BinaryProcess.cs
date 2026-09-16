@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Diagnostics;
 using RootedAndroidGameVM.Core.Processes;
 
@@ -5,43 +6,102 @@ namespace RootedAndroidGameVM.Core.Debugging;
 
 public static class BinaryProcess
 {
-    public static async Task<byte[]> RunAsync(ProcessSpec spec, int limit, CancellationToken ct)
+    private const int BlockSize = 16 * 1024;
+    public static Task<byte[]> RunAsync(ProcessSpec spec, int limit, CancellationToken ct) =>
+        RunCoreAsync(spec, (stream, token) => ReadBoundedAsync(stream, limit, token), ct);
+
+    public static async Task<long> RunToFileAsync(ProcessSpec spec, string path, long limit, CancellationToken ct)
     {
-        using var process = Process.Start(ProcessStartInfoFactory.Create(spec)) ?? throw new IOException("无法启动工具。");
-        using var registration = ct.Register(() => { try { if (!process.HasExited) process.Kill(true); } catch (InvalidOperationException) { } });
-        // Bound both channels, including failure output. Never decode binary stdout.
-        var stderr = ReadBoundedAsync(process.StandardError.BaseStream, 1024 * 1024, ct);
+        var temporary = path + ".partial-" + Guid.NewGuid().ToString("N");
         try
         {
-            var bytes = await ReadBoundedAsync(process.StandardOutput.BaseStream, limit, ct);
-            await process.WaitForExitAsync(ct);
-            var error = await stderr;
+            long bytes;
+            await using (var file = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, BlockSize, true))
+                bytes = await RunCoreAsync(spec, (stream, token) => CopyBoundedAsync(stream, file, limit, token), ct);
+            ct.ThrowIfCancellationRequested();
+            File.Move(temporary, path);
+            return bytes;
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+    }
+
+    private static async Task<T> RunCoreAsync<T>(ProcessSpec spec, Func<Stream, CancellationToken, Task<T>> read, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        using var process = Process.Start(ProcessStartInfoFactory.Create(spec)) ?? throw new IOException("无法启动工具。");
+        void Kill() { try { if (!process.HasExited) process.Kill(true); } catch (InvalidOperationException) { } }
+        using var registration = ct.Register(Kill);
+        async Task<V> Guard<V>(Task<V> task) { try { return await task; } catch { Kill(); throw; } }
+        // Either pipe failing must stop the producer, including a full stderr pipe.
+        var stderr = Guard(ReadBoundedAsync(process.StandardError.BaseStream, 1024 * 1024, ct));
+        var stdout = Guard(read(process.StandardOutput.BaseStream, ct));
+        try
+        {
+            await Task.WhenAll(stdout, stderr, process.WaitForExitAsync(ct));
+            ct.ThrowIfCancellationRequested();
             if (process.ExitCode != 0)
             {
-                var detail = System.Text.Encoding.UTF8.GetString(error);
+                var detail = System.Text.Encoding.UTF8.GetString(await stderr);
                 var code = detail.Contains("unauthorized", StringComparison.OrdinalIgnoreCase) || detail.Contains("Permission denied", StringComparison.OrdinalIgnoreCase) ? "permission_denied" :
                     detail.Contains("device offline", StringComparison.OrdinalIgnoreCase) || detail.Contains("device not found", StringComparison.OrdinalIgnoreCase) ? "device_offline" :
                     detail.Contains("No space left", StringComparison.OrdinalIgnoreCase) ? "disk_full" : "tool_failed";
                 throw new DebugException(code, detail.Length == 0 ? "工具返回非零退出码：" + process.ExitCode : detail);
             }
-            return bytes;
+            return await stdout;
+        }
+        finally { Kill(); await process.WaitForExitAsync(CancellationToken.None); }
+    }
+
+    public static async Task<long> CopyBoundedAsync(Stream source, Stream destination, long limit, CancellationToken ct)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(limit);
+        var buffer = ArrayPool<byte>.Shared.Rent(BlockSize);
+        long total = 0;
+        try
+        {
+            int count;
+            while ((count = await source.ReadAsync(buffer.AsMemory(0, BlockSize), ct)) > 0)
+            {
+                if (count > limit - total) throw LimitExceeded();
+                await destination.WriteAsync(buffer.AsMemory(0, count), ct);
+                total += count;
+            }
+            return total;
+        }
+        finally { ArrayPool<byte>.Shared.Return(buffer, clearArray: true); }
+    }
+
+    public static async Task<byte[]> ReadBoundedAsync(Stream source, int limit, CancellationToken ct)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(limit);
+        var blocks = new List<(byte[] Buffer, int Count)>();
+        byte[]? current = null;
+        var length = 0;
+        try
+        {
+            while (true)
+            {
+                current = ArrayPool<byte>.Shared.Rent(BlockSize);
+                var filled = 0;
+                while (filled < BlockSize)
+                {
+                    var count = await source.ReadAsync(current.AsMemory(filled, BlockSize - filled), ct);
+                    if (count == 0) break;
+                    if (count > limit - length) throw LimitExceeded();
+                    filled += count; length += count;
+                }
+                blocks.Add((current, filled)); current = null;
+                if (filled < BlockSize) break;
+            }
+            var result = new byte[length]; var offset = 0;
+            foreach (var block in blocks) { block.Buffer.AsSpan(0, block.Count).CopyTo(result.AsSpan(offset)); offset += block.Count; }
+            return result;
         }
         finally
         {
-            if (!process.HasExited) process.Kill(true);
-            try { await stderr; } catch { /* Original error has precedence. */ }
+            if (current is not null) ArrayPool<byte>.Shared.Return(current, clearArray: true);
+            foreach (var block in blocks) ArrayPool<byte>.Shared.Return(block.Buffer, clearArray: true);
         }
     }
-    public static async Task<byte[]> ReadBoundedAsync(Stream source, int limit, CancellationToken ct)
-    {
-        using var target = new MemoryStream();
-        var buffer = new byte[65536];
-        int count;
-        while ((count = await source.ReadAsync(buffer, ct)) > 0)
-        {
-            if (target.Length + count > limit) throw new DebugException("output_limit", "输出超过安全上限；本次结果已截断并拒绝使用。");
-            await target.WriteAsync(buffer.AsMemory(0, count), ct);
-        }
-        return target.ToArray();
-    }
+    private static DebugException LimitExceeded() => new("output_limit", "输出超过安全上限；本次结果已截断并拒绝使用。");
 }

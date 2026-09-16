@@ -88,7 +88,7 @@ public sealed class AndroidVmController : IAndroidVmLifecycle
         }
 
         await ReleaseActiveEmulatorHandleAsync(killIfRunning: true, CancellationToken.None);
-        VmMemoryPolicy.RequireStart(_options.MemoryMb, _readHostMemory());
+        VmMemoryPolicy.RequireStart(_options.MemoryMb, _readHostMemory(), _options.StartAvailableMb);
 
         var diagnosticLogPath = _options.Verbose && !string.IsNullOrWhiteSpace(_options.AvdHome)
             ? Path.Combine(

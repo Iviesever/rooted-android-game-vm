@@ -6,6 +6,7 @@ public static class DebugCommandCatalog
     public static readonly DebugCommandDescription[] Commands =
     [
         new("status", "当前实例状态", "{}"),
+        new("memory.snapshot", "宿主余量、产品进程工作集/私有提交与归属", "{}"),
         new("capabilities", "能力与约束", "{}"),
         new("schema", "命令说明", "{}"),
         new("start", "启动当前安卓", "{}"),

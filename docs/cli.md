@@ -15,6 +15,8 @@ $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.ex
 
 普通响应为一行 JSON，`schemaVersion` 为 1，`ok` 表示该层操作是否成功。长操作先返回 `jobId`；任务真正的结果在后续 `job` 响应的 `result` 内。`--wait` 持续输出 NDJSON 状态，直到任务结束。诊断文本写入 stderr。
 
+内存审计版本：完成任务的完整 `DebugReply` 存到 `debug-runs/job-results/<jobId>.json`；`jobs` 只返回摘要与路径，单个 `job` 对不超过 1 MiB 的结果保持内联。更大的结果返回 `{resultPath,resultBytes,inline:false}`，读取该本地 JSON 才是完整结果。失败仍保持 `ok:false` 与错误码。最多 16 个未完成任务、约 128 份完成任务索引；裁剪索引不删除证据文件。管道请求上限为 1 MiB，响应帧上限仍为 16 MiB。批量 `test` 的每步输出改存 `step-0000.json` 等文件，步骤索引给出 `resultPath`，避免在内存和每次响应中叠加全部输出。
+
 推荐用请求文件，避免 PowerShell 引号转义：
 
 ```json
@@ -36,6 +38,7 @@ $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.ex
 | command | arguments 示例 | 用途 |
 |---|---|---|
 | `status` / `capabilities` | `{}` | 状态、协议能力 |
+| `memory.snapshot` | `{}` | 宿主余量与经过路径/PID/启动时间核验的进程 WS、私有提交、历史峰值 |
 | `start` / `stop` | `{}` | 启动或 sync 后停止 |
 | `apps` | `{}` | 第三方应用列表 |
 | `apk.inspect` | `{"path":"D:\\app.apk"}` | 检查包名、版本、ABI |
@@ -73,6 +76,10 @@ $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.ex
 | `window.focus` | `{}` | 打开已经验证的产品安卓窗口 |
 
 `status.hostMemory` 报告宿主物理余量与提交余量；`memoryProtection` 在警告或自动停机时给出原因。`start` 可能返回 `host_memory_low`，请处理容量不足后重试，不循环强行启动。`preview` 是 GUI 的二进制管道协议：JSON 元数据帧后紧跟 PNG 帧；命令行取证请使用 `screen`，不要把元数据当成已经收到 PNG。
+
+`runtime.configure.profile.startAvailableMb` 为启动物理余量门槛：省略或 `0` 保持自动估计；`4096` 表示可用物理内存至少 4 GiB。提交空间、guest 占宿主至多一半、启动期与运行期低内存保护仍独立检查。门槛不是内存配额、占用预测或节省量。运行设置界面也可修改；完整配置示例应保留原来的显示、GPU、guest 内存等字段。
+
+跨起停连续审计使用 [MemoryProbe](../tools/RootedAndroidGameVM.MemoryProbe/README.md)。WS 包含共享页，私有提交不是独占物理 RAM；不要将多进程 WS、guest PSS 和整机差值混加。原始 `memory.snapshot` 无截图且不启动安卓。
 
 ## 六指同时按下，再独立松开
 

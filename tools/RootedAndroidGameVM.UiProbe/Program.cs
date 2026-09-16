@@ -20,8 +20,9 @@ internal static class Program
         {
             var frame = new DebugClient().ReadPreviewAsync(CancellationToken.None).GetAwaiter().GetResult();
             var output = Path.GetFullPath(args[1]); Directory.CreateDirectory(output);
-            File.WriteAllBytes(Path.Combine(output, "preview.png"), frame.Payload);
-            using var stream = new MemoryStream(frame.Payload);
+            File.WriteAllBytes(Path.Combine(output, "preview.png"), frame.Payload.Span);
+            var segment = System.Runtime.InteropServices.MemoryMarshal.TryGetArray(frame.Payload, out var array) ? array : new ArraySegment<byte>(frame.Payload.ToArray());
+            using var stream = new MemoryStream(segment.Array!, segment.Offset, segment.Count, writable: false);
             var decoded = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
             if (decoded.Frames[0].PixelWidth != frame.Metadata.Width || decoded.Frames[0].PixelHeight != frame.Metadata.Height) return 1;
             File.WriteAllText(Path.Combine(output, "preview.json"), JsonSerializer.Serialize(frame.Metadata, DebugJson.Options));

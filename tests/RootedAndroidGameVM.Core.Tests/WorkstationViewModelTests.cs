@@ -1,4 +1,5 @@
 using System.Text.Json;
+using RootedAndroidGameVM.Core.Android;
 using RootedAndroidGameVM.Core.Debugging;
 using RootedAndroidGameVM.Core.Ui.Workstation;
 
@@ -86,6 +87,18 @@ public sealed class WorkstationViewModelTests
         Assert.Contains("runtime.configure", model.Error);
     }
 
+    [Fact]
+    public async Task Gui_roundtrip_preserves_custom_memory_admission()
+    {
+        var api = new FakeApi();
+        using var model = new WorkstationViewModel(api);
+        await model.RefreshRuntimeAsync();
+        Assert.Equal(4096, model.StartAvailableMb);
+        await model.ApplyProfileAsync();
+        var profile = api.Calls.Single(c => c.Command == "runtime.configure").Value<RuntimeProfile>("profile")!;
+        Assert.Equal(4096, profile.StartAvailableMb);
+        Assert.Equal(3072, profile.MemoryMb);
+    }
     private sealed class FakeApi : IWorkstationApi
     {
         public bool Running { get; set; }
@@ -99,6 +112,7 @@ public sealed class WorkstationViewModelTests
             if (request.Command == Failure) throw new InvalidOperationException("injected " + request.Command + " failure");
             switch (request.Command)
             {
+                case "runtime.inspect": return Task.FromResult(JsonSerializer.SerializeToElement(new { requested = RuntimeProfile.Recommended with { StartAvailableMb = 4096 }, host = new { totalMb = 16111, availableMb = 6000 } }, DebugJson.Options));
                 case "status": return Task.FromResult(JsonSerializer.SerializeToElement(new { status = Running ? "Running" : "Stopped", serial = "emulator-5554", state = new { awake = true, locked = false, foreground = "test.app" } }));
                 case "stop": Running = false; break;
                 case "start": Running = true; break;

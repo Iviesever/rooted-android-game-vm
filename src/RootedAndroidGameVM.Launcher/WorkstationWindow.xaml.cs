@@ -102,9 +102,10 @@ public partial class WorkstationWindow : Window
         }
         catch (Exception error) { ViewModel.Message = error.Message; }
     }
-    private void ShowImage(byte[] bytes, PreviewMetadata metadata)
+    private void ShowImage(ReadOnlyMemory<byte> bytes, PreviewMetadata metadata)
     {
-        using var stream = new MemoryStream(bytes, writable: false);
+        var segment = System.Runtime.InteropServices.MemoryMarshal.TryGetArray(bytes, out var array) ? array : new ArraySegment<byte>(bytes.ToArray());
+        using var stream = new MemoryStream(segment.Array!, segment.Offset, segment.Count, writable: false);
         var bitmap = new BitmapImage(); bitmap.BeginInit(); bitmap.CacheOption = BitmapCacheOption.OnLoad;
         bitmap.StreamSource = stream; bitmap.EndInit(); bitmap.Freeze();
         PreviewImage.Source = bitmap;
@@ -199,7 +200,7 @@ public partial class WorkstationWindow : Window
     {
         var profile = RuntimeProfile.Recommended;
         ViewModel.Width = profile.Width; ViewModel.Height = profile.Height; ViewModel.Density = profile.Density;
-        ViewModel.RefreshRate = profile.RefreshRate; ViewModel.MemoryMb = profile.MemoryMb; ViewModel.Cores = profile.CpuCores;
+        ViewModel.RefreshRate = profile.RefreshRate; ViewModel.MemoryMb = profile.MemoryMb; ViewModel.StartAvailableMb = profile.StartAvailableMb; ViewModel.Cores = profile.CpuCores;
         ViewModel.SelectedRenderer = profile.Renderer; ViewModel.Vulkan = profile.Vulkan;
         ViewModel.DesktopDisplay = profile.DesktopDisplay;
         ViewModel.Message = "已填入推荐配置，点击保存后才会应用";
