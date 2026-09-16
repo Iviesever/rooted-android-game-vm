@@ -1,6 +1,6 @@
 # Review 剩余优化 Goal
 
-目标：完成内存之外的 review 剩余优化，让现有 Malody 测试流程状态可信、操作方便、可重复且可恢复；验收后分批提交，最终备份并覆盖安装，验证安装后的实际行为，不推送或公开发布。
+目标：完成内存之外的 review 剩余优化，让现有 Malody 测试流程状态可信、操作方便、可重复且可恢复；验收后分批提交到仓库，最终覆盖安装，验证安装后的实际行为，最终发布release v0.5.0。
 
 仓库：`D:\program\Magisk\RootedAndroidGameVM`。
 依据：[原 review](../../tasks/20260916-151900-rooted-android-game-vm-evaluation/20260916-rooted-android-game-vm-evaluation.md)、[内存结项记录](memory-optimization-closure.md)。先核对当前源码与现场；已有PID等待、结果落盘等修复只补缺口，不重复实现。
