@@ -26,6 +26,8 @@ public sealed class ImportRecord
     public ApplicationReadiness? App { get; set; }
     public ImportVerification? Imported { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
+    public string? RequestId { get; set; }
+    public string? JobId { get; set; }
 }
 
 public sealed partial class AndroidDebugService
@@ -34,6 +36,7 @@ public sealed partial class AndroidDebugService
     {
         Android.AndroidPackageName.Parse(package);
         var pid = (await ShellAsync("pidof " + Q(package) + " || true", false, ct)).Trim();
+        if (DebugOperation.Current.Value is { } operation) operation.Pid = pid.Length == 0 ? null : pid;
         var state = await StateAsync(ct, force: true);
         var activity = await ShellAsync("dumpsys activity activities", false, ct);
         var path = Path.Combine(directory, "activity-" + Guid.NewGuid().ToString("N")[..8] + ".txt");
@@ -92,10 +95,12 @@ public sealed partial class AndroidDebugService
         var target = "/sdcard/Android/data/" + MalodyPackage + "/files/" + (record.Extension == ".msp" ? "skin" : "chart") + "/rgvm-" + id;
         async Task Save(string stage)
         {
+            record.RequestId = request.RequestId;
+            record.JobId = DebugOperation.Current.Value?.JobId;
             record.Stage = stage; record.UpdatedAt = DateTimeOffset.UtcNow;
             await File.WriteAllTextAsync(statePath + ".partial", DebugJson.Write(record), CancellationToken.None);
             File.Move(statePath + ".partial", statePath, overwrite: true);
-            var progress = new { importId = id, stage, directory, remote, target, record.Session, pid = record.App?.Pid,
+            var progress = new { importId = id, record.RequestId, record.JobId, stage, directory, remote, target, record.Session, pid = record.App?.Pid,
                 record.TransferVerified, record.TransferCount, record.TriggerCount, record.Imported, observedAt = record.UpdatedAt };
             await File.AppendAllTextAsync(Path.Combine(directory, "stages.ndjson"), DebugJson.Write(progress) + "\n", CancellationToken.None);
             Progress.Value?.Invoke(progress);
@@ -128,7 +133,7 @@ public sealed partial class AndroidDebugService
                 if (request.Command == "malody.reload") await _controller.ForceStopPackageAsync(MalodyPackage, ct);
                 record.App = await ObserveApplicationAsync(MalodyPackage, directory, ct);
                 // A process restored in the background is not an interactive foreground Activity.
-                if (!record.App.ActivityReady) await _controller.LaunchPackageAsync(MalodyPackage, ct);
+                if (!record.App.ActivityReady) await LaunchProcessAsync(MalodyPackage, directory, ct);
                 using var readiness = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 readiness.CancelAfter(TimeSpan.FromSeconds(45));
                 try

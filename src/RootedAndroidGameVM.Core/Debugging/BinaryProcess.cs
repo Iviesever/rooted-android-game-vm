@@ -34,7 +34,7 @@ public static class BinaryProcess
         var started = DateTimeOffset.UtcNow;
         var ticks = Stopwatch.GetTimestamp();
         var operation = DebugOperation.Current.Value;
-        var evidence = textEvidence ? operation?.NewToolPath() : null;
+        var evidence = textEvidence && operation?.CaptureTools == true ? operation.NewToolPath() : null;
         using var process = Process.Start(ProcessStartInfoFactory.Create(spec)) ?? throw new IOException("无法启动工具。");
         void Kill() { try { if (!process.HasExited) process.Kill(true); } catch (InvalidOperationException) { } }
         using var registration = ct.Register(Kill);
@@ -63,6 +63,7 @@ public static class BinaryProcess
         catch (Exception error)
         {
             failure = error.GetType().Name;
+            if (evidence is null && textEvidence && operation is not null) evidence = operation.NewToolPath();
             if (evidence is not null) error.Data["toolEvidencePath"] = evidence;
             throw;
         }

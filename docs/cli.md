@@ -15,7 +15,15 @@ $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.ex
 
 普通响应为一行 JSON，`schemaVersion` 为 1，`ok` 表示该层操作是否成功。长操作先返回 `jobId`；任务真正的结果在后续 `job` 响应的 `result` 内。`--wait` 持续输出 NDJSON 状态，直到任务结束。诊断文本写入 stderr。
 
+请求可附 `requestId`（1–128个字母、数字、下划线、点、冒号或连字符），省略时生成。响应回传该ID，长任务的最终结果、任务摘要和工具记录保持原请求ID与jobId；轮询请求有自己的ID。requestId用于关联，不是自动去重键；导入续作用importId。`schema`保留旧commands列表，另提供request/response JSON Schema及jobStates。
+
+终态为 `succeeded`、`failed`、`cancelled`、`timed_out`、`interrupted`，接受任务时不提前给终态；查询请求自身成功与被查询任务成功是两层含义。`stage`、`session`、已观察的App `pid` 和 `artifactDirectory`描述实际证据；无法观察的字段省略。`error.stage`保留原失败阶段，`evidencePath`指阶段记录，`toolEvidencePath`指工具记录。长任务文本工具的stdout/stderr分别落盘，记录工具PID、退出码、完整性、取消与回收结果；大于64KiB的进度细节也改用文件引用。普通状态/预览成功轮询不持续复制工具输出，失败时仍留诊断。
+
+任务归属索引持久化在 `debug-runs/jobs/`。协调进程重启后可查询近期原jobId；未提交明确终态的任务报告interrupted并保留原broker身份、阶段、产物和恢复提示，**不自动重放操作**。CLI取消时有界等待任务清理；无法确认时报告cancellation_unconfirmed，不能把取消请求已发送当成清理通过。
+
 `launch` 发送一次启动指令后，会在最多30秒内等待 PID 出现，避免较慢启动时立即 `pidof` 返回1造成误报。返回 `stage:process_observed` 与 `interactiveReady:false` 只证明当时观察到进程，页面就绪和后续是否被低内存终止须另行核验。超时返回 `app_not_running`，取消与设备错误保留原类别。
+
+`launch`增加 `waitForActivity:true`，再有界等待前台resumed Activity；`app.observe`保存一次进程、前台、Activity观察及时间。即便activity_ready也保留interactiveReady:false，不能据此确认Unity页面可操作。启动工具非零退出时保存双流依据，再核查同一App进程；观察到进程时保留launchDiagnostic，不掩盖工具异常。
 
 内存审计版本：完成任务的完整 `DebugReply` 存到 `debug-runs/job-results/<jobId>.json`；`jobs` 只返回摘要与路径，单个 `job` 对不超过 1 MiB 的结果保持内联。更大的结果返回 `{resultPath,resultBytes,inline:false}`，读取该本地 JSON 才是完整结果。失败仍保持 `ok:false` 与错误码。最多 16 个未完成任务、约 128 份完成任务索引；裁剪索引不删除证据文件。管道请求上限为 1 MiB，响应帧上限仍为 16 MiB。批量 `test` 的每步输出改存 `step-0000.json` 等文件，步骤索引给出 `resultPath`，避免在内存和每次响应中叠加全部输出。
 

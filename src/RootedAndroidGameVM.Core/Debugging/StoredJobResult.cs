@@ -4,7 +4,7 @@ using System.Runtime.Versioning;
 namespace RootedAndroidGameVM.Core.Debugging;
 
 // Metadata only: a finished job must not root its arbitrary object graph for the broker's lifetime.
-public sealed record StoredJobResult(string Path, long Bytes, bool Ok, DebugError? Error)
+public sealed record StoredJobResult(string Path, long Bytes, bool Ok, DebugError? Error, DebugReply? Envelope = null)
 {
     public const int MaxInlineBytes = 1024 * 1024;
     [SupportedOSPlatform("windows")]
@@ -21,11 +21,11 @@ public sealed record StoredJobResult(string Path, long Bytes, bool Ok, DebugErro
             File.Move(temporary, path);
             var error = reply.Error;
             if (error?.Message.Length > 4096) error = error with { Message = error.Message[..4096] + "…完整错误见结果文件。" };
-            return new(path, new FileInfo(path).Length, reply.Ok, error);
+            return new(path, new FileInfo(path).Length, reply.Ok, error, reply with { Result = null, Error = error });
         }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
-    public DebugReply Reference() => new(Ok, new { resultPath = Path, resultBytes = Bytes, inline = false }, Error);
+    public DebugReply Reference() => (Envelope ?? new(Ok, Error: Error)) with { Result = new { resultPath = Path, resultBytes = Bytes, inline = false } };
     public DebugReply Read()
     {
         if (Bytes > MaxInlineBytes) return Reference();

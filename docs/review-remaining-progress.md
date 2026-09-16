@@ -25,11 +25,28 @@
 
 其他实机证据：
 
-- `io-read-acceptance.json`：独立测试皮肤由Malody自身Game:ReadFile读取替换文件、新文件及新子目录文件，随机值逐一匹配；没有将ADB/root读取当成App读取。当前只实测external作用域，private/shared实际App读取仍待验证。
+- `io-read-acceptance.json`：独立测试皮肤由Malody自身Game:ReadFile读取替换文件、新文件及新子目录文件，随机值逐一匹配；没有将ADB/root读取当成App读取。
+- `scope-read-acceptance.json`：本机现有SDK编译的12,629字节独立APK以实际应用UID10213、PID4714，分别读取private/external/shared的新建和替换文件，六项随机值均一致。private实际10213:10213:600，external实际2000:1078:660，共享存储由Android映射为10200:1023:660；记录实际值，不以chmod请求值替代。shared夹具targetSdk28并获READ/WRITE_EXTERNAL_STORAGE，只证明允许共享读取的App，不能宣称绕过其他App的scoped-storage权限。APK不读取生产应用数据，不进入发布资产。
 - `metadata-rewrite-import/resume.summary.json`：5文件中4个SHA一致，info.json单列已知元数据重写。现有正式包只读比对确认版本393216→394764，严格限定该已观察转换，其余原有字段不放行任意变化。
 - `isolated-resource-negative-import.summary.json`：只修改隔离夹具runner.lua，得到import_content_mismatch及逐文件证据，未重传掩盖异常。
 - `import-recovery-acceptance.json`：4秒受控超时后同一importId续作，2/2核验通过、transferCount仍为1、remote相同。超时外层丢失阶段的问题已发现，属于后续状态/协议批次，尚未宣称解决。
 - `recovery-attempt1/`保留未就绪及重复曲目续作失败。修复了“有PID但后台Activity未前置”，且包被App消费后继续有界等待解包；仍不能把游戏去重、未观察到解包或未知状态报成成功。
 - `batch1-full.trx`：269项非实机测试通过，覆盖未知/重复元数据字段、签名资源差异、新建替换权限及子进程提前退出/取消后的双流输出和进程回收。工具证据上下文还需下一批接入协调进程。
 
-未完成：private/shared实机读取、完整状态/协议、GUI/CLI会话摘要、六指和端到端音频/判定延迟、三轮持续性能/音频、完整恢复、打包覆盖安装与v0.5.0发布。不能用以上局部结果勾选全部目标。
+未完成：完整状态/协议、GUI/CLI会话摘要、六指和端到端音频/判定延迟、三轮持续性能/音频、完整恢复、打包覆盖安装与v0.5.0发布。不能用以上局部结果勾选全部目标。
+
+## 第二批：状态、任务契约和恢复
+
+请求ID、任务ID、已观察的session/PID、阶段、明确终态和产物目录已接入协调进程。保留schemaVersion=1和旧结果字段，schema命令增加请求/响应JSON Schema；命令行、客户端异常和CLI文档同步。大结果引用保留身份，超过64KiB的进度写文件；状态/预览正常轮询不累积双流副本。长任务工具保留stdout/stderr、实际工具PID、退出码与回收结果。超时不再覆盖原错误阶段/证据。
+
+`debug-runs/jobs/`保存原broker身份和原任务状态。恢复不自动重放；未记录明确终态的任务是interrupted。当前实现只恢复最近128份索引，磁盘产物不因内存索引裁剪被删除。
+
+验证：
+
+- `protocol-offline-acceptance.json`：真实CLI的设备离线、1秒超时；VM停机下运行1000个只读schema步骤，仅写本次产物，按路径/PID/启动时间核验后中断本次broker。新broker查询原ID得到interrupted、原阶段、原请求ID，未重放、VM保持停机。不是在唯一guest磁盘事务中断电。
+- `protocol-live-acceptance.json`：实际ADB shell退出7，stdout和stderr均保留；1秒超时与显式取消分别得到timed_out/cancelled。宿主ADB进程回收，两个guest shell PID对应/proc目录均不存在。150万字节stdout使用文件引用，原请求/任务ID保持。已安装0.4.0 CLI可以查询新broker的status。
+- `protocol-malody-activity.summary.json`、`protocol-app-observed.summary.json`：真实冷启动Malody，PID5371与前台resumed Activity有对应dump和时间；interactiveReady仍为false，未将Activity当成页面验收。
+- `protocol-final-full.trx`：277项非实机通过；`protocol-final-build.txt`：完整构建0警告0错误。最终代码再次通过离线协议和中断恢复流程。纯逻辑回归覆盖延迟PID、终态区分、大进度/大结果身份、旧请求兼容及原始工具输出。
+- `protocol-preserved-formal-acceptance.json`：历经正常停机/冷启动后，正式皮肤与登记共1995个文件散列全部保持；不将其扩大成整个App数据库每字节不变的证明。
+
+状态/错误中与输入释放相关的实际回归仍待第5项完成；GUI/CLI会话摘要、实机多指/端到端延迟、持续流畅性、完整恢复、最终安装发布仍未完成。

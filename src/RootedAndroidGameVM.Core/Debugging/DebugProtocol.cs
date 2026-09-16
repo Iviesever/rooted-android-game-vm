@@ -38,6 +38,12 @@ public sealed class DebugException(string code, string message, string? stage = 
     public string Code { get; } = code;
     public string? Stage { get; } = stage;
     public string? EvidencePath { get; } = evidencePath;
+    public static DebugException FromError(DebugError error)
+    {
+        var exception = new DebugException(error.Code, error.Stage is null ? error.Message : $"[{error.Stage}] {error.Message}", error.Stage, error.EvidencePath);
+        if (error.ToolEvidencePath is not null) exception.Data["toolEvidencePath"] = error.ToolEvidencePath;
+        return exception;
+    }
 }
 public static class DebugJson
 {

@@ -17,13 +17,12 @@ public sealed partial class AndroidDebugService
         var currentVersion = Regex.Match(installed, @"versionCode=(\d+)");
         if (currentVersion.Success && long.Parse(currentVersion.Groups[1].Value) > apk.VersionCode)
             return new { apk, action = "kept_newer_installed_version", installedVersion = currentVersion.Groups[1].Value };
-        await _controller.InstallApkAsync(path, ct);
-        await _controller.LaunchPackageAsync(apk.Package, ct);
-        await Task.Delay(3000, ct);
-        var pid = (await ShellAsync("pidof " + Q(apk.Package) + " || true", false, ct)).Trim();
-        if (pid.Length == 0) throw new DebugException("app_exited", "APK 已安装但启动后退出；需检查 ABI 兼容和崩溃日志。");
         var dir = NewRecord("install");
-        var result = new { apk, pid, launchObserved = true, compatibility = "process_running_requires_functional_validation", screen = await ScreenshotAsync(dir, ct) };
+        Progress.Value?.Invoke(new { stage = "installing", directory = dir, package = apk.Package });
+        await _controller.InstallApkAsync(path, ct);
+        var launch = await LaunchProcessAsync(apk.Package, dir, ct);
+        var result = new { apk, pid = launch.Pid, stage = "process_observed", interactiveReady = false, launchObserved = true,
+            launchDiagnostic = launch.LaunchDiagnostic, compatibility = "process_running_requires_functional_validation", screen = await ScreenshotAsync(dir, ct) };
         await File.WriteAllTextAsync(Path.Combine(dir, "install.json"), DebugJson.Write(result), ct); return result;
     }
     public async Task<object> MetricsAsync(string package, CancellationToken ct)

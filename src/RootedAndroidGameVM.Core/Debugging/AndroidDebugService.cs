@@ -262,6 +262,7 @@ public sealed partial class AndroidDebugService : IDisposable
             case "memory.snapshot": return ProcessMemory.Read(Paths);
             case "grpc.audit": return await Transport.AuditAuthenticationAsync(ct);
             case "schema": return new { protocolVersion = 1, commands = DebugCommandCatalog.Commands, inputLeaseSeconds = 5, inputCoordinates = "原始 PNG 像素", maxTouches = 10,
+                request = DebugProtocolSchema.Request, response = DebugProtocolSchema.Response, jobStates = DebugProtocolSchema.JobStates,
                 maxRequestBytes = 1024 * 1024, maxInlineJobResultBytes = StoredJobResult.MaxInlineBytes, jobResultsOnDisk = true, testStepResultsOnDisk = true };
             case "runtime.inspect":
                 var requestedProfile = new RuntimeProfileStore(Paths).Read();
@@ -299,6 +300,9 @@ public sealed partial class AndroidDebugService : IDisposable
                     screenshotFallback = "binary-adb",
                     videoAudio = false,
                     jobResultsOnDisk = true,
+                    requestIds = true,
+                    jobRecovery = true,
+                    toolOutputArtifacts = true,
                     maxInlineJobResultBytes = StoredJobResult.MaxInlineBytes,
                     commands = DebugCommandCatalog.Commands.Select(command => command.Name).ToArray()
                 };
@@ -323,12 +327,8 @@ public sealed partial class AndroidDebugService : IDisposable
             case "clipboard": return new { text = await Transport.ClipboardAsync(request.Arguments?.ContainsKey("text") == true ? request.Text("text") : null, ct) };
             case "shell": case "root-shell": return new { stdout = await ShellAsync(request.Text("script"), request.Command == "root-shell", ct) };
             case "apps": return await _controller.ListThirdPartyPackagesAsync(ct);
-            case "launch":
-                AndroidPackageName.Parse(package);
-                await _controller.LaunchPackageAsync(package, ct);
-                var launchedPid = await ApplicationProcessReadiness.WaitAsync(
-                    token => ShellAsync("pidof " + Q(package) + " || true", false, token), TimeSpan.FromSeconds(30), ct);
-                return new { package, pid = launchedPid, stage = "process_observed", interactiveReady = false };
+            case "launch": return await LaunchAsync(request, ct);
+            case "app.observe": return await ObserveApplicationAsync(package, NewRecord("app-observation"), ct);
             case "force-stop": AndroidPackageName.Parse(package); Instance.Require(); await _controller.ForceStopPackageAsync(package, ct); return new { package, stopped = true };
             case "uninstall":
                 AndroidPackageName.Parse(package); Instance.Require(force: true);
