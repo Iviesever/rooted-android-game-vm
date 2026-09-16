@@ -151,7 +151,7 @@ public sealed class ReleaseScriptContractTests
     [Fact]
     public async Task Release_version_advances_past_failed_immutable_tags()
     {
-        const string expectedVersion = "0.3.0";
+        const string expectedVersion = "0.4.0";
         var inno = await File.ReadAllTextAsync(
             Path.Combine(ProjectRoot, "installer", "RootedAndroidGameVM.iss"));
         var launcherProject = await File.ReadAllTextAsync(Path.Combine(
@@ -174,7 +174,7 @@ public sealed class ReleaseScriptContractTests
             ProjectRoot,
             "src",
             "RootedAndroidGameVM.Launcher",
-            "MainWindow.xaml"));
+            "WorkstationWindow.xaml"));
         var changelog = await File.ReadAllTextAsync(
             Path.Combine(ProjectRoot, "release", "CHANGELOG.md"));
 

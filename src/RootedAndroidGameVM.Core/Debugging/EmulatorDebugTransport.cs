@@ -20,8 +20,13 @@ public sealed class EmulatorDebugTransport(OwnedInstance instance, int port) : I
     private long _processStart;
     private bool _cleaned;
     private readonly TouchLedger _touches = new();
+    private readonly object _clientLock = new();
     public string Session => $"{instance.Require().ProcessId}:{instance.Require().StartedAtUtcTicks}";
     private EmulatorController.EmulatorControllerClient Client()
+    {
+        lock (_clientLock) return Connect();
+    }
+    private EmulatorController.EmulatorControllerClient Connect()
     {
         if (_client is not null && _process is not null)
         {
@@ -54,6 +59,15 @@ public sealed class EmulatorDebugTransport(OwnedInstance instance, int port) : I
     }
     public async Task<Image> ScreenshotAsync(CancellationToken ct) => await Client().getScreenshotAsync(
         new ImageFormat { Format = ImageFormat.Types.ImgFormat.Png }, _headers, DateTime.UtcNow.AddSeconds(8), ct);
+    public async Task<(Image Image, int Width, int Height)> PreviewAsync(CancellationToken ct)
+    {
+        var client = Client();
+        var configurations = await client.getDisplayConfigurationsAsync(new Empty(), _headers, DateTime.UtcNow.AddSeconds(3), ct);
+        var primary = configurations.Displays.Single(display => display.Display == 0);
+        var image = await client.getScreenshotAsync(new ImageFormat { Format = ImageFormat.Types.ImgFormat.Png, Width = 960, Height = 540 },
+            _headers, DateTime.UtcNow.AddSeconds(3), ct);
+        return (image, (int)primary.Width, (int)primary.Height);
+    }
     public async Task<bool> IsBlankAsync(CancellationToken ct)
     {
         var image = await Client().getScreenshotAsync(new ImageFormat { Format = ImageFormat.Types.ImgFormat.Rgba8888, Width = 64, Height = 64 }, _headers, DateTime.UtcNow.AddSeconds(5), ct);

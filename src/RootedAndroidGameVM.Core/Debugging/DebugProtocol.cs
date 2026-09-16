@@ -18,6 +18,7 @@ public sealed record DebugReply(bool Ok, object? Result = null, DebugError? Erro
     public static DebugReply Failure(Exception e) => new(false, Error: new(e switch
     {
         DebugException d => d.Code,
+        Android.HostMemoryInsufficientException => "host_memory_low",
         OperationCanceledException => "cancelled",
         TimeoutException => "timeout",
         UnauthorizedAccessException => "permission_denied",

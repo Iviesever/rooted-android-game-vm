@@ -31,7 +31,7 @@ public partial class App : Application
             if (MigrationJournal.Read(new ProductStorageLocation()) is not null)
                 new StorageWindow { WindowStartupLocation = WindowStartupLocation.CenterScreen }.Show();
             else
-                new MainWindow().Show();
+                new WorkstationWindow().Show();
         }
         catch (Exception exception)
         {

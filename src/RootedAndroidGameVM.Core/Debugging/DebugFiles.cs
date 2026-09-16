@@ -30,6 +30,7 @@ public sealed partial class AndroidDebugService
         var package = request.Text("package", MalodyPackage); var scope = request.Text("scope", "external");
         var relative = request.Text("remote"); var remote = RemotePath(scope, package, relative); var root = RemotePath(scope, package, "");
         var local = request.Text("local"); var rootAccess = scope == "private";
+        if (request.Command == "files.export") return await ExportFolderAsync(package, root, remote, local, rootAccess, ct);
         if (request.Command == "files.list")
         {
             var output = await ShellAsync(Containment(root, remote) + "find \"$dest\" -mindepth 1 -maxdepth 1 -print0", rootAccess, ct);
@@ -143,6 +144,63 @@ public sealed partial class AndroidDebugService
             using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             try { await ShellAsync("rm -f " + Q(transit) + " " + Q(stage), true, cleanup.Token); }
             catch (Exception e) { var dir = NewRecord("cleanup-required"); await File.WriteAllTextAsync(Path.Combine(dir, "cleanup.json"), DebugJson.Write(new { paths = new[] { transit, stage }, error = e.GetType().Name })); }
+        }
+    }
+    private async Task<object> ExportFolderAsync(string package, string root, string remote, string destination, bool privateData, CancellationToken ct)
+    {
+        Instance.Require(force: true);
+        if (string.IsNullOrWhiteSpace(destination)) throw new ArgumentException("请选择导出保存位置。");
+        destination = Path.GetFullPath(destination); StoragePathPolicy.RejectReparsePoints(destination);
+        Directory.CreateDirectory(destination);
+        var id = Guid.NewGuid().ToString("N");
+        var output = Path.Combine(destination, package + "-" + DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss") + "-" + id[..8]);
+        var temporary = "/data/local/tmp/rgvm-export-" + id + ".tar";
+        var localArchive = Path.Combine(output, "transfer.tar");
+        ColdCheckpoint.Restrict(output);
+        var success = false;
+        try
+        {
+            var sizes = (await ShellAsync(Containment(root, remote) + "test -d \"$dest\" || exit 44; find \"$dest\" -type f -exec stat -c %s {} \\;", privateData, ct))
+                .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (sizes.Length > 100000) throw new IOException("导出文件数量超限。");
+            long apparentBytes = 0;
+            foreach (var size in sizes)
+            {
+                if (!long.TryParse(size, out var bytes) || bytes < 0 || bytes > 8L * 1024 * 1024 * 1024 - apparentBytes)
+                    throw new IOException("导出目录的逻辑大小超过 8 GiB，已停止。");
+                apparentBytes += bytes;
+            }
+            var archiveLimit = apparentBytes + sizes.Length * 2048L + 16 * 1024 * 1024;
+            ColdCheckpoint.RequireSpace(output, archiveLimit + apparentBytes);
+            // Check apparent sizes (sparse files included) and bound the producer even if files grow after scanning.
+            await ShellAsync("set -e; set -o pipefail; umask 077; " + Containment(root, remote) +
+                "free=$(df -Pk /data/local/tmp | tail -1 | awk '{print $4}'); test \"$free\" -ge " + (archiveLimit / 1024 + 65536) + " || { echo 'No space left' >&2; exit 45; }; " +
+                "tar -C \"$dest\" -cf - . | head -c " + (archiveLimit + 1) + " > " + Q(temporary) + "; " +
+                "test $(stat -c %s " + Q(temporary) + ") -le " + archiveLimit + " || { echo 'archive grew beyond limit' >&2; exit 46; }; " +
+                "chown 2000:2000 " + Q(temporary) + "; chmod 600 " + Q(temporary), true, ct);
+            var expected = (await ShellAsync("sha256sum " + Q(temporary), true, ct)).Split(' ')[0];
+            await AdbAsync(["pull", temporary, localArchive], ct);
+            var received = await ColdCheckpoint.DigestAsync(output, localArchive, ct);
+            if (!received.Sha256.Equals(expected, StringComparison.OrdinalIgnoreCase)) throw new IOException("导出归档校验失败。");
+            ct.ThrowIfCancellationRequested();
+            IO.SafeTarExtractor.Extract(localArchive, Path.Combine(output, "files"));
+            success = true;
+            return new { directory = output, dataDirectory = Path.Combine(output, "files"), includesPrivateData = privateData };
+        }
+        finally
+        {
+            var pendingCleanup = new List<string>();
+            try { if (File.Exists(localArchive)) File.Delete(localArchive); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { pendingCleanup.Add(localArchive); }
+            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            try { await ShellAsync("rm -f " + Q(temporary), true, cleanup.Token); }
+            catch { pendingCleanup.Add(temporary); }
+            if (!success) await File.WriteAllTextAsync(Path.Combine(output, "INCOMPLETE.txt"), "导出未完成；此目录不是有效备份。");
+            if (pendingCleanup.Count > 0)
+            {
+                await File.WriteAllTextAsync(Path.Combine(output, "cleanup-required.txt"), "Sensitive temporary archives:\n" + string.Join('\n', pendingCleanup));
+                if (success) throw new IOException("内容已导出，但敏感临时归档未能全部清理。请查看 " + Path.Combine(output, "cleanup-required.txt"));
+            }
         }
     }
 }
