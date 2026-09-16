@@ -28,8 +28,10 @@ public static class ProcessMemory
 }
 
 [SupportedOSPlatform("windows")]
-public sealed class ProcessMemorySampler(InstallPaths paths, IEnumerable<string>? programDirectories = null)
+public sealed class ProcessMemorySampler(InstallPaths paths, IEnumerable<string>? programDirectories = null, TimeSpan? inventoryLifetime = null)
 {
+    private readonly TimeSpan _inventoryLifetime = inventoryLifetime is { Ticks: < 0 }
+        ? throw new ArgumentOutOfRangeException(nameof(inventoryLifetime)) : inventoryLifetime ?? TimeSpan.FromSeconds(5);
     private readonly List<(HostProcessIdentity Identity, string Role)> _identities = [];
     private readonly List<string> _discoveryErrors = [];
     private long _inventoryAt;
@@ -60,7 +62,7 @@ public sealed class ProcessMemorySampler(InstallPaths paths, IEnumerable<string>
             catch (Exception error) when (error is ArgumentException or InvalidOperationException or Win32Exception or IOException)
             { errors.Add($"{role}:{identity.ProcessId}: {error.GetType().Name}: {error.Message}"); }
         }
-        if (_inventoryAt == 0 || Stopwatch.GetElapsedTime(_inventoryAt).TotalSeconds >= 5)
+        if (_inventoryAt == 0 || Stopwatch.GetElapsedTime(_inventoryAt) >= _inventoryLifetime)
         {
             _identities.Clear(); _discoveryErrors.Clear();
             var targets = new Dictionary<string, (string Role, bool Vm)>(StringComparer.OrdinalIgnoreCase);
@@ -98,6 +100,6 @@ public sealed class ProcessMemorySampler(InstallPaths paths, IEnumerable<string>
             new { pid = observer.Id, managedLiveEstimateBytes = GC.GetTotalMemory(false), lastGcHeapBytes = gc.HeapSizeBytes,
                 lastGcFragmentedBytes = gc.FragmentedBytes, allocatedBytes = GC.GetTotalAllocatedBytes(false),
                 workingSetBytes = observer.WorkingSet64, privateCommitBytes = observer.PrivateMemorySize64 },
-            "WS 求和包含共享页的重复计数，仅为观测到的进程工作集之和；PrivateCommit 不是物理内存。生命周期峰值不是本阶段峰值；同 SDK 的 ADB/辅助进程保守计入，可能被其他设备共享。guest PSS 不可再加到 QEMU。清单最多缓存 5 秒，每次重验 PID/启动时间/路径，短命进程可能漏采；缺失/退出见 errors。observer 为采样进程，不计入产品总和。");
+            $"WS 求和含共享页重复计数，仅为本次观测之和；PrivateCommit 不是物理内存，生命周期峰值不是阶段峰值。同 SDK 的 ADB/辅助进程保守计入，可能共享。guest PSS 不重复加到 QEMU。清单缓存上限 {_inventoryLifetime.TotalMilliseconds:0}ms，每次重验 PID/时间/路径；采样仍可能漏掉短命进程及瞬时峰值，错误见 errors。observer 不计入产品总和。");
     }
 }

@@ -20,6 +20,14 @@ public sealed class WindowsEmulatorProcessCatalog : IEmulatorProcessCatalog
         if (names.Length == 0) return [];
         if (names.Any(name => !Regex.IsMatch(name!, @"\A[A-Za-z0-9_.-]+\.exe\z", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)))
             throw new ArgumentException("运行时进程名称无效。", nameof(executablePaths));
+        try { return WindowsProcessInventory.Read(paths, names!); }
+        catch (PlatformNotSupportedException) { return ReadWithWmi(paths, names!); }
+    }
+
+    // Kept as a compatibility path, isolated so native inventory does not initialize the DLR/WMI stack.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static IReadOnlyList<HostProcessIdentity> ReadWithWmi(HashSet<string> paths, string[] names)
+    {
         dynamic locator = Activator.CreateInstance(Type.GetTypeFromProgID("WbemScripting.SWbemLocator", throwOnError: true)!)!;
         object? connectionObject = null;
         object? rowsObject = null;
@@ -128,13 +136,13 @@ public sealed class WindowsEmulatorProcessCatalog : IEmulatorProcessCatalog
         return new DateTimeOffset(date, TimeSpan.FromMinutes(minutes)).UtcTicks;
     }
 
-    private static string? ReadArgument(string[] args, string flag)
+    internal static string? ReadArgument(string[] args, string flag)
     {
         var index = Array.FindIndex(args, arg => string.Equals(arg, flag, StringComparison.OrdinalIgnoreCase));
         return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
     }
 
-    private static string[] SplitCommandLine(string commandLine)
+    internal static string[] SplitCommandLine(string commandLine)
     {
         var pointer = CommandLineToArgvW(commandLine, out var count);
         if (pointer == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
