@@ -8,6 +8,24 @@ namespace RootedAndroidGameVM.Core.Tests;
 public sealed class ToolEvidenceTests
 {
     [Fact]
+    public async Task Lifecycle_runner_also_preserves_both_streams_without_changing_exit_contract()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var directory = Path.Combine(Path.GetTempPath(), "rgvm-runner-evidence-" + Guid.NewGuid().ToString("N"));
+        DebugOperation.Current.Value = new("lifecycle-request", "lifecycle-job", directory) { Stage = "installing" };
+        try
+        {
+            var result = await new ProcessRunner().RunAsync(Spec("[Console]::Out.Write('install-out'); [Console]::Error.Write('install-err'); exit 9"));
+            Assert.Equal(9, result.ExitCode); Assert.Equal("install-out", result.StandardOutput); Assert.Equal("install-err", result.StandardError);
+            using var evidence = JsonDocument.Parse(await File.ReadAllTextAsync(result.EvidencePath!));
+            Assert.Equal("installing", evidence.RootElement.GetProperty("stage").GetString());
+            Assert.Equal("install-out", await File.ReadAllTextAsync(evidence.RootElement.GetProperty("stdoutPath").GetString()!));
+            Assert.Equal("install-err", await File.ReadAllTextAsync(evidence.RootElement.GetProperty("stderrPath").GetString()!));
+        }
+        finally { DebugOperation.Current.Value = null; Directory.Delete(directory, true); }
+    }
+
+    [Fact]
     public async Task Nonzero_tool_exit_retains_both_pipes_and_a_reaped_pid()
     {
         if (!OperatingSystem.IsWindows()) return;

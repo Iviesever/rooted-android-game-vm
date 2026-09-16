@@ -27,6 +27,16 @@ public sealed partial class DebugBroker : IDisposable
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _shutdown.Token); ct = linked.Token;
         RestoreJobs();
+        if (StorageOwnership.IsOwned(_service.Paths.ProductRoot))
+        {
+            try
+            {
+                using var recoveryLease = StorageOperationLease.Acquire();
+                await _service.ReleaseAsync();
+            }
+            catch (Exception error) when (error is IOException or InvalidOperationException)
+            { /* Do not touch an unowned/migrating resource. The summary keeps cleanup unverified. */ }
+        }
         _service.MemoryNotice = () => _memoryNotice;
         var memoryWatch = MonitorMemoryAsync(ct);
         using var timer = new Timer(_ =>
@@ -58,23 +68,29 @@ public sealed partial class DebugBroker : IDisposable
     {
         await using (pipe)
         {
+            string? requestId = null, jobId = null;
             try
             {
                 using var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct); requestTimeout.CancelAfter(TimeSpan.FromMinutes(3));
                 var bytes = await ReadFrameAsync(pipe, requestTimeout.Token, 1024 * 1024);
                 var request = JsonSerializer.Deserialize<DebugRequest>(bytes, DebugJson.Options) ?? throw new ArgumentException("空请求。");
+                requestId = request.RequestId;
                 var reply = await DispatchAsync(request, requestTimeout.Token);
+                requestId = reply.RequestId; jobId = reply.JobId;
                 if (reply.Result is PreviewFrame frame)
                 {
                     await WriteFrameAsync(pipe, JsonSerializer.SerializeToUtf8Bytes(reply with { Result = frame.Metadata }, DebugJson.Options), requestTimeout.Token);
                     await WriteFrameAsync(pipe, frame.Payload, requestTimeout.Token);
                 }
-                else await WriteFrameAsync(pipe, JsonSerializer.SerializeToUtf8Bytes(reply, DebugJson.Options), requestTimeout.Token);
+                else await WriteFrameAsync(pipe, await DebugWireReply.SerializeAsync(reply,
+                    Path.Combine(_service.Paths.ProductRoot, "debug-runs", "response-results"), requestTimeout.Token), requestTimeout.Token);
             }
-            catch (IOException) { /* Client disconnected. Finite input leases release its contacts. */ }
             catch (Exception e)
             {
-                try { await WriteFrameAsync(pipe, Encoding.UTF8.GetBytes(DebugJson.Write(DebugReply.Failure(e))), ct); } catch { }
+                var failed = DebugReply.Failure(e);
+                try { await WriteFrameAsync(pipe, Encoding.UTF8.GetBytes(DebugJson.Write(failed with
+                    { RequestId = requestId, JobId = jobId, Stage = "protocol_io", Terminal = "failed", Error = failed.Error! with { Stage = failed.Error!.Stage ?? "protocol_io" } })), ct); }
+                catch { /* A disconnected caller cannot receive diagnostics; input leases still expire. */ }
             }
         }
     }
@@ -87,7 +103,7 @@ public sealed partial class DebugBroker : IDisposable
         request = request with { RequestId = requestId };
         var operation = new DebugOperation(requestId, null,
             Path.Combine(_service.Paths.ProductRoot, "debug-runs", "requests", Guid.NewGuid().ToString("N")))
-            { Stage = request.Command ?? "request", CaptureTools = request.Command is not ("status" or "preview" or "runtime.inspect" or "memory.snapshot") };
+            { Stage = request.Command ?? "request", CaptureTools = request.Command is not ("status" or "preview" or "runtime.inspect" or "memory.snapshot" or "session.summary") };
         DebugOperation.Current.Value = operation;
         try
         {
@@ -104,6 +120,7 @@ public sealed partial class DebugBroker : IDisposable
         if (request.SchemaVersion != 1) return DebugReply.Failure(new ArgumentException("未知协议版本。"));
         if (request.Command.Length > 128 || !DebugCommandCatalog.Commands.Any(command => command.Name == request.Command))
             return DebugReply.Failure(new ArgumentException("未知命令或命令名超长。"));
+        if (request.Command == "session.summary") return new(true, await SessionSummaryAsync(request, ct));
         if (request.Command == "jobs") return new(true, _jobs.Values.Select(j => j.Snapshot(includeResult: false)).ToArray());
         if (request.Command is "job" or "cancel")
         {
@@ -145,7 +162,7 @@ public sealed partial class DebugBroker : IDisposable
             var id = Guid.NewGuid().ToString("N");
             created = new DebugJob(request.Command, request.RequestId!, id, DateTimeOffset.UtcNow,
                 Path.Combine(_service.Paths.ProductRoot, "debug-runs", "requests", id), JobJournalDirectory);
-            created.Operation.Changed = created.Persist;
+            created.Operation.Changed = () => created.Persist();
             created.Operation.EnsureDirectory();
             File.WriteAllText(Path.Combine(created.Operation.DirectoryPath, "request.json"), DebugJson.Write(request));
             created.Persist(); _jobs[created.Id] = created;
@@ -171,9 +188,9 @@ public sealed partial class DebugBroker : IDisposable
             catch (Exception error) { created.Failure = created.Operation.Complete(DebugReply.Failure(error)); }
             finally
             {
-                created.Completed = true;
-                try { created.Persist(); }
+                try { created.Persist(completed: true); }
                 catch (Exception error) { created.Failure = created.Operation.Complete(DebugReply.Failure(error)); }
+                created.Completed = true;
                 AndroidDebugService.Progress.Value = null; DebugOperation.Current.Value = null;
                 created.Completion.TrySetResult();
             }
@@ -183,7 +200,7 @@ public sealed partial class DebugBroker : IDisposable
     }
     private async Task<DebugReply> InvokeAsync(DebugRequest request, CancellationToken ct)
     {
-        var mutate = !Readers.Contains(request.Command);
+        var mutate = request.Command != "session.observe" && !Readers.Contains(request.Command);
         var exclusive = request.Command is "start" or "stop" or "checkpoint.create" or "checkpoint.restore" or "checkpoint.recover" or "runtime.configure";
         var entered = false;
         try
@@ -273,11 +290,13 @@ public sealed partial class DebugBroker : IDisposable
         public volatile bool Completed; public StoredJobResult? Stored; public DebugReply? Failure;
         public DebugReply? Result => Failure ?? Stored?.Read();
         public object? Progress;
-        public void Persist()
+        public string Status => !Completed ? Cancel.IsCancellationRequested ? "cancelling" : Operation.Stage == "queued" ? "queued" : "running" :
+            Failure?.Terminal ?? (Stored?.Ok == true ? "succeeded" : Stored?.Error?.Code switch { "cancelled" => "cancelled", "timeout" => "timed_out", "interrupted" => "interrupted", _ => "failed" });
+        public void Persist(bool? completed = null)
         {
             lock (_journalLock)
             {
-                DebugJobJournalStore.Save(journalDirectory, new(Id, Operation.RequestId, Command, Created, Completed,
+                DebugJobJournalStore.Save(journalDirectory, new(Id, Operation.RequestId, Command, Created, completed ?? Completed,
                     Failure?.Stage ?? Stored?.Error?.Stage ?? Operation.Stage, Operation.Session, Operation.Pid, Operation.DirectoryPath,
                     Stored?.Path, Stored?.Bytes, Stored?.Ok, Failure?.Error ?? Stored?.Error,
                     Progress is null ? null : JsonSerializer.SerializeToElement(Progress, DebugJson.Options), OwnerPid, OwnerStartedAtUtcTicks));
@@ -290,8 +309,7 @@ public sealed partial class DebugBroker : IDisposable
             command = Command,
             created = Created,
             completed = Completed,
-            status = !Completed ? Cancel.IsCancellationRequested ? "cancelling" : Operation.Stage == "queued" ? "queued" : "running" :
-                Failure?.Terminal ?? (Stored?.Ok == true ? "succeeded" : Stored?.Error?.Code switch { "cancelled" => "cancelled", "timeout" => "timed_out", "interrupted" => "interrupted", _ => "failed" }),
+            status = Status,
             stage = Failure?.Stage ?? Stored?.Error?.Stage ?? Operation.Stage,
             session = Operation.Session,
             pid = Operation.Pid,

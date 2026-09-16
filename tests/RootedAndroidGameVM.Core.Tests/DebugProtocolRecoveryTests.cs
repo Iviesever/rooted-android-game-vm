@@ -6,6 +6,30 @@ namespace RootedAndroidGameVM.Core.Tests;
 public sealed class DebugProtocolRecoveryTests
 {
     [Fact]
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    public async Task Oversized_quick_reply_becomes_a_complete_file_reference_instead_of_a_broken_pipe()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var directory = Path.Combine(Path.GetTempPath(), "rgvm-wire-test-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var reply = new DebugReply(true, new { raw = new string('x', DebugWireReply.MaximumBytes + 1) }, RequestId: "quick-request", Stage: "metrics", Terminal: "succeeded");
+            var bytes = await DebugWireReply.SerializeAsync(reply, directory, default);
+            Assert.True(bytes.Length < 4096);
+            var reference = JsonSerializer.Deserialize<DebugReply>(bytes, DebugJson.Options)!;
+            Assert.Equal("quick-request", reference.RequestId); Assert.Equal("metrics", reference.Stage);
+            Assert.Equal("succeeded", reference.Terminal);
+            var file = ((JsonElement)reference.Result!).GetProperty("resultPath").GetString()!;
+            using var stored = JsonDocument.Parse(File.ReadAllText(file));
+            Assert.Equal(DebugWireReply.MaximumBytes + 1, stored.RootElement.GetProperty("result").GetProperty("raw").GetString()!.Length);
+            var small = await DebugWireReply.SerializeAsync(new(true, new { unchanged = true }), directory, default);
+            using var normal = JsonDocument.Parse(small);
+            Assert.True(normal.RootElement.GetProperty("result").GetProperty("unchanged").GetBoolean());
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+    [Fact]
     public void Large_progress_stays_on_disk_and_retains_import_recovery_identity()
     {
         var directory = Path.Combine(Path.GetTempPath(), "rgvm-progress-test-" + Guid.NewGuid().ToString("N"));

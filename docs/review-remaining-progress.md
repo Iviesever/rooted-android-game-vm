@@ -50,3 +50,18 @@
 - `protocol-preserved-formal-acceptance.json`：历经正常停机/冷启动后，正式皮肤与登记共1995个文件散列全部保持；不将其扩大成整个App数据库每字节不变的证明。
 
 状态/错误中与输入释放相关的实际回归仍待第5项完成；GUI/CLI会话摘要、实机多指/端到端延迟、持续流畅性、完整恢复、最终安装发布仍未完成。
+
+## 第三批：会话摘要与输入归属防护
+
+新增session.summary，GUI直接绑定后端summary.text。实例、App/PID、任务、文件核验、释放依据、产物、恢复点和下一步使用同一数据；启动/停机等独占阶段返回OperationInProgress，ADB离线但进程仍在不再报Stopped。Malody页面通过带真实截图、时间、进程及会话的调用者标注提供，过期/操作后/进程或前台变化失效；不会把PID或Activity当作Unity页面识别。
+
+已验证：
+
+- `session-live-layout/session-cli-snapshot.json`与`session-text.txt`逐字相同：真实Malody PID3571、真实VM会话、已观察首页的截图和时间进入WPF绑定。两种窗口尺寸渲染无绑定错误；最小布局已视觉检查。这里是WPF使用真实CLI快照的离屏验证，最终安装后的实际GUI仍待后续验收。
+- `session-page-home-observed.summary.json`引用真实首页截图；`session-page-dark-unverified.summary.json`对启动时暗屏保持unknown；`session-page-stale-rejected.summary.json`拒绝旧截图标注，`session-page-expired.summary.json`标superseded。
+- `session-during-stop.summary.json`在真实停机中返回OperationInProgress，实测约0.090秒；随后stop明确完成，未把处理中状态报成已停机。
+- `session-full.trx`：288项非实机通过；`session-final-build-fixed.txt`：完整构建0警告0错误。新增末次委托签名编译错误已修正，保留失败日志不冒充通过。
+
+附带补缺：生命周期ProcessRunner也保存双流与完整性标记；输入每次RPC和清理固定原VM会话，截图前后核对PID、前台与旋转，释放未确认保留错误，新broker重连先清理。上述输入防护目前只有相关逻辑回归，真实六指/取消/断连/跨会话验收仍未完成，不能因本节GUI通过而勾选第5项。
+
+本批最终验证：`session-delivery-full.trx`为292项非实机通过，`session-delivery-build.txt`完整构建0警告0错误。新增大于16MiB的立即响应保存为完整文件引用的边界回归，保留普通小响应形状；gRPC取消/超时/断连分别分类且不输出认证详情。最终停机摘要同时验证已停止实例的输入状态和独立App的最近文件传输核验。依然未执行最终覆盖安装或发布。

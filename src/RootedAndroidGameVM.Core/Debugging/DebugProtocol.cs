@@ -20,6 +20,10 @@ public sealed record DebugReply(bool Ok, object? Result = null, DebugError? Erro
     public static DebugReply Failure(Exception e) => new(false, Error: new(e switch
     {
         DebugException d => d.Code,
+        Grpc.Core.RpcException { StatusCode: Grpc.Core.StatusCode.DeadlineExceeded } => "timeout",
+        Grpc.Core.RpcException { StatusCode: Grpc.Core.StatusCode.Cancelled } => "cancelled",
+        Grpc.Core.RpcException { StatusCode: Grpc.Core.StatusCode.Unavailable } => "grpc_unavailable",
+        Grpc.Core.RpcException { StatusCode: Grpc.Core.StatusCode.Unauthenticated or Grpc.Core.StatusCode.PermissionDenied } => "permission_denied",
         Processes.ProcessOutputLimitException => "output_limit",
         Android.HostMemoryInsufficientException => "host_memory_low",
         OperationCanceledException => "cancelled",
@@ -27,6 +31,7 @@ public sealed record DebugReply(bool Ok, object? Result = null, DebugError? Erro
         UnauthorizedAccessException => "permission_denied",
         IOException io when (io.HResult & 0xffff) is 39 or 112 => "disk_full",
         ArgumentException => "invalid_argument",
+        JsonException => "invalid_argument",
         _ => "operation_failed"
     }, e is Grpc.Core.RpcException rpc ? "模拟器 gRPC 调用失败：" + rpc.StatusCode + "。认证材料不会写入诊断。" : e.Message,
         (e as DebugException)?.Stage, (e as DebugException)?.EvidencePath, ToolEvidence(e)));
@@ -53,7 +58,7 @@ public static class DebugJson
 }
 public sealed record ScreenObservation(string Id, string Session, string Path, string Backend, int Width, int Height,
     int Rotation, int Display, string? Foreground, bool BootCompleted, bool Awake, bool Locked, DateTimeOffset CapturedAt,
-    int ImageRotation = 0, bool? Blank = null);
+    int ImageRotation = 0, bool? Blank = null, string? AppPid = null, long Revision = 0);
 public sealed record TouchPoint(int Id, int X, int Y, int Pressure = 1);
 public sealed record InputFrame(int AtMs, TouchPoint[] Touches);
 public sealed record InputTiming(int Index, double RequestedMs, double SentMs, double DeviationMs);

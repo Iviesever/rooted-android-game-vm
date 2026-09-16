@@ -21,7 +21,19 @@ public sealed class EmulatorDebugTransport(OwnedInstance instance, int port) : I
     private bool _cleaned;
     private readonly TouchLedger _touches = new();
     private readonly object _clientLock = new();
-    public string Session => $"{instance.Require().ProcessId}:{instance.Require().StartedAtUtcTicks}";
+    public string Session { get { var host = instance.Require(); return $"{host.ProcessId}:{host.StartedAtUtcTicks}"; } }
+    public int[] ActiveTouchIds => _touches.Releases().Select(point => point.Id).ToArray();
+    private (EmulatorController.EmulatorControllerClient Client, Metadata Headers, string Session) Binding(string? expectedSession)
+    {
+        lock (_clientLock)
+        {
+            var host = instance.Require(force: expectedSession is not null);
+            InputSessionPolicy.RequireSame(expectedSession, $"{host.ProcessId}:{host.StartedAtUtcTicks}");
+            var client = Connect();
+            InputSessionPolicy.RequireSame(expectedSession, _session!);
+            return (client, _headers!, _session!);
+        }
+    }
     private EmulatorController.EmulatorControllerClient Client()
     {
         lock (_clientLock) return Connect();
@@ -76,16 +88,16 @@ public sealed class EmulatorDebugTransport(OwnedInstance instance, int port) : I
         for (var i = 0; i + 3 < bytes.Length; i += 4) if (bytes[i] > 4 || bytes[i + 1] > 4 || bytes[i + 2] > 4) return false;
         return true;
     }
-    public async Task SendAsync(IEnumerable<TouchPoint> points, CancellationToken ct)
+    public async Task SendAsync(IEnumerable<TouchPoint> points, CancellationToken ct, string? expectedSession = null)
     {
-        await EnsureCleanAsync(ct);
+        await EnsureCleanAsync(ct, expectedSession);
         var batch = points.ToArray();
         // Preserve the last real coordinate for each owned contact; extra zero-coordinate UP events can affect UI gestures.
         _touches.Apply(batch.Where(p => p.Pressure > 0));
-        await SendRawAsync(batch, ct);
+        await SendRawAsync(batch, ct, expectedSession);
         _touches.Apply(batch);
     }
-    private async Task SendRawAsync(IEnumerable<TouchPoint> points, CancellationToken ct)
+    private async Task SendRawAsync(IEnumerable<TouchPoint> points, CancellationToken ct, string? expectedSession = null)
     {
         var request = new TouchEvent { Display = 0 };
         request.Touches.AddRange(points.Select(p => new Touch
@@ -96,20 +108,24 @@ public sealed class EmulatorDebugTransport(OwnedInstance instance, int port) : I
             Pressure = p.Pressure,
             Expiration = (Touch.Types.EventExpiration)0
         }));
-        await Client().sendTouchAsync(request, _headers, DateTime.UtcNow.AddSeconds(3), ct);
+        var binding = Binding(expectedSession);
+        await binding.Client.sendTouchAsync(request, binding.Headers, DateTime.UtcNow.AddSeconds(3), ct);
+        lock (_clientLock) InputSessionPolicy.RequireSame(binding.Session, _session ?? "disconnected");
     }
-    private async Task EnsureCleanAsync(CancellationToken ct)
+    private async Task EnsureCleanAsync(CancellationToken ct, string? expectedSession = null)
     {
-        Client();
+        var binding = Binding(expectedSession);
         if (_cleaned) return;
-        await SendRawAsync(Enumerable.Range(0, 10).Select(id => new TouchPoint(id, 0, 0, 0)), ct);
-        _cleaned = true;
+        await SendRawAsync(Enumerable.Range(0, 10).Select(id => new TouchPoint(id, 0, 0, 0)), ct, binding.Session);
+        lock (_clientLock)
+        { InputSessionPolicy.RequireSame(binding.Session, _session ?? "disconnected"); _cleaned = true; }
     }
-    public async Task ReleaseAllAsync(CancellationToken ct)
+    public async Task ReleaseAllAsync(CancellationToken ct, string? expectedSession = null)
     {
-        await EnsureCleanAsync(ct);
+        var binding = Binding(expectedSession);
+        await EnsureCleanAsync(ct, binding.Session);
         var releases = _touches.Releases();
-        if (releases.Length > 0) await SendRawAsync(releases, ct);
+        if (releases.Length > 0) await SendRawAsync(releases, ct, binding.Session);
         _touches.Clear();
     }
     public async Task<string> ClipboardAsync(string? text, CancellationToken ct)

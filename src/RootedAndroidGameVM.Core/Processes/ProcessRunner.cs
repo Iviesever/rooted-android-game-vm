@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.ExceptionServices;
+using RootedAndroidGameVM.Core.Debugging;
 
 namespace RootedAndroidGameVM.Core.Processes;
 
@@ -20,6 +21,10 @@ public sealed class ProcessRunner : IProcessRunner
         if (request.MaxOutputCharacters is < 0 or > DefaultMaxOutputCharacters)
             throw new ArgumentOutOfRangeException(nameof(request.MaxOutputCharacters));
         cancellationToken.ThrowIfCancellationRequested();
+        var operation = DebugOperation.Current.Value;
+        var evidence = operation?.CaptureTools == true ? operation.NewToolPath() : null;
+        var startedAt = DateTimeOffset.UtcNow;
+        var startedTicks = Stopwatch.GetTimestamp();
         using var process = new Process
         {
             StartInfo = ProcessStartInfoFactory.CreateRequest(request),
@@ -62,14 +67,42 @@ public sealed class ProcessRunner : IProcessRunner
         var stdout = Guard(ReadBoundedTextAsync(process.StandardOutput, request.MaxOutputCharacters, ioCancellation.Token));
         var stderr = Guard(ReadBoundedTextAsync(process.StandardError, request.MaxOutputCharacters, ioCancellation.Token));
         var stdin = Guard(WriteInputAsync());
+        string? failureName = null;
         try
         {
             try { await Task.WhenAll(stdout, stderr, stdin, process.WaitForExitAsync(cancellationToken)).ConfigureAwait(false); }
             catch { cancellationToken.ThrowIfCancellationRequested(); failure?.Throw(); throw; }
             cancellationToken.ThrowIfCancellationRequested();
-            return new ProcessResult(process.ExitCode, await stdout, await stderr);
+            if (process.ExitCode != 0 && evidence is null && operation is not null) evidence = operation.NewToolPath();
+            return new ProcessResult(process.ExitCode, await stdout, await stderr, evidence);
         }
-        finally { Kill(); await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false); }
+        catch (Exception error)
+        {
+            failureName = error.GetType().Name;
+            if (evidence is null && operation is not null) evidence = operation.NewToolPath();
+            if (evidence is not null) error.Data["toolEvidencePath"] = evidence;
+            throw;
+        }
+        finally
+        {
+            Kill(); await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            if (evidence is not null)
+            {
+                var stdoutPath = Path.ChangeExtension(evidence, ".stdout.txt");
+                var stderrPath = Path.ChangeExtension(evidence, ".stderr.txt");
+                if (stdout.IsCompletedSuccessfully) await File.WriteAllTextAsync(stdoutPath, stdout.Result);
+                if (stderr.IsCompletedSuccessfully) await File.WriteAllTextAsync(stderrPath, stderr.Result);
+                await File.WriteAllTextAsync(evidence, DebugJson.Write(new
+                {
+                    operation!.RequestId, operation.JobId, operation.Session, stage = operation.Stage,
+                    tool = Path.GetFileName(request.Spec.FileName), pid = process.Id, startedAt,
+                    elapsedMs = Stopwatch.GetElapsedTime(startedTicks).TotalMilliseconds, exitCode = process.ExitCode,
+                    cancelled = cancellationToken.IsCancellationRequested, failure = failureName, reaped = process.HasExited,
+                    stdoutComplete = stdout.IsCompletedSuccessfully, stderrComplete = stderr.IsCompletedSuccessfully,
+                    stdoutPath = File.Exists(stdoutPath) ? stdoutPath : null, stderrPath = File.Exists(stderrPath) ? stderrPath : null
+                }));
+            }
+        }
     }
 
     public static async Task<string> ReadBoundedTextAsync(TextReader reader, int limit, CancellationToken ct = default)

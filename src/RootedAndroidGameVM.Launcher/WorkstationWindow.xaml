@@ -38,7 +38,14 @@
     <StackPanel><TextBlock Text="{Binding SectionTitle}" FontSize="27" FontWeight="SemiBold"/><TextBlock Text="{Binding SectionDescription}" Foreground="#6A768B" Margin="0,5,0,0"/></StackPanel>
     <StackPanel Grid.Column="1" HorizontalAlignment="Right"><TextBlock Text="{Binding Status}" FontWeight="SemiBold" HorizontalAlignment="Right"/><TextBlock Text="{Binding Serial}" Foreground="#778298" FontSize="12" Margin="0,5,0,0" HorizontalAlignment="Right"/></StackPanel>
    </Grid>
-   <Border Grid.Row="1" Background="#FFF0F0" BorderBrush="#F2CBCB" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,14" Visibility="{Binding HasError,Converter={StaticResource BoolVisibility}}"><TextBlock Text="{Binding Error}" Foreground="#9C3030" TextWrapping="Wrap"/></Border>
+   <StackPanel Grid.Row="1">
+    <Border Background="#FFF0F0" BorderBrush="#F2CBCB" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10" Visibility="{Binding HasError,Converter={StaticResource BoolVisibility}}"><TextBlock Text="{Binding Error}" Foreground="#9C3030" TextWrapping="Wrap"/></Border>
+    <Expander x:Name="SessionExpander" Header="{Binding SessionHeadline}" Background="White" Padding="12" Margin="0,0,0,12" AutomationProperties.AutomationId="Session.Expander">
+     <DockPanel><WrapPanel DockPanel.Dock="Bottom" Margin="0,10,0,0"><Button Content="重新观察会话" Command="{Binding RefreshSessionCommand}" AutomationProperties.AutomationId="Session.Refresh"/><Button Content="继续原导入" Command="{Binding ResumeImportCommand}" AutomationProperties.AutomationId="Session.ResumeImport"/><Button Content="取消当前任务" Command="{Binding CancelSessionTaskCommand}"/><Button Content="打开会话产物" Click="OpenSessionRecords_Click"/></WrapPanel>
+      <ScrollViewer MaxHeight="110" VerticalScrollBarVisibility="Auto"><TextBlock Text="{Binding SessionText}" TextWrapping="Wrap" FontSize="12" Foreground="#4A5872" AutomationProperties.AutomationId="Session.Summary"/></ScrollViewer>
+     </DockPanel>
+    </Expander>
+   </StackPanel>
    <Grid Grid.Row="2">
     <Grid Visibility="{Binding Section,Converter={StaticResource SectionVisibility},ConverterParameter=Android}">
      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="14"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>

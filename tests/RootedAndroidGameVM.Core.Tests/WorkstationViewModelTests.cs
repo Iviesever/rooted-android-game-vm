@@ -8,6 +8,18 @@ namespace RootedAndroidGameVM.Core.Tests;
 public sealed class WorkstationViewModelTests
 {
     [Fact]
+    public async Task Gui_uses_the_shared_session_text_and_does_not_claim_activation_from_import_success()
+    {
+        var api = new FakeApi { Running = true };
+        using var model = new WorkstationViewModel(api);
+        await model.RefreshAsync();
+        Assert.Equal("shared session evidence", model.SessionText);
+        Assert.Contains(api.Calls, call => call.Command == "session.summary");
+        await model.RunAsync("导入", new("malody.import"));
+        Assert.Contains("待启用", model.SelectedWork!.Status);
+        Assert.Contains("实际运行仍待验证", model.Message);
+    }
+    [Fact]
     public async Task Task_details_keep_their_own_failure_after_a_later_success()
     {
         using var model = new WorkstationViewModel(new FakeApi { Failure = "install" });
@@ -114,6 +126,12 @@ public sealed class WorkstationViewModelTests
             if (request.Command == Failure) throw new InvalidOperationException("injected " + request.Command + " failure");
             switch (request.Command)
             {
+                case "session.summary":
+                    var summary = new SessionSummary(DateTimeOffset.UtcNow, "emulator-5554", Running ? "Running" : "Stopped", null,
+                        request.Text("package"), null, null, [], null, null, [], "fixture-artifacts", [], "observe", null, "shared session evidence");
+                    return Task.FromResult(JsonSerializer.SerializeToElement(new { runtime = new { status = summary.Status, serial = summary.Instance,
+                        state = new { awake = true, locked = false, foreground = "test.app" } }, summary }, DebugJson.Options));
+                case "malody.import": return Task.FromResult(JsonSerializer.SerializeToElement(new { stage = "waiting_for_activation", importConfirmed = true, activationVerified = false, runningVerified = false }));
                 case "runtime.inspect": return Task.FromResult(JsonSerializer.SerializeToElement(new { requested = RuntimeProfile.Recommended with { StartAvailableMb = 4096, LowRam = true, VmHeapMb = 512 }, host = new { totalMb = 16111, availableMb = 6000 } }, DebugJson.Options));
                 case "status": return Task.FromResult(JsonSerializer.SerializeToElement(new { status = Running ? "Running" : "Stopped", serial = "emulator-5554", state = new { awake = true, locked = false, foreground = "test.app" } }));
                 case "stop": Running = false; break;

@@ -31,6 +31,8 @@ public sealed partial class AndroidDebugService : IDisposable
     private (bool Boot, bool Awake, bool Locked, string? Foreground, int Rotation)? _cachedState;
     private string? _cachedStateSession;
     private long _stateAt;
+    private InputReleaseEvidence? _lastRelease;
+    public InputReleaseEvidence? LastInputRelease => _lastRelease;
     public Func<MemoryProtectionNotice?>? MemoryNotice { get; set; }
     public AndroidDebugService(InstallPaths? paths = null)
     {
@@ -61,7 +63,19 @@ public sealed partial class AndroidDebugService : IDisposable
     public async Task<object> StatusAsync(CancellationToken ct)
     {
         var status = await _controller.GetStatusAsync(ct);
-        if (status != VmStatus.Running) return new { version = "0.4.0", status = status.ToString(), dataRoot = Paths.ProductRoot, serial = Options.Serial, hostMemory = HostMemory.Read(), memoryProtection = MemoryNotice?.Invoke() };
+        if (status != VmStatus.Running)
+        {
+            if (status != VmStatus.NotInstalled)
+            {
+                try { Instance.RequireStopped(); }
+                catch (DebugException error) when (error.Code == "instance_busy")
+                {
+                    return new { version = "0.4.0", status = "Unreachable", dataRoot = Paths.ProductRoot, serial = Options.Serial,
+                        instanceActive = true, reason = "产品进程仍在运行，但ADB未确认连接；不能当成已停机。", hostMemory = HostMemory.Read(), memoryProtection = MemoryNotice?.Invoke() };
+                }
+            }
+            return new { version = "0.4.0", status = status.ToString(), dataRoot = Paths.ProductRoot, serial = Options.Serial, hostMemory = HostMemory.Read(), memoryProtection = MemoryNotice?.Invoke() };
+        }
         var host = Instance.Require();
         var state = await StateAsync(ct);
         return new
@@ -84,33 +98,63 @@ public sealed partial class AndroidDebugService : IDisposable
         if (await _controller.GetStatusAsync(ct) == VmStatus.Running) { Instance.Require(); return; }
         Instance.RequirePortsFree(Options.GrpcPort!.Value);
         _controller = new(Layout, AndroidVmOptions.ForPaths(Paths) with { GrpcPort = Options.GrpcPort });
-        await _controller.StartAsync(ct); Instance.Require();
-        await Transport.ReleaseAllAsync(ct);
-        try { await ApplyDesktopAppearanceAsync(new RuntimeProfileStore(Paths).Read().DesktopDisplay, ct, settleStartup: true); }
-        catch (HostMemoryInsufficientException)
+        await _controller.StartAsync(ct);
+        try
+        {
+            Instance.Require(); ct.ThrowIfCancellationRequested();
+            var startupRelease = await ReleaseAsync();
+            if (!startupRelease.Acknowledged) throw new DebugException("input_release_unverified", "启动后未确认输入通道清理。", "releasing_input", startupRelease.EvidencePath);
+            ct.ThrowIfCancellationRequested();
+            await ApplyDesktopAppearanceAsync(new RuntimeProfileStore(Paths).Read().DesktopDisplay, ct, settleStartup: true);
+        }
+        catch (Exception error)
         {
             using var stopDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-            await StopAsync(stopDeadline.Token);
+            try { await StopAsync(stopDeadline.Token); }
+            catch (Exception cleanup)
+            { throw new DebugException("start_cleanup_unverified", error.Message + " 启动后清理未确认：" + cleanup.Message, "startup_cleanup", inner: error); }
             throw;
         }
     }
     public async Task StopAsync(CancellationToken ct)
     {
         if (await _controller.GetStatusAsync(ct) != VmStatus.Running) { Instance.RequireStopped(); return; }
-        Instance.Require(); await ReleaseAsync();
+        Instance.Require(); var release = await ReleaseAsync();
         await _controller.StopAsync(ct); await Instance.WaitStoppedAsync(ct);
+        Transport.Dispose();
+        var stoppedEvidence = Path.ChangeExtension(release.EvidencePath, ".stopped.json");
+        _lastRelease = release with { State = "instance_stopped", RemainingOwnedSlots = [], ErrorCode = null,
+            ObservedAt = DateTimeOffset.UtcNow, EvidencePath = stoppedEvidence };
+        await File.WriteAllTextAsync(stoppedEvidence, DebugJson.Write(_lastRelease), CancellationToken.None);
         lock (_observations) _observations.Clear();
     }
-    public async Task ReleaseAsync()
+    public async Task<InputReleaseEvidence> ReleaseAsync(string? expectedSession = null)
     {
+        var directory = DebugOperation.Current.Value?.DirectoryPath ?? Path.Combine(Paths.ProductRoot, "debug-runs", "input-releases");
+        ColdCheckpoint.Restrict(directory);
+        var path = Path.Combine(directory, "release-" + Guid.NewGuid().ToString("N") + ".json");
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        try { await Transport.ReleaseAllAsync(timeout.Token); }
+        string? session = expectedSession;
+        InputReleaseEvidence result;
+        try
+        {
+            session ??= Transport.Session;
+            await Transport.ReleaseAllAsync(timeout.Token, session);
+            result = new("acknowledged", true, session, DateTimeOffset.UtcNow, Transport.ActiveTouchIds, null, path);
+        }
         catch (Exception e) when (e is DebugException or RpcException or OperationCanceledException)
         {
-            // Caller records failures; reconnect always attempts all ten releases before input.
-            if (e is DebugException { Code: "device_offline" or "grpc_unavailable" }) return;
-            throw;
+            result = new("unverified", false, session, DateTimeOffset.UtcNow, Transport.ActiveTouchIds, DebugReply.Failure(e).Error!.Code, path);
+            try
+            {
+                Instance.RequireStopped();
+                result = result with { State = "instance_stopped", RemainingOwnedSlots = [], ErrorCode = null };
+            }
+            catch (DebugException) { /* An unreachable live instance is not proof that contacts are gone. */ }
         }
+        await File.WriteAllTextAsync(path, DebugJson.Write(result), CancellationToken.None);
+        _lastRelease = result;
+        return result;
     }
     public async Task<(bool Boot, bool Awake, bool Locked, string? Foreground, int Rotation)> StateAsync(CancellationToken ct, bool force = false)
     {
@@ -170,7 +214,9 @@ public sealed partial class AndroidDebugService : IDisposable
     }
     private async Task<ScreenObservation> ScreenshotCoreAsync(string? directory, CancellationToken ct)
     {
-        var host = Instance.Require(); var state = await StateAsync(ct);
+        var host = Instance.Require(); var state = await StateAsync(ct, force: true);
+        var revision = Interlocked.Read(ref _pageRevision);
+        var appPid = state.Foreground is null ? null : (await ShellAsync("pidof " + Q(state.Foreground) + " || true", false, ct)).Trim();
         ReadOnlyMemory<byte> png; var backend = "emulator-grpc"; var rotation = state.Rotation; var imageRotation = rotation; bool? blank = null;
         try { var image = await Transport.ScreenshotAsync(ct); png = image.Image_.Memory; imageRotation = (int)image.Format.Rotation.Rotation_ * 90; blank = await Transport.IsBlankAsync(ct); }
         catch (Exception e) when (e is RpcException or DebugException { Code: "grpc_unavailable" })
@@ -178,11 +224,16 @@ public sealed partial class AndroidDebugService : IDisposable
         var size = PngSize(png.Span);
         var after = Instance.Require();
         if (after.ProcessId != host.ProcessId || after.StartedAtUtcTicks != host.StartedAtUtcTicks) throw new DebugException("stale_observation", "截图期间会话发生变化。");
+        var afterState = await StateAsync(ct, force: true);
+        var afterPid = state.Foreground is null ? null : (await ShellAsync("pidof " + Q(state.Foreground) + " || true", false, ct)).Trim();
+        if (afterState.Foreground != state.Foreground || afterState.Rotation != state.Rotation || afterPid != appPid || revision != Interlocked.Read(ref _pageRevision))
+            throw new DebugException("stale_observation", "截图期间应用、旋转或输入操作发生变化，请重新观察。");
         directory ??= NewRecord("screen"); Directory.CreateDirectory(directory);
         var id = Guid.NewGuid().ToString("N"); var path = Path.Combine(directory, id + ".png");
         await using (var file = File.Create(path)) await file.WriteAsync(png, ct);
         var result = new ScreenObservation(id, $"{host.ProcessId}:{host.StartedAtUtcTicks}", path, backend, size.Width, size.Height,
-            rotation, 0, state.Foreground, state.Boot, state.Awake, state.Locked, DateTimeOffset.UtcNow, imageRotation, blank);
+            rotation, 0, state.Foreground, state.Boot, state.Awake, state.Locked, DateTimeOffset.UtcNow, imageRotation, blank,
+            appPid, revision);
         await File.WriteAllTextAsync(Path.ChangeExtension(path, ".json"), DebugJson.Write(result), ct);
         lock (_observations) { if (_observations.Count >= 64) _observations.Remove(_observations.Keys.First()); _observations[id] = result; }
         return result;
@@ -218,11 +269,21 @@ public sealed partial class AndroidDebugService : IDisposable
         lock (_observations) old = _observations.GetValueOrDefault(observationId) ?? throw new DebugException("stale_observation", "请先获取新截图。");
         ValidateFrames(frames, old);
         var dir = NewRecord("input"); var fresh = await ScreenshotAsync(dir, ct);
-        if (fresh.Session != old.Session || fresh.Width != old.Width || fresh.Height != old.Height || fresh.Rotation != old.Rotation || fresh.ImageRotation != old.ImageRotation || fresh.Foreground != old.Foreground)
+        if (fresh.Session != old.Session || fresh.Width != old.Width || fresh.Height != old.Height || fresh.Rotation != old.Rotation || fresh.ImageRotation != old.ImageRotation || fresh.Foreground != old.Foreground ||
+            old.AppPid is not null && fresh.AppPid != old.AppPid)
             throw new DebugException("stale_observation", "会话、分辨率、旋转或前台应用发生变化；请使用新截图坐标。");
         if (!fresh.BootCompleted || !fresh.Awake || fresh.Locked || fresh.Blank == true) throw new DebugException("screen_not_ready", "安卓未启动完成、息屏、锁屏或截图为疑似空白画面。");
-        await Transport.ReleaseAllAsync(ct);
+        if (string.IsNullOrWhiteSpace(fresh.Foreground) || string.IsNullOrWhiteSpace(fresh.AppPid))
+            throw new DebugException("screen_not_ready", "未确认当前前台应用及进程，拒绝向未知页面输入。");
+        Progress.Value?.Invoke(new { stage = "preparing_input", directory = dir, session = fresh.Session, pid = fresh.AppPid });
+        ct.ThrowIfCancellationRequested();
+        var initialRelease = await ReleaseAsync(fresh.Session);
+        if (!initialRelease.Acknowledged) throw new DebugException("input_release_unverified", "输入前未确认旧触点释放。", "preparing_input", initialRelease.EvidencePath);
+        ct.ThrowIfCancellationRequested();
         var timings = new List<InputTiming>(); var clock = Stopwatch.StartNew();
+        Exception? inputError = null;
+        InputReleaseEvidence? cleanup = null;
+        Progress.Value?.Invoke(new { stage = "sending_input", directory = dir, session = fresh.Session });
         try
         {
             for (var i = 0; i < frames.Length; i++)
@@ -237,23 +298,36 @@ public sealed partial class AndroidDebugService : IDisposable
                 ct.ThrowIfCancellationRequested();
                 // Each message has a finite lifetime. Finally/reconnect releases all product-owned slots.
                 var sent = clock.Elapsed.TotalMilliseconds;
-                await Transport.SendAsync(frames[i].Touches.Select(p => ToNativeTouch(p, fresh)), ct);
+                await Transport.SendAsync(frames[i].Touches.Select(p => ToNativeTouch(p, fresh)), ct, fresh.Session);
                 timings.Add(new(i, frames[i].AtMs, sent, sent - frames[i].AtMs));
             }
         }
+        catch (Exception error)
+        {
+            inputError = error;
+            var detail = DebugReply.Failure(error).Error!;
+            throw new DebugException(detail.Code, detail.Message, detail.Stage ?? "sending_input", Path.Combine(dir, "input.json"), error);
+        }
         finally
         {
-            try { await ReleaseAsync(); }
-            finally { await File.WriteAllTextAsync(Path.Combine(dir, "input.json"), DebugJson.Write(new { observation = old, frames, timings, cancelled = ct.IsCancellationRequested }), CancellationToken.None); }
+            try { cleanup = await ReleaseAsync(fresh.Session); }
+            finally { await File.WriteAllTextAsync(Path.Combine(dir, "input.json"), DebugJson.Write(new { observation = old, frames, timings,
+                cancelled = ct.IsCancellationRequested, cleanup, failure = inputError is null ? null : DebugReply.Failure(inputError).Error }), CancellationToken.None); }
         }
-        return new { directory = dir, timings, after = await ScreenshotAsync(dir, ct) };
+        if (cleanup?.Acknowledged != true) throw new DebugException("input_release_unverified", "输入已结束，但未确认触点释放；请检查恢复记录并重新观察。", "releasing_input", cleanup?.EvidencePath);
+        Progress.Value?.Invoke(new { stage = "verifying_after_input", directory = dir, session = fresh.Session, pid = fresh.AppPid });
+        return new { directory = dir, timings, cleanup, after = await ScreenshotAsync(dir, ct) };
     }
     public async Task<object> ExecuteAsync(DebugRequest request, CancellationToken ct)
     {
         if (request.SchemaVersion != 1) throw new ArgumentException("未知协议版本。");
         var package = request.Text("package", MalodyPackage);
+        if (request.Command is "input" or "key" or "launch" or "force-stop" or "install" or "malody.import" or "malody.reload" or "stop" or "root-shell" or "shell")
+            Interlocked.Increment(ref _pageRevision);
         switch (request.Command)
         {
+            case "session.observe": return await SessionObservationAsync(package, request.Flag("refresh"), ct);
+            case "malody.page.observe": return await ObservePageAsync(request, ct);
             case "licenses":
                 var assembly = typeof(AndroidDebugService).Assembly;
                 return assembly.GetManifestResourceNames().Where(n => n.Contains("Licenses.")).ToDictionary(n => n,
@@ -321,7 +395,10 @@ public sealed partial class AndroidDebugService : IDisposable
             case "frames.sample": return await SampleFrameTimingsAsync(package, request.Number("seconds", 15), ct);
             case "window.focus": return OwnedVmWindow.Show(Instance);
             case "input": return await InputAsync(request.Text("observation"), request.Value<InputFrame[]>("frames") ?? [], ct);
-            case "release": await ReleaseAsync(); return new { released = true };
+            case "release":
+                var released = await ReleaseAsync();
+                if (!released.Acknowledged && released.State != "instance_stopped") throw new DebugException("input_release_unverified", "未确认触点释放；" + released.ErrorCode, "releasing_input", released.EvidencePath);
+                return new { released = true, evidence = released, guestStateVerified = false };
             case "wake": await ShellAsync("input keyevent KEYCODE_WAKEUP; wm dismiss-keyguard", false, ct); var state = await StateAsync(ct); return new { awake = state.Awake, locked = state.Locked, bootCompleted = state.Boot, foreground = state.Foreground };
             case "key": var key = request.Text("key"); if (!Regex.IsMatch(key, "^KEYCODE_[A-Z0-9_]+$")) throw new ArgumentException("请使用 Android KEYCODE 名称。"); return await ShellAsync("input keyevent " + key, false, ct);
             case "clipboard": return new { text = await Transport.ClipboardAsync(request.Arguments?.ContainsKey("text") == true ? request.Text("text") : null, ct) };
@@ -370,5 +447,5 @@ public sealed partial class AndroidDebugService : IDisposable
             default: throw new ArgumentException("未知命令：" + request.Command);
         }
     }
-    public void Dispose() { Transport.Dispose(); Instance.Dispose(); _stateGate.Dispose(); _captureGate.Dispose(); }
+    public void Dispose() { Transport.Dispose(); Instance.Dispose(); _stateGate.Dispose(); _captureGate.Dispose(); _summaryGate.Dispose(); }
 }

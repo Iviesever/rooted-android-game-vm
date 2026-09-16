@@ -27,6 +27,8 @@ $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.ex
 
 内存审计版本：完成任务的完整 `DebugReply` 存到 `debug-runs/job-results/<jobId>.json`；`jobs` 只返回摘要与路径，单个 `job` 对不超过 1 MiB 的结果保持内联。更大的结果返回 `{resultPath,resultBytes,inline:false}`，读取该本地 JSON 才是完整结果。失败仍保持 `ok:false` 与错误码。最多 16 个未完成任务、约 128 份完成任务索引；裁剪索引不删除证据文件。管道请求上限为 1 MiB，响应帧上限仍为 16 MiB。批量 `test` 的每步输出改存 `step-0000.json` 等文件，步骤索引给出 `resultPath`，避免在内存和每次响应中叠加全部输出。
 
+即使是立即返回的诊断响应，超过16MiB管道帧时也复用相同文件引用契约，保留完整原始响应及身份，不再以断管丢失结果。工具记录的stdoutComplete/stderrComplete为false时不能当成完整输出；生命周期取消期间未收齐的流会明确标记。
+
 推荐用请求文件，避免 PowerShell 引号转义：
 
 ```json
@@ -48,6 +50,8 @@ $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.ex
 | command | arguments 示例 | 用途 |
 |---|---|---|
 | `status` / `capabilities` | `{}` | 状态、协议能力 |
+| `session.summary` | `{"package":"me.mugzone.emiria","refresh":true}` | GUI/CLI共用的会话、任务、核验、触点与恢复摘要 |
+| `malody.page.observe` | `{"observation":"截图id","page":"home"}` | 将调用者观察到的页面关联到新截图 |
 | `memory.snapshot` | `{}` | 宿主余量与经过路径/PID/启动时间核验的进程 WS、私有提交、历史峰值 |
 | `start` / `stop` | `{}` | 启动或 sync 后停止 |
 | `apps` | `{}` | 第三方应用列表 |
@@ -73,6 +77,12 @@ $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.ex
 | `licenses` | `{}` | 随程序附带的第三方库许可证 |
 
 所有 ADB 操作都固定到经过检查的产品实例。没有“自动选第一个设备”的逻辑，也不调用全局 `adb kill-server`。
+
+`session.summary`返回runtime与summary，`summary.text`就是GUI展开“会话摘要”显示的同一份文字。它列出实例、App/PID、近期任务阶段、最近导入/传输核验、触点释放依据、产物目录、可恢复点与下一步。启动/停机/恢复期间仍可返回任务进度，安卓状态标为OperationInProgress，不等独占操作结束才显示。ADB不可用但产品进程仍在时为Unreachable，不能误当已停机。
+
+App结构化观察最多缓存10秒，返回原observedAt；refresh:true强制更新该观察，不自动截图或识别Unity页面。Malody无障碍树只有Game view时，先screen查看真实页面，再用malody.page.observe记录home/song_select/loading/playing/paused/results/dialog/unknown。该记录明确是调用者截图标注，附截图路径、采集时间、App PID及会话；只接受30秒内且未执行后续操作的观察。摘要对过期、后续操作、进程/会话或前台变化标superseded，不把旧页面当作当前事实。
+
+触点计数是本工具账本；acknowledged仅表示释放RPC已确认，游戏实际状态需要独立验收。释放未确认会保留unverified及错误依据；输入结束不能在清理未确认时报告成功。每次发送和释放均绑定原VM会话，不能把旧序列续发给重启后的实例；新协调进程在确认资源归属后先清理可能遗留的输入，失败时保持未验证。
 
 导入进度区分 `transferring`、`transferred`、`waiting_for_app`、`activity_ready`、`triggering_import`、`import_triggered`、`waiting_for_unpack`、`verifying_content`、`content_verified` 和 `waiting_for_activation`。前台 resumed Activity 只证明 Activity 就绪；`interactiveReady:false`、`activationVerified:false` 和 `runningVerified:false` 不代表页面可操作、已启用或已进入游戏。进度、原始 Activity/Intent 依据及逐文件核验保存在 `debug-runs/imports/<importId>/`。
 

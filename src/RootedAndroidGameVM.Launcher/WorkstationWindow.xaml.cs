@@ -32,6 +32,11 @@ public partial class WorkstationWindow : Window
     private readonly bool _offline;
 
     public WorkstationWindow() : this(new BrokerWorkstationApi()) { }
+    private void OpenSessionRecords_Click(object sender, RoutedEventArgs e)
+    {
+        var directory = ViewModel.SessionArtifactDirectory;
+        if (Directory.Exists(directory)) Process.Start(new ProcessStartInfo(directory) { UseShellExecute = true });
+    }
     public WorkstationWindow(IWorkstationApi api, bool offline = false)
     {
         _offline = offline;

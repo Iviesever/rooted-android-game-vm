@@ -28,6 +28,8 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
     private FileScope _scope;
     private ScreenObservation? _observation;
     private PreviewFrame? _preview;
+    private SessionSummary? _session;
+    private string _sessionText = "会话尚未读取。", _sessionHeadline = "会话摘要 · 等待连接", _sessionArtifactDirectory = "";
 
     public WorkstationViewModel(IWorkstationApi api)
     {
@@ -44,9 +46,22 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
         Scopes = [new("external", "应用文件", "/sdcard/Android/data/<包名>"), new("private", "私有数据 · Root", "/data/data/<包名>"), new("shared", "共享下载", "/sdcard/Download")];
         _scope = Scopes[0];
         RefreshCommand = Action(RefreshAsync);
-        StartCommand = Action(async () => { await RunAsync("启动安卓", new("start"), true); await RefreshAsync(); }, () => !IsRunning && !IsBusy);
+        RefreshSessionCommand = Action(async () => await RefreshSessionAsync(true));
+        ResumeImportCommand = Action(async () =>
+        {
+            var request = _session?.ResumeRequest; if (request is null) return;
+            if (!IsRunning && await RunAsync("启动安卓", new("start"), true) is null) return;
+            await RunAsync("继续原导入", request, true); await RefreshSessionAsync(true);
+        }, () => !IsBusy && _session?.ResumeRequest is not null);
+        CancelSessionTaskCommand = Action(async () =>
+        {
+            var task = _session?.Tasks.FirstOrDefault(task => task.Status is "queued" or "running" or "cancelling");
+            if (task is null) return;
+            await RunAsync("取消会话任务", DebugRequest.Create("cancel", new { id = task.JobId })); await RefreshAsync();
+        }, () => _session?.Tasks.Any(task => task.Status is "queued" or "running" or "cancelling") == true);
+        StartCommand = Action(async () => { await RunAsync("启动安卓", new("start"), true); await RefreshAsync(); }, () => !IsRunning && !IsBusy && _session?.Status is not ("OperationInProgress" or "Unreachable"));
         StopCommand = Action(async () => { await RunAsync("保存并停止安卓", new("stop"), true); await RefreshAsync(); }, () => IsRunning && !IsBusy);
-        OpenAndroidCommand = Action(async () => { if (!IsRunning && await RunAsync("启动安卓", new("start"), true) is null) return; await RunAsync("打开安卓窗口", new("window.focus")); await RefreshAsync(); }, () => !IsBusy);
+        OpenAndroidCommand = Action(async () => { if (!IsRunning && _session?.Status != "Unreachable" && await RunAsync("启动安卓", new("start"), true) is null) return; await RunAsync("打开安卓窗口", new("window.focus")); await RefreshAsync(); }, () => !IsBusy && _session?.Status != "OperationInProgress");
         CaptureCommand = Action(CaptureAsync, () => IsRunning);
         WakeCommand = Action(async () => { await RunAsync("唤醒", new("wake")); await RefreshAsync(); }, () => IsRunning);
         ReleaseCommand = Action(async () => await RunAsync("释放触点", new("release")), () => IsRunning);
@@ -109,6 +124,9 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
     public bool IsBusy { get => _busy; private set { if (Set(ref _busy, value)) RefreshCommands(); } }
     public string Status { get => _status; private set => Set(ref _status, value); }
     public string StatusDetail { get => _statusDetail; private set => Set(ref _statusDetail, value); }
+    public string SessionText { get => _sessionText; private set => Set(ref _sessionText, value); }
+    public string SessionHeadline { get => _sessionHeadline; private set => Set(ref _sessionHeadline, value); }
+    public string SessionArtifactDirectory { get => _sessionArtifactDirectory; private set => Set(ref _sessionArtifactDirectory, value); }
     public string Message { get => _message; set => Set(ref _message, value); }
     public string Error { get => _error; private set { Set(ref _error, value.Length > 500 ? value[..500] + "…" : value); Changed(nameof(HasError)); } }
     public bool HasError => Error.Length > 0;
@@ -158,6 +176,9 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
     public bool DesktopDisplay { get => _desktopDisplay; set => Set(ref _desktopDisplay, value); }
 
     public AsyncAction RefreshCommand { get; }
+    public AsyncAction RefreshSessionCommand { get; }
+    public AsyncAction ResumeImportCommand { get; }
+    public AsyncAction CancelSessionTaskCommand { get; }
     public AsyncAction StartCommand { get; }
     public AsyncAction StopCommand { get; }
     public AsyncAction OpenAndroidCommand { get; }
@@ -213,35 +234,49 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
         {
             var result = await _api.ExecuteAsync(request, _lifetime.Token, update =>
             {
-                item.Id = Text(update, "jobId"); item.Status = Text(update, "status") switch { "running" => "执行中", "cancelling" => "正在取消", "queued" => "排队中", var status => status };
-                if (update.TryGetProperty("progress", out var progress) && progress.TryGetProperty("directory", out var directory))
+                item.Id = Text(update, "jobId"); item.Status = Text(update, "status") switch { "running" => "执行中", "cancelling" => "正在取消", "queued" => "排队中", "cancelled" => "已取消", "timed_out" => "已超时", "interrupted" => "已中断", var status => status };
+                if (update.TryGetProperty("stage", out var stage)) SessionHeadline = "会话摘要 · " + title + " · " + stage.GetString();
+                if (update.TryGetProperty("progress", out var progress) && progress.ValueKind == JsonValueKind.Object && progress.TryGetProperty("directory", out var directory))
                 { item.Directory = directory.GetString(); RecordDirectory = item.Directory ?? ""; }
                 RefreshCommands();
             });
             item.Details = Pretty(result); RawResult = item.Details; item.Status = "已完成"; Message = title + "已完成";
+            var completedStage = result.ValueKind == JsonValueKind.Object ? Text(result, "stage") : "";
+            if (completedStage == "waiting_for_activation") { item.Status = "内容已核验 · 待启用"; Message = "内容核验通过；请在App内确认启用，实际运行仍待验证。"; }
+            else if (completedStage is "process_observed" or "activity_ready") { item.Status = completedStage == "activity_ready" ? "Activity就绪" : "进程已出现"; Message = item.Status + "；页面可操作性仍待核验。"; }
+            else if (request.Command == "release") { item.Status = "释放指令已确认"; Message = "释放指令已确认；游戏内状态请结合观察核验。"; }
             if (result.ValueKind == JsonValueKind.Object && result.TryGetProperty("directory", out var directory)) { item.Directory = directory.GetString(); RecordDirectory = item.Directory ?? ""; }
             return result;
         }
         catch (OperationCanceledException) { item.Details = "任务已取消。"; item.Status = "已取消"; Message = title + "已取消"; return null; }
+        catch (DebugException error) when (error.Code is "cancelled" or "timeout" or "interrupted")
+        { item.Details = error.Message; item.Status = error.Code switch { "cancelled" => "已取消", "timeout" => "已超时", _ => "已中断" }; Error = error.Message; return null; }
         catch (Exception error) { item.Details = error.Message; item.Status = "未完成"; Error = error.Message; return null; }
         finally { item.Completed = true; if (exclusive) IsBusy = false; RefreshCommands(); }
     }
 
-    public async Task RefreshAsync()
+    public Task RefreshAsync() => RefreshSessionAsync(false);
+    public async Task RefreshSessionAsync(bool force)
     {
-        if (_refreshing || IsBusy) return;
+        if (_refreshing) return;
         _refreshing = true;
         try
         {
-            var status = await _api.ExecuteAsync(new("status"), _lifetime.Token);
+            var result = await _api.ExecuteAsync(DebugRequest.Create("session.summary", new { package = Package, refresh = force }), _lifetime.Token);
+            var status = result.GetProperty("runtime");
+            _session = result.GetProperty("summary").Deserialize<SessionSummary>(DebugJson.Options)!;
+            SessionText = _session.Text;
+            SessionArtifactDirectory = _session.ArtifactDirectory;
+            SessionHeadline = "会话摘要 · " + _session.Status + " · PID " + (_session.App?.Pid ?? "未观察") + " · " + (_session.Tasks.FirstOrDefault()?.Stage ?? "无近期任务");
+            RefreshCommands();
             IsRunning = Text(status, "status") == "Running";
-            Status = IsRunning ? "安卓运行中" : Text(status, "status") == "NotInstalled" ? "需要安装运行环境" : "安卓已停止";
+            Status = Text(status, "status") switch { "Running" => "安卓运行中", "NotInstalled" => "需要安装运行环境", "Unreachable" => "安卓进程存在，连接不可用", "OperationInProgress" => "安卓操作进行中", _ => "安卓已停止" };
             DataRoot = Text(status, "dataRoot"); Serial = Text(status, "serial");
             if (status.TryGetProperty("hostMemory", out var host))
                 HostMemory = $"可用 {host.GetProperty("availableMb").GetInt64() / 1024d:0.0} / {host.GetProperty("totalMb").GetInt64() / 1024d:0.0} GiB";
             RootStatus = status.TryGetProperty("root", out var root) ? root.GetBoolean() ? "Root 可用" : "Root 不可用" : "等待启动";
             StatusDetail = IsRunning && status.TryGetProperty("state", out var state) ?
-                state.GetProperty("locked").GetBoolean() ? "安卓处于锁屏状态" : state.GetProperty("awake").GetBoolean() ? Text(state, "foreground", "安卓已连接") : "安卓已息屏" : "启动后可打开应用或进行调试";
+                state.GetProperty("locked").GetBoolean() ? "安卓处于锁屏状态" : state.GetProperty("awake").GetBoolean() ? Text(state, "foreground", "安卓已连接") : "安卓已息屏" : Text(status, "reason", "启动后可打开应用或进行调试");
             if (status.TryGetProperty("memoryProtection", out var protection) && protection.ValueKind == JsonValueKind.Object)
                 StatusDetail = Text(protection, "message", StatusDetail);
         }

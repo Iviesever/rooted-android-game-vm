@@ -391,7 +391,9 @@ public sealed class AndroidVmController : IAndroidVmLifecycle
             var detail = string.IsNullOrWhiteSpace(result.StandardError)
                 ? result.StandardOutput.Trim()
                 : result.StandardError.Trim();
-            throw new InvalidOperationException($"{operation}失败：{detail}");
+            var error = new InvalidOperationException($"{operation}失败：{detail}");
+            if (result.EvidencePath is not null) error.Data["toolEvidencePath"] = result.EvidencePath;
+            throw error;
         }
     }
 

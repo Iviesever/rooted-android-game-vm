@@ -6,6 +6,8 @@ public static class DebugCommandCatalog
     public static readonly DebugCommandDescription[] Commands =
     [
         new("status", "当前实例状态", "{}"),
+        new("session.summary", "GUI/CLI共用的实例、App、任务、核验、触点、产物与恢复摘要", "{\"package\":\"me.mugzone.emiria\",\"refresh\":true}"),
+        new("malody.page.observe", "将页面观察关联到30秒内的真实Malody截图；标明人工观察，不自动推断", "{\"observation\":\"截图编号\",\"page\":\"playing\"}"),
         new("memory.snapshot", "宿主余量、产品进程工作集/私有提交与归属", "{}"),
         new("capabilities", "能力与约束", "{}"),
         new("schema", "命令说明", "{}"),
