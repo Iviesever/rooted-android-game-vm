@@ -11,15 +11,16 @@ public sealed record AndroidVmOptions(
     string? AvdHome = null,
     bool Headless = false,
     bool Verbose = false,
-    int? GrpcPort = null)
+    int? GrpcPort = null,
+    int CpuCores = 4,
+    bool Vulkan = false)
 {
     public static AndroidVmOptions ForPaths(InstallPaths paths)
     {
-        var profile = PerformanceProfileService.ReadCurrent(paths.ProductRoot);
+        var profile = new RuntimeProfileStore(paths).Read();
         return new(
             "rooted_android_game_vm_api35", "emulator-5554", 5554,
-            profile == PerformanceProfile.HighPerformance ? "host" : "swiftshader_indirect",
-            4096, paths.AvdHome);
+            profile.Renderer, profile.MemoryMb, paths.AvdHome, CpuCores: profile.CpuCores, Vulkan: profile.Vulkan);
     }
 
     public static AndroidVmOptions ProductDefault => ForPaths(InstallPaths.CreateDefault());

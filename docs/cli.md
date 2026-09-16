@@ -6,6 +6,8 @@
 $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.exe"
 & $vm status
 & $vm capabilities
+& $vm schema
+& $vm runtime.inspect
 & $vm start --wait
 & $vm screen
 & $vm checkpoint.create --wait
@@ -54,10 +56,23 @@ $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.ex
 | `checkpoint.recover` | `{}` | 恢复中断的磁盘切换 |
 | `shell` / `root-shell` | `{"script":"id","timeoutSeconds":10}` | 显式调试 Shell |
 | `jobs` / `job` / `cancel` | `{}` 或 `{"id":"任务编号"}` | 任务列表、查询、取消 |
-| `quiesce` / `shutdown` | `{}` | 停止调试任务 / 退出协调进程；不关闭安卓 |
+| `quiesce` / `shutdown` | `{}` | 停止调试任务 / 安卓已停止时退出协调进程 |
 | `licenses` | `{}` | 随程序附带的第三方库许可证 |
 
 所有 ADB 操作都固定到经过检查的产品实例。没有“自动选第一个设备”的逻辑，也不调用全局 `adb kill-server`。
+
+0.4.0 增加以下请求，完整参数以 `schema` 为准：
+
+| command | arguments 示例 | 用途 |
+|---|---|---|
+| `runtime.inspect` | `{}` | 请求配置、实际显示、宿主内存；停机时附启动余量检查 |
+| `runtime.configure` | `{"profile":{"renderer":"host","width":1920,"height":1080,"density":240,"refreshRate":120,"memoryMb":3072,"cpuCores":4,"desktopDisplay":true}}` | 停机后保存；下次启动生效 |
+| `frames.sample` | `{"package":"me.mugzone.emiria","seconds":30}` | 实际呈现帧率、间隔分布和采样覆盖 |
+| `files.export` | `{"package":"test.app","scope":"private","remote":"files/qa","local":"D:\\exports"}` | 导出指定目录，核验并受控解包 |
+| `uninstall` | `{"package":"test.app","confirm":true}` | 卸载普通第三方应用；删除该应用数据 |
+| `window.focus` | `{}` | 打开已经验证的产品安卓窗口 |
+
+`status.hostMemory` 报告宿主物理余量与提交余量；`memoryProtection` 在警告或自动停机时给出原因。`start` 可能返回 `host_memory_low`，请处理容量不足后重试，不循环强行启动。`preview` 是 GUI 的二进制管道协议：JSON 元数据帧后紧跟 PNG 帧；命令行取证请使用 `screen`，不要把元数据当成已经收到 PNG。
 
 ## 六指同时按下，再独立松开
 

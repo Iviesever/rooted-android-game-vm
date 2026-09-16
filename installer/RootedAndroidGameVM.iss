@@ -1,5 +1,5 @@
 #define AppName "Rooted Android Game VM"
-#define AppVersion "0.3.0"
+#define AppVersion "0.4.0"
 #define Publisher "RootedAndroidGameVM contributors"
 #ifdef RgvmSandbox
   #undef AppName

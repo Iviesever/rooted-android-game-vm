@@ -26,6 +26,11 @@ public sealed partial class AndroidDebugService : IDisposable
     public readonly ColdCheckpoint Checkpoints;
     private AndroidVmController _controller;
     private readonly Dictionary<string, ScreenObservation> _observations = new();
+    private readonly SemaphoreSlim _stateGate = new(1, 1);
+    private (bool Boot, bool Awake, bool Locked, string? Foreground, int Rotation)? _cachedState;
+    private string? _cachedStateSession;
+    private long _stateAt;
+    public Func<MemoryProtectionNotice?>? MemoryNotice { get; set; }
     public AndroidDebugService(InstallPaths? paths = null)
     {
         Paths = paths ?? InstallPaths.CreateDefault(); Layout = AndroidSdkLayout.Discover(Paths);
@@ -44,9 +49,9 @@ public sealed partial class AndroidDebugService : IDisposable
         var bytes = await BinaryProcess.RunAsync(AndroidCommandFactory.Adb(Layout, Options, args), limit, ct);
         return Encoding.UTF8.GetString(bytes);
     }
-    public async Task<string> ShellAsync(string script, bool root, CancellationToken ct)
+    public async Task<string> ShellAsync(string script, bool root, CancellationToken ct, bool strict = true)
     {
-        Instance.Require();
+        Instance.Require(force: strict);
         var spec = root ? AndroidCommandFactory.RootShell(Layout, Options, script) : AndroidCommandFactory.Adb(Layout, Options, "shell", script);
         return Encoding.UTF8.GetString(await BinaryProcess.RunAsync(spec, 8 * 1024 * 1024, ct));
     }
@@ -54,15 +59,17 @@ public sealed partial class AndroidDebugService : IDisposable
     public async Task<object> StatusAsync(CancellationToken ct)
     {
         var status = await _controller.GetStatusAsync(ct);
-        if (status != VmStatus.Running) return new { version = "0.3.0", status = status.ToString(), dataRoot = Paths.ProductRoot, serial = Options.Serial };
+        if (status != VmStatus.Running) return new { version = "0.4.0", status = status.ToString(), dataRoot = Paths.ProductRoot, serial = Options.Serial, hostMemory = HostMemory.Read(), memoryProtection = MemoryNotice?.Invoke() };
         var host = Instance.Require();
         var state = await StateAsync(ct);
         return new
         {
-            version = "0.3.0",
+            version = "0.4.0",
             status = "Running",
             dataRoot = Paths.ProductRoot,
             serial = Options.Serial,
+            hostMemory = HostMemory.Read(),
+            memoryProtection = MemoryNotice?.Invoke(),
             session = $"{host.ProcessId}:{host.StartedAtUtcTicks}",
             state = new { bootCompleted = state.Boot, awake = state.Awake, locked = state.Locked, foreground = state.Foreground, rotation = state.Rotation },
             root = (await ShellAsync("id", true, ct)).Contains("uid=0"),
@@ -77,6 +84,13 @@ public sealed partial class AndroidDebugService : IDisposable
         _controller = new(Layout, AndroidVmOptions.ForPaths(Paths) with { GrpcPort = Options.GrpcPort });
         await _controller.StartAsync(ct); Instance.Require();
         await Transport.ReleaseAllAsync(ct);
+        try { await ApplyDesktopAppearanceAsync(new RuntimeProfileStore(Paths).Read().DesktopDisplay, ct, settleStartup: true); }
+        catch (HostMemoryInsufficientException)
+        {
+            using var stopDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            await StopAsync(stopDeadline.Token);
+            throw;
+        }
     }
     public async Task StopAsync(CancellationToken ct)
     {
@@ -96,9 +110,23 @@ public sealed partial class AndroidDebugService : IDisposable
             throw;
         }
     }
-    public async Task<(bool Boot, bool Awake, bool Locked, string? Foreground, int Rotation)> StateAsync(CancellationToken ct)
+    public async Task<(bool Boot, bool Awake, bool Locked, string? Foreground, int Rotation)> StateAsync(CancellationToken ct, bool force = false)
     {
-        var text = await ShellAsync("getprop sys.boot_completed; dumpsys power; dumpsys window displays; dumpsys window policy", false, ct);
+        var host = Instance.Require(force);
+        var session = $"{host.ProcessId}:{host.StartedAtUtcTicks}";
+        await _stateGate.WaitAsync(ct);
+        try
+        {
+            if (!force && _cachedState is { } cached && _cachedStateSession == session && Stopwatch.GetElapsedTime(_stateAt).TotalMilliseconds < 500) return cached;
+            var state = await ReadStateAsync(ct);
+            _cachedState = state; _cachedStateSession = session; _stateAt = Stopwatch.GetTimestamp();
+            return state;
+        }
+        finally { _stateGate.Release(); }
+    }
+    private async Task<(bool Boot, bool Awake, bool Locked, string? Foreground, int Rotation)> ReadStateAsync(CancellationToken ct)
+    {
+        var text = await ShellAsync("getprop sys.boot_completed; dumpsys power | grep mWakefulness; dumpsys window displays; dumpsys window policy", false, ct, strict: false);
         var foreground = Regex.Match(text, @"mCurrentFocus=Window\{[^\r\n]*?\s([a-zA-Z][\w.]+)/(\S+)");
         if (!foreground.Success) foreground = Regex.Match(text, @"mFocusedApp=.*?\s([a-zA-Z][\w.]+)/");
         var rotation = Regex.Match(text, @"mRotation=ROTATION_(\d+)");
@@ -106,6 +134,17 @@ public sealed partial class AndroidDebugService : IDisposable
         return (text.StartsWith("1"), text.Contains("mWakefulness=Awake"),
             text.Contains("mShowingLockscreen=true") || text.Contains("showing=true") || text.Contains("isStatusBarKeyguard=true"),
             foreground.Success ? foreground.Groups[1].Value : null, degrees);
+    }
+    public async Task<PreviewFrame> PreviewAsync(CancellationToken ct)
+    {
+        var host = Instance.Require(); var state = await StateAsync(ct);
+        var frame = await Transport.PreviewAsync(ct);
+        var bytes = frame.Image.Image_.ToByteArray(); var size = PngSize(bytes);
+        if (bytes.Length > 8 * 1024 * 1024) throw new IOException("预览数据超限。");
+        var after = Instance.Require();
+        if (host.ProcessId != after.ProcessId || host.StartedAtUtcTicks != after.StartedAtUtcTicks) throw new DebugException("stale_observation", "会话已变化。");
+        return new(new($"{host.ProcessId}:{host.StartedAtUtcTicks}", size.Width, size.Height, frame.Width, frame.Height,
+            state.Rotation, (int)frame.Image.Format.Rotation.Rotation_ * 90, state.Foreground, state.Awake, state.Locked, DateTimeOffset.UtcNow, bytes.Length), bytes);
     }
     public static (int Width, int Height) PngSize(byte[] png)
     {
@@ -159,6 +198,8 @@ public sealed partial class AndroidDebugService : IDisposable
     };
     public async Task<object> InputAsync(string observationId, InputFrame[] frames, CancellationToken ct)
     {
+        Instance.Require(force: true);
+        await StateAsync(ct, force: true);
         ScreenObservation old;
         lock (_observations) old = _observations.GetValueOrDefault(observationId) ?? throw new DebugException("stale_observation", "请先获取新截图。");
         ValidateFrames(frames, old);
@@ -205,21 +246,57 @@ public sealed partial class AndroidDebugService : IDisposable
                     n => { using var reader = new StreamReader(assembly.GetManifestResourceStream(n)!); return reader.ReadToEnd(); });
             case "status": return await StatusAsync(ct);
             case "grpc.audit": return await Transport.AuditAuthenticationAsync(ct);
+            case "schema": return new { protocolVersion = 1, commands = DebugCommandCatalog.Commands, inputLeaseSeconds = 5, inputCoordinates = "原始 PNG 像素", maxTouches = 10 };
+            case "runtime.inspect":
+                var requestedProfile = new RuntimeProfileStore(Paths).Read();
+                DisplayTelemetry? observedDisplay = null;
+                if (await _controller.GetStatusAsync(ct) == VmStatus.Running)
+                {
+                    var displayDump = await ShellAsync("dumpsys display", false, ct);
+                    var surfaceDump = await ShellAsync("dumpsys SurfaceFlinger", false, ct);
+                    observedDisplay = DisplayTelemetry.Parse(displayDump, surfaceDump);
+                }
+                var memoryCapacity = HostMemory.Read();
+                return new
+                {
+                    requested = requestedProfile,
+                    observed = observedDisplay,
+                    host = memoryCapacity,
+                    startAdmission = observedDisplay is null ? VmMemoryPolicy.Assess(requestedProfile.MemoryMb, memoryCapacity) : null,
+                    requestedRefreshConfirmed = observedDisplay?.ConfirmsRequestedRate(requestedProfile.RefreshRate) ?? false
+                };
+            case "runtime.configure":
+                var requested = request.Value<RuntimeProfile>("profile") ?? throw new ArgumentException("缺少 profile。");
+                var hostCapacity = HostMemory.Read();
+                return await new RuntimeProfileStore(Paths).ApplyAsync(requested, Instance.RequireStopped,
+                    hostCapacity.TotalMb, hostCapacity.LogicalCores, ct);
+            case "display.desktop": return await ApplyDesktopAppearanceAsync(request.Flag("enabled"), ct);
             case "capabilities":
                 return new
                 {
-                    version = "0.3.0",
+                    version = "0.4.0",
                     protocol = 1,
                     ownedAvdOnly = true,
                     maxTouches = 10,
                     inputBackend = "authenticated-loopback-grpc",
                     screenshotFallback = "binary-adb",
                     videoAudio = false,
-                    commands = new[] { "status", "start", "stop", "screen", "input", "release", "wake", "key", "clipboard", "shell", "root-shell", "apps", "launch", "force-stop", "install", "files.list", "files.pull", "files.push", "files.diff", "files.sync", "logs", "metrics", "record", "trace", "checkpoint.create", "checkpoint.list", "checkpoint.restore", "malody.import", "malody.reload", "test" }
+                    commands = DebugCommandCatalog.Commands.Select(command => command.Name).ToArray()
                 };
             case "start": await StartAsync(ct); return await StatusAsync(ct);
-            case "stop": await StopAsync(ct); return new { stopped = true };
+            case "stop":
+                if (request.Text("expectedSession") is { Length: > 0 } expectedSession)
+                {
+                    var target = Instance.Require(force: true);
+                    if (expectedSession != $"{target.ProcessId}:{target.StartedAtUtcTicks}")
+                        throw new DebugException("instance_mismatch", "运行会话已改变，取消针对旧会话的停止操作。");
+                }
+                await StopAsync(ct); return new { stopped = true };
             case "screen": return await ScreenshotAsync(null, ct);
+            case "preview": return await PreviewAsync(ct);
+            case "preview.benchmark": return await PreviewBenchmarkAsync(request.Number("frames", 20), ct);
+            case "frames.sample": return await SampleFrameTimingsAsync(package, request.Number("seconds", 15), ct);
+            case "window.focus": return OwnedVmWindow.Show(Instance);
             case "input": return await InputAsync(request.Text("observation"), request.Value<InputFrame[]>("frames") ?? [], ct);
             case "release": await ReleaseAsync(); return new { released = true };
             case "wake": await ShellAsync("input keyevent KEYCODE_WAKEUP; wm dismiss-keyguard", false, ct); var state = await StateAsync(ct); return new { awake = state.Awake, locked = state.Locked, bootCompleted = state.Boot, foreground = state.Foreground };
@@ -229,6 +306,12 @@ public sealed partial class AndroidDebugService : IDisposable
             case "apps": return await _controller.ListThirdPartyPackagesAsync(ct);
             case "launch": AndroidPackageName.Parse(package); await _controller.LaunchPackageAsync(package, ct); return new { package, pid = (await ShellAsync("pidof " + Q(package), false, ct)).Trim() };
             case "force-stop": AndroidPackageName.Parse(package); Instance.Require(); await _controller.ForceStopPackageAsync(package, ct); return new { package, stopped = true };
+            case "uninstall":
+                AndroidPackageName.Parse(package); Instance.Require(force: true);
+                if (!request.Flag("confirm")) throw new DebugException("confirmation_required", "卸载会删除应用及数据，需要明确确认。");
+                if (package == "com.topjohnwu.magisk" || !(await _controller.ListThirdPartyPackagesAsync(ct)).Contains(package))
+                    throw new DebugException("protected_app", "此入口仅卸载普通第三方应用；系统和 Root 维护组件受保护。");
+                await _controller.UninstallPackageAsync(package, ct); return new { package, uninstalled = true };
             case "install": return await InstallAsync(request.Text("path"), ct);
             case "apk.inspect": return ApkMetadata.Read(request.Text("path"));
             case "performance.set":
@@ -254,7 +337,7 @@ public sealed partial class AndroidDebugService : IDisposable
                     await StopAsync(rollbackTimeout.Token); Checkpoints.Rollback(restored); throw;
                 }
             case "checkpoint.recover": await StopAsync(ct); return await Checkpoints.RecoverPendingAsync(ct);
-            case "files.list": case "files.pull": case "files.push": case "files.diff": case "files.sync": return await FilesAsync(request, ct);
+            case "files.list": case "files.pull": case "files.push": case "files.diff": case "files.sync": case "files.export": return await FilesAsync(request, ct);
             case "malody.import": case "malody.reload": return await ImportAsync(request.Text("path"), request.Command == "malody.reload", ct);
             case "logs": return await LogsAsync(package, Math.Clamp(request.Number("seconds", 30), 1, 3600), ct);
             case "metrics": return await MetricsAsync(package, ct);
@@ -263,5 +346,5 @@ public sealed partial class AndroidDebugService : IDisposable
             default: throw new ArgumentException("未知命令：" + request.Command);
         }
     }
-    public void Dispose() => Transport.Dispose();
+    public void Dispose() { Transport.Dispose(); Instance.Dispose(); _stateGate.Dispose(); }
 }

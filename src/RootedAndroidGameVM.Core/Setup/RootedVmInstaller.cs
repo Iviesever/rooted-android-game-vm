@@ -373,18 +373,20 @@ public sealed class RootedVmInstaller
             throw new FileNotFoundException("AVD 已创建但找不到配置文件。", config);
         }
 
-        await AvdConfigEditor.UpsertAsync(
-            config,
-            new Dictionary<string, string>
-            {
-                ["disk.dataPartition.size"] = "12G",
-                ["hw.keyboard"] = "yes",
-                ["hw.ramSize"] = "4096",
-                ["hw.gpu.enabled"] = "yes",
-                ["hw.gpu.mode"] = "swiftshader_indirect",
-                ["vm.heapSize"] = "512"
-            },
-            cancellationToken);
+        var runtimeProfile = RuntimeProfile.Recommended with
+        {
+            Renderer = _options.GpuMode,
+            MemoryMb = _options.MemoryMb,
+            CpuCores = _options.CpuCores,
+            Vulkan = _options.Vulkan
+        };
+        var settings = new Dictionary<string, string>(runtimeProfile.ToAvdSettings())
+        {
+            ["disk.dataPartition.size"] = "12G",
+            ["hw.keyboard"] = "yes",
+            ["vm.heapSize"] = "512"
+        };
+        await AvdConfigEditor.UpsertAsync(config, settings, cancellationToken);
     }
 
     private async Task PrepareRootToolsAsync(CancellationToken cancellationToken)

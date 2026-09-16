@@ -26,9 +26,10 @@ public static class AndroidCommandFactory
             "-avd", options.AvdName,
             "-port", options.Port.ToString(),
             "-gpu", options.GpuMode,
-            "-feature", "-Vulkan",
+            "-feature", options.Vulkan ? "Vulkan" : "-Vulkan",
             "-memory", options.MemoryMb.ToString(),
-            "-no-snapshot-load"
+            "-cores", options.CpuCores.ToString(),
+            "-no-snapshot-load", "-no-snapshot-save"
         };
         if (!string.IsNullOrWhiteSpace(options.AvdHome))
             arguments.AddRange(["-datadir", Path.Combine(options.AvdHome, options.AvdName + ".avd")]);

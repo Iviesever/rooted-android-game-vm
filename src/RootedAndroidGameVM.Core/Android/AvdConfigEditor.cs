@@ -33,6 +33,13 @@ public static class AvdConfigEditor
         }
 
         output.AddRange(remaining.Select(pair => $"{pair.Key}={pair.Value}"));
-        await File.WriteAllLinesAsync(path, output, cancellationToken);
+        var pending = path + ".pending-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            await File.WriteAllLinesAsync(pending, output, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            File.Move(pending, path, overwrite: true);
+        }
+        finally { if (File.Exists(pending)) File.Delete(pending); }
     }
 }

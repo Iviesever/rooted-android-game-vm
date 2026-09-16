@@ -1,5 +1,6 @@
 using RootedAndroidGameVM.Core.Processes;
 using RootedAndroidGameVM.Core.Ui;
+using RootedAndroidGameVM.Core.Debugging;
 
 namespace RootedAndroidGameVM.Core.Android;
 
@@ -13,6 +14,7 @@ public sealed class AndroidVmController : IAndroidVmLifecycle
     private DetachedProcessHandle? _activeEmulatorHandle;
     private readonly bool _requireFreshStart;
     private readonly Func<int, CancellationToken, Task>? _validateStartedProcess;
+    private readonly Func<HostMemorySnapshot> _readHostMemory;
 
     public AndroidVmController(
         AndroidSdkLayout? layout = null,
@@ -21,7 +23,8 @@ public sealed class AndroidVmController : IAndroidVmLifecycle
         DetachedProcessLauncher? detachedLauncher = null,
         AndroidVmStartupPolicy? startupPolicy = null,
         bool requireFreshStart = false,
-        Func<int, CancellationToken, Task>? validateStartedProcess = null)
+        Func<int, CancellationToken, Task>? validateStartedProcess = null,
+        Func<HostMemorySnapshot>? readHostMemory = null)
     {
         _layout = layout ?? AndroidSdkLayout.Discover();
         _options = options ?? AndroidVmOptions.Default;
@@ -30,6 +33,8 @@ public sealed class AndroidVmController : IAndroidVmLifecycle
         _startupPolicy = startupPolicy ?? AndroidVmStartupPolicy.Default;
         _requireFreshStart = requireFreshStart;
         _validateStartedProcess = validateStartedProcess;
+        _readHostMemory = readHostMemory ?? (() => OperatingSystem.IsWindows() ? HostMemory.Read() :
+            throw new PlatformNotSupportedException("无法确认 Windows 宿主的可用内存。"));
     }
 
     public async Task<VmStatus> GetStatusAsync(CancellationToken cancellationToken = default)
@@ -83,6 +88,7 @@ public sealed class AndroidVmController : IAndroidVmLifecycle
         }
 
         await ReleaseActiveEmulatorHandleAsync(killIfRunning: true, CancellationToken.None);
+        VmMemoryPolicy.RequireStart(_options.MemoryMb, _readHostMemory());
 
         var diagnosticLogPath = _options.Verbose && !string.IsNullOrWhiteSpace(_options.AvdHome)
             ? Path.Combine(
@@ -97,6 +103,27 @@ public sealed class AndroidVmController : IAndroidVmLifecycle
         var emulatorProcess = emulatorHandle.Process;
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(_startupPolicy.Timeout);
+        using var memoryWatch = new CancellationTokenSource();
+        Exception? memoryFailure = null;
+        var monitor = WatchMemoryAsync();
+        async Task WatchMemoryAsync()
+        {
+            var tracker = new MemoryPressureTracker();
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                while (true)
+                {
+                    await Task.Delay(1000, memoryWatch.Token);
+                    var snapshot = _readHostMemory();
+                    if (!tracker.ShouldStop(snapshot, clock.Elapsed)) continue;
+                    memoryFailure = new HostMemoryInsufficientException($"启动期间宿主内存不足（可用 {snapshot.AvailableMb} MiB），已中止本次模拟器启动。请释放内存后重试。");
+                    timeout.Cancel(); return;
+                }
+            }
+            catch (OperationCanceledException) when (memoryWatch.IsCancellationRequested) { }
+            catch (Exception error) { memoryFailure = error; timeout.Cancel(); }
+        }
 
         try
         {
@@ -144,6 +171,13 @@ public sealed class AndroidVmController : IAndroidVmLifecycle
         }
         catch (Exception exception)
         {
+            if (memoryFailure is not null)
+            {
+                // Startup failed: best-effort guest flush before the existing process-tree cleanup.
+                using var flushTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                try { await _runner.RunAsync(AndroidCommandFactory.Adb(_layout, _options, "shell", "sync"), flushTimeout.Token); }
+                catch { /* Guest may not have reached ADB readiness. */ }
+            }
             var processState = emulatorProcess.HasExited
                 ? $"Emulator exited with code {emulatorProcess.ExitCode}."
                 : "Emulator was still running when startup timed out.";
@@ -156,6 +190,8 @@ public sealed class AndroidVmController : IAndroidVmLifecycle
             await DisposeHandlePreservingPrimaryFailureAsync(emulatorHandle);
             var diagnostics = ReadDiagnosticTail(diagnosticLogPath);
 
+            if (memoryFailure is not null) throw memoryFailure;
+
             if (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested)
             {
                 throw new TimeoutException(
@@ -165,6 +201,7 @@ public sealed class AndroidVmController : IAndroidVmLifecycle
             }
             throw;
         }
+        finally { memoryWatch.Cancel(); await monitor; }
     }
 
     private static string ReadDiagnosticTail(string? path)
@@ -296,6 +333,15 @@ public sealed class AndroidVmController : IAndroidVmLifecycle
                 AndroidPackageName.Parse(packageName)),
             cancellationToken);
         EnsureSuccess(result, "停止应用");
+        using var exitDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        exitDeadline.CancelAfter(TimeSpan.FromSeconds(10));
+        while (true)
+        {
+            var pid = await _runner.RunAsync(AndroidCommandFactory.Adb(_layout, _options, "shell", "pidof", packageName), exitDeadline.Token);
+            if (pid.ExitCode != 0 && !string.IsNullOrWhiteSpace(pid.StandardError)) EnsureSuccess(pid, "确认应用进程退出");
+            if (string.IsNullOrWhiteSpace(pid.StandardOutput)) return;
+            await Task.Delay(100, exitDeadline.Token);
+        }
     }
 
     public async Task UninstallPackageAsync(

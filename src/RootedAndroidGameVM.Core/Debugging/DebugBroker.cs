@@ -10,7 +10,7 @@ using RootedAndroidGameVM.Core.Storage;
 namespace RootedAndroidGameVM.Core.Debugging;
 
 [SupportedOSPlatform("windows")]
-public sealed class DebugBroker : IDisposable
+public sealed partial class DebugBroker : IDisposable
 {
     public static string PipeName => "RootedAndroidGameVM.Debug.v1." + WindowsIdentity.GetCurrent().User!.Value;
     private AndroidDebugService _service = new();
@@ -21,24 +21,30 @@ public sealed class DebugBroker : IDisposable
     private int _active;
     private bool _exclusive;
     private StorageOperationLease? _storageLease;
-    private static readonly HashSet<string> Quick = ["status", "capabilities", "screen", "apps", "metrics", "checkpoint.list", "files.list", "clipboard", "release", "wake", "key"];
-    private static readonly HashSet<string> Readers = ["status", "capabilities", "screen", "apps", "metrics", "checkpoint.list", "files.list", "logs", "record", "trace", "licenses"];
+    private static readonly HashSet<string> Quick = ["status", "capabilities", "schema", "runtime.inspect", "screen", "preview", "apps", "metrics", "checkpoint.list", "files.list", "clipboard", "release", "wake", "key"];
+    private static readonly HashSet<string> Readers = ["status", "capabilities", "schema", "runtime.inspect", "screen", "preview", "preview.benchmark", "frames.sample", "apps", "metrics", "checkpoint.list", "files.list", "logs", "record", "trace", "licenses"];
     public async Task RunAsync(CancellationToken ct)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _shutdown.Token); ct = linked.Token;
+        _service.MemoryNotice = () => _memoryNotice;
+        var memoryWatch = MonitorMemoryAsync(ct);
         using var timer = new Timer(_ =>
         {
             foreach (var job in _jobs.Values)
                 if (job.Command == "input" && !job.Completed && DateTimeOffset.UtcNow - job.LastSeen > TimeSpan.FromSeconds(5)) job.Cancel.Cancel();
         }, null, 1000, 1000);
-        while (!ct.IsCancellationRequested)
+        try
         {
-            var pipe = new NamedPipeServerStream(PipeName, PipeDirection.InOut, 16, PipeTransmissionMode.Byte,
-                PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-            try { await pipe.WaitForConnectionAsync(ct); }
-            catch { await pipe.DisposeAsync(); throw; }
-            _ = ServeAsync(pipe, ct);
+            while (!ct.IsCancellationRequested)
+            {
+                var pipe = new NamedPipeServerStream(PipeName, PipeDirection.InOut, 16, PipeTransmissionMode.Byte,
+                    PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+                try { await pipe.WaitForConnectionAsync(ct); }
+                catch { await pipe.DisposeAsync(); throw; }
+                _ = ServeAsync(pipe, ct);
+            }
         }
+        finally { linked.Cancel(); await memoryWatch; }
     }
     private async Task ServeAsync(NamedPipeServerStream pipe, CancellationToken ct)
     {
@@ -50,7 +56,12 @@ public sealed class DebugBroker : IDisposable
                 var bytes = await ReadFrameAsync(pipe, requestTimeout.Token);
                 var request = JsonSerializer.Deserialize<DebugRequest>(bytes, DebugJson.Options) ?? throw new ArgumentException("空请求。");
                 var reply = await DispatchAsync(request, requestTimeout.Token);
-                await WriteFrameAsync(pipe, Encoding.UTF8.GetBytes(DebugJson.Write(reply)), requestTimeout.Token);
+                if (reply.Result is PreviewFrame frame)
+                {
+                    await WriteFrameAsync(pipe, Encoding.UTF8.GetBytes(DebugJson.Write(new DebugReply(true, frame.Metadata))), requestTimeout.Token);
+                    await WriteFrameAsync(pipe, frame.Payload, requestTimeout.Token);
+                }
+                else await WriteFrameAsync(pipe, Encoding.UTF8.GetBytes(DebugJson.Write(reply)), requestTimeout.Token);
             }
             catch (IOException) { /* Client disconnected. Finite input leases release its contacts. */ }
             catch (Exception e)
@@ -79,6 +90,8 @@ public sealed class DebugBroker : IDisposable
         }
         if (request.Command == "shutdown")
         {
+            try { _service.Instance.RequireStopped(); }
+            catch (Exception error) { return DebugReply.Failure(new DebugException("instance_busy", "请先停止虚拟机，再退出协调进程；运行期间需要保留内存保护。" + error.Message)); }
             await DispatchAsync(new("quiesce"), ct);
             _shutdown.CancelAfter(500);
             return new(true, new { shuttingDown = true });
@@ -111,7 +124,7 @@ public sealed class DebugBroker : IDisposable
     private async Task<DebugReply> InvokeAsync(DebugRequest request, CancellationToken ct)
     {
         var mutate = !Readers.Contains(request.Command);
-        var exclusive = request.Command is "start" or "stop" or "checkpoint.create" or "checkpoint.restore" or "checkpoint.recover";
+        var exclusive = request.Command is "start" or "stop" or "checkpoint.create" or "checkpoint.restore" or "checkpoint.recover" or "runtime.configure";
         var entered = false;
         try
         {
@@ -129,13 +142,14 @@ public sealed class DebugBroker : IDisposable
                             {
                                 _storageLease = StorageOperationLease.Acquire();
                                 var current = Setup.InstallPaths.CreateDefault();
-                                if (current != _service.Paths || request.Command == "start") { _service.Dispose(); _service = new(current); }
+                                if (current != _service.Paths || request.Command == "start") { _service.Dispose(); _service = new(current) { MemoryNotice = () => _memoryNotice }; }
                             }
                             _active++; _exclusive = exclusive; entered = true;
                         }
                     }
                     if (!entered) await Task.Delay(100, ct);
                 }
+                if (request.Command == "start") _memoryNotice = null;
                 return new(true, await _service.ExecuteAsync(request, ct));
             }
             finally
@@ -186,7 +200,7 @@ public sealed class DebugBroker : IDisposable
 [SupportedOSPlatform("windows")]
 public sealed class DebugClient
 {
-    public async Task<JsonElement> ExecuteAndWaitAsync(DebugRequest request, CancellationToken ct = default)
+    public async Task<JsonElement> ExecuteAndWaitAsync(DebugRequest request, CancellationToken ct = default, Action<JsonElement>? progress = null)
     {
         var reply = await SendAsync(request, ct);
         if (!reply.Ok) throw new DebugException(reply.Error!.Code, reply.Error.Message);
@@ -201,6 +215,7 @@ public sealed class DebugClient
                 reply = await SendAsync(DebugRequest.Create("job", new { id = jobId }), ct);
                 if (!reply.Ok) throw new DebugException(reply.Error!.Code, reply.Error.Message);
                 var job = (JsonElement)reply.Result!;
+                progress?.Invoke(job);
                 if (!job.GetProperty("completed").GetBoolean()) continue;
                 var finished = job.GetProperty("result");
                 if (!finished.GetProperty("ok").GetBoolean()) throw new DebugException(finished.GetProperty("error").GetProperty("code").GetString()!, finished.GetProperty("error").GetProperty("message").GetString()!);
@@ -212,17 +227,41 @@ public sealed class DebugClient
     public async Task<DebugReply> SendAsync(DebugRequest request, CancellationToken ct = default, bool autoStart = true)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct); timeout.CancelAfter(TimeSpan.FromMinutes(3)); ct = timeout.Token;
-        using var pipe = new NamedPipeClientStream(".", DebugBroker.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-        try { await pipe.ConnectAsync(300, ct); }
-        catch (TimeoutException) when (autoStart)
-        {
-            var executable = Path.Combine(AppContext.BaseDirectory, "RootedAndroidGameVM.Cli.exe");
-            if (!File.Exists(executable)) throw new FileNotFoundException("缺少 CLI 协调进程，请修复安装。", executable);
-            // ShellExecute detaches all inherited console/pipe handles. Hide this console helper window.
-            Process.Start(new ProcessStartInfo(executable) { Arguments = "--broker", UseShellExecute = true, WindowStyle = ProcessWindowStyle.Hidden })?.Dispose();
-            await pipe.ConnectAsync(15000, ct);
-        }
+        using var pipe = await ConnectAsync(ct, autoStart);
         await DebugBroker.WriteFrameAsync(pipe, Encoding.UTF8.GetBytes(DebugJson.Write(request)), ct);
         return JsonSerializer.Deserialize<DebugReply>(await DebugBroker.ReadFrameAsync(pipe, ct), DebugJson.Options) ?? throw new IOException("协调进程返回空响应。");
+    }
+    public async Task<PreviewFrame> ReadPreviewAsync(CancellationToken ct)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct); timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        using var pipe = await ConnectAsync(timeout.Token, true);
+        await DebugBroker.WriteFrameAsync(pipe, Encoding.UTF8.GetBytes(DebugJson.Write(new DebugRequest("preview"))), timeout.Token);
+        var reply = JsonSerializer.Deserialize<DebugReply>(await DebugBroker.ReadFrameAsync(pipe, timeout.Token), DebugJson.Options)!;
+        if (!reply.Ok) throw new DebugException(reply.Error!.Code, reply.Error.Message);
+        var metadata = ((JsonElement)reply.Result!).Deserialize<PreviewMetadata>(DebugJson.Options)!;
+        var bytes = await DebugBroker.ReadFrameAsync(pipe, timeout.Token);
+        if (!metadata.BinaryPayload || metadata.Encoding != "png" || bytes.Length != metadata.PayloadBytes || bytes.Length > 8 * 1024 * 1024)
+            throw new IOException("预览帧不完整。");
+        var size = AndroidDebugService.PngSize(bytes);
+        if (size.Width != metadata.Width || size.Height != metadata.Height) throw new IOException("预览尺寸不一致。");
+        return new(metadata, bytes);
+    }
+    private static async Task<NamedPipeClientStream> ConnectAsync(CancellationToken ct, bool autoStart)
+    {
+        var pipe = new NamedPipeClientStream(".", DebugBroker.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        try
+        {
+            try { await pipe.ConnectAsync(300, ct); }
+            catch (TimeoutException) when (autoStart)
+            {
+                var executable = Path.Combine(AppContext.BaseDirectory, "RootedAndroidGameVM.Cli.exe");
+                if (!File.Exists(executable)) throw new FileNotFoundException("缺少 CLI 协调进程，请修复安装。", executable);
+                // ShellExecute detaches all inherited console/pipe handles. Hide this console helper window.
+                Process.Start(new ProcessStartInfo(executable) { Arguments = "--broker", UseShellExecute = true, WindowStyle = ProcessWindowStyle.Hidden })?.Dispose();
+                await pipe.ConnectAsync(15000, ct);
+            }
+            return pipe;
+        }
+        catch { pipe.Dispose(); throw; }
     }
 }
