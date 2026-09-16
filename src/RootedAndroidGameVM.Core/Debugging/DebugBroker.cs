@@ -248,11 +248,13 @@ public sealed class DebugClient
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct); timeout.CancelAfter(TimeSpan.FromSeconds(10));
         using var pipe = await ConnectAsync(timeout.Token, true);
         await DebugBroker.WriteFrameAsync(pipe, Encoding.UTF8.GetBytes(DebugJson.Write(new DebugRequest("preview"))), timeout.Token);
-        var reply = JsonSerializer.Deserialize<DebugReply>(await DebugBroker.ReadFrameAsync(pipe, timeout.Token), DebugJson.Options)!;
+        var reply = JsonSerializer.Deserialize<DebugReply>(await DebugBroker.ReadFrameAsync(pipe, timeout.Token, 1024 * 1024), DebugJson.Options)!;
         if (!reply.Ok) throw new DebugException(reply.Error!.Code, reply.Error.Message);
         var metadata = ((JsonElement)reply.Result!).Deserialize<PreviewMetadata>(DebugJson.Options)!;
-        var bytes = await DebugBroker.ReadFrameAsync(pipe, timeout.Token);
-        if (!metadata.BinaryPayload || metadata.Encoding != "png" || bytes.Length != metadata.PayloadBytes || bytes.Length > 8 * 1024 * 1024)
+        if (!metadata.BinaryPayload || metadata.Encoding != "png" || metadata.PayloadBytes is < 24 or > 8 * 1024 * 1024)
+            throw new IOException("预览元数据无效。");
+        var bytes = await DebugBroker.ReadFrameAsync(pipe, timeout.Token, metadata.PayloadBytes);
+        if (bytes.Length != metadata.PayloadBytes)
             throw new IOException("预览帧不完整。");
         var size = AndroidDebugService.PngSize(bytes);
         if (size.Width != metadata.Width || size.Height != metadata.Height) throw new IOException("预览尺寸不一致。");
