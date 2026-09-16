@@ -10,7 +10,12 @@ namespace RootedAndroidGameVM.Core.Debugging;
 public sealed record ProcessMemoryRow(string Role, int Pid, long StartedAtUtcTicks, string Executable,
     long WorkingSetBytes, long PrivateCommitBytes, long LifetimePeakWorkingSetBytes, long LifetimePeakPagedBytes);
 public sealed record ProcessMemorySnapshot(DateTimeOffset At, double CollectionMs, double InventoryAgeMs, HostMemorySnapshot Host,
-    IReadOnlyList<ProcessMemoryRow> Processes, IReadOnlyList<string> Errors, object Observer, string Note);
+    IReadOnlyList<ProcessMemoryRow> Processes, IReadOnlyList<string> Errors, object Observer, string Note)
+{
+    public long ObservedWorkingSetSumBytes => Processes.Sum(p => p.WorkingSetBytes);
+    public long ObservedPrivateCommitSumBytes => Processes.Sum(p => p.PrivateCommitBytes);
+    public bool SampleHasErrors => Errors.Count != 0;
+}
 
 [SupportedOSPlatform("windows")]
 public static class ProcessMemory
@@ -55,28 +60,32 @@ public sealed class ProcessMemorySampler(InstallPaths paths, IEnumerable<string>
             catch (Exception error) when (error is ArgumentException or InvalidOperationException or Win32Exception or IOException)
             { errors.Add($"{role}:{identity.ProcessId}: {error.GetType().Name}: {error.Message}"); }
         }
-        void Discover(string executable, string role, bool vm)
-        {
-            try
-            {
-                foreach (var identity in catalog.FindByExecutable(executable))
-                    if (!vm || ProcessMemory.BelongsToVm(identity, paths, options)) _identities.Add((identity, role));
-            }
-            catch (Exception error) when (error is IOException or Win32Exception or System.Runtime.InteropServices.COMException)
-            { _discoveryErrors.Add($"{role}: {error.GetType().Name}: {error.Message}"); }
-        }
         if (_inventoryAt == 0 || Stopwatch.GetElapsedTime(_inventoryAt).TotalSeconds >= 5)
         {
             _identities.Clear(); _discoveryErrors.Clear();
-            Discover(Path.Combine(paths.SdkRoot, "emulator", "qemu", "windows-x86_64", "qemu-system-x86_64.exe"), "qemu", true);
-            Discover(Path.Combine(paths.SdkRoot, "emulator", "qemu", "windows-x86_64", "qemu-system-x86_64-headless.exe"), "qemu", true);
-            Discover(Path.Combine(paths.SdkRoot, "emulator", "emulator.exe"), "emulator", true);
-            Discover(Path.Combine(paths.SdkRoot, "platform-tools", "adb.exe"), "adb-shared", false);
+            var targets = new Dictionary<string, (string Role, bool Vm)>(StringComparer.OrdinalIgnoreCase);
+            targets[Path.Combine(paths.SdkRoot, "emulator", "qemu", "windows-x86_64", "qemu-system-x86_64.exe")] = ("qemu", true);
+            targets[Path.Combine(paths.SdkRoot, "emulator", "qemu", "windows-x86_64", "qemu-system-x86_64-headless.exe")] = ("qemu", true);
+            targets[Path.Combine(paths.SdkRoot, "emulator", "emulator.exe")] = ("emulator", true);
+            targets[Path.Combine(paths.SdkRoot, "platform-tools", "adb.exe")] = ("adb-shared", false);
+            foreach (var helper in new[] { "crashpad_handler.exe", "netsimd.exe", "emulator-crash-service.exe" })
+                targets[Path.Combine(paths.SdkRoot, "emulator", helper)] = ("emulator-helper-shared", false);
             foreach (var directory in (programDirectories ?? [AppContext.BaseDirectory]).Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                Discover(Path.Combine(directory, "RootedAndroidGameVM.Cli.exe"), "cli-or-broker", false);
-                Discover(Path.Combine(directory, "RootedAndroidGameVM.exe"), "launcher", false);
+                targets[Path.GetFullPath(Path.Combine(directory, "RootedAndroidGameVM.Cli.exe"))] = ("cli-or-broker", false);
+                targets[Path.GetFullPath(Path.Combine(directory, "RootedAndroidGameVM.exe"))] = ("launcher", false);
+                targets[Path.GetFullPath(Path.Combine(directory, "RootedAndroidGameVM.Setup.exe"))] = ("setup", false);
             }
+            try
+            {
+                foreach (var identity in catalog.FindByExecutables(targets.Keys))
+                {
+                    var target = targets[Path.GetFullPath(identity.ExecutablePath)];
+                    if (!target.Vm || ProcessMemory.BelongsToVm(identity, paths, options)) _identities.Add((identity, target.Role));
+                }
+            }
+            catch (Exception error) when (error is IOException or Win32Exception or System.Runtime.InteropServices.COMException)
+            { _discoveryErrors.Add($"inventory: {error.GetType().Name}: {error.Message}"); }
             _inventoryAt = Stopwatch.GetTimestamp();
         }
         errors.AddRange(_discoveryErrors);
@@ -89,6 +98,6 @@ public sealed class ProcessMemorySampler(InstallPaths paths, IEnumerable<string>
             new { pid = observer.Id, managedLiveEstimateBytes = GC.GetTotalMemory(false), lastGcHeapBytes = gc.HeapSizeBytes,
                 lastGcFragmentedBytes = gc.FragmentedBytes, allocatedBytes = GC.GetTotalAllocatedBytes(false),
                 workingSetBytes = observer.WorkingSet64, privateCommitBytes = observer.PrivateMemorySize64 },
-            "WS 含共享页；PrivateCommit 不是独占物理内存。生命周期峰值不是本阶段峰值；ADB 可能被其他设备共享。未求和，guest PSS 不可再加到 QEMU。进程清单至多缓存 5 秒，每次重验 PID/启动时间/路径，短命进程可能漏采；缺失/退出见 errors。observer 指采样进程本身。");
+            "WS 求和包含共享页的重复计数，仅为观测到的进程工作集之和；PrivateCommit 不是物理内存。生命周期峰值不是本阶段峰值；同 SDK 的 ADB/辅助进程保守计入，可能被其他设备共享。guest PSS 不可再加到 QEMU。清单最多缓存 5 秒，每次重验 PID/启动时间/路径，短命进程可能漏采；缺失/退出见 errors。observer 为采样进程，不计入产品总和。");
     }
 }

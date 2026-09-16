@@ -11,10 +11,15 @@ namespace RootedAndroidGameVM.Core.Storage;
 public sealed class WindowsEmulatorProcessCatalog : IEmulatorProcessCatalog
 {
     public IReadOnlyList<HostProcessIdentity> FindByExecutable(string executablePath)
+        => FindByExecutables([executablePath]);
+
+    public IReadOnlyList<HostProcessIdentity> FindByExecutables(IEnumerable<string> executablePaths)
     {
-        var name = Path.GetFileName(executablePath);
-        if (!Regex.IsMatch(name, @"\A[A-Za-z0-9_.-]+\.exe\z", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
-            throw new ArgumentException("运行时进程名称无效。", nameof(executablePath));
+        var paths = executablePaths.Select(Path.GetFullPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var names = paths.Select(Path.GetFileName).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        if (names.Length == 0) return [];
+        if (names.Any(name => !Regex.IsMatch(name!, @"\A[A-Za-z0-9_.-]+\.exe\z", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)))
+            throw new ArgumentException("运行时进程名称无效。", nameof(executablePaths));
         dynamic locator = Activator.CreateInstance(Type.GetTypeFromProgID("WbemScripting.SWbemLocator", throwOnError: true)!)!;
         object? connectionObject = null;
         object? rowsObject = null;
@@ -23,7 +28,8 @@ public sealed class WindowsEmulatorProcessCatalog : IEmulatorProcessCatalog
             dynamic connection = locator.ConnectServer(".", @"root\cimv2");
             connectionObject = connection;
             dynamic rows = connection.ExecQuery(
-                $"SELECT ProcessId, ParentProcessId, ExecutablePath, CommandLine, CreationDate FROM Win32_Process WHERE Name='{name}'");
+                "SELECT ProcessId, ParentProcessId, ExecutablePath, CommandLine, CreationDate FROM Win32_Process WHERE " +
+                string.Join(" OR ", names.Select(name => $"Name='{name}'")));
             rowsObject = rows;
             var result = new List<HostProcessIdentity>();
             foreach (var item in rows)
@@ -33,7 +39,7 @@ public sealed class WindowsEmulatorProcessCatalog : IEmulatorProcessCatalog
                     object row = item;
                     string? path = (string?)ReadProperty(row, "ExecutablePath");
                     if (path is null) throw new IOException("无法读取模拟器进程归属，请关闭相关运行时后重试。");
-                    if (!string.Equals(Path.GetFullPath(path), Path.GetFullPath(executablePath), StringComparison.OrdinalIgnoreCase)) continue;
+                    if (!paths.Contains(Path.GetFullPath(path))) continue;
                     string? commandLine = (string?)ReadProperty(row, "CommandLine");
                     if (commandLine is null) throw new IOException("无法确认运行时启动参数。");
                     var args = SplitCommandLine(commandLine);

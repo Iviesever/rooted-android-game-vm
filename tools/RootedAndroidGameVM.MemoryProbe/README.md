@@ -11,6 +11,8 @@ $probe = '.\tools\RootedAndroidGameVM.MemoryProbe\bin\Release\net10.0-windows\Ro
 
 参数：资源根、全新输出 NDJSON、阶段文本文件、最多 7200 秒、间隔 250–10000 ms、任意多个程序目录。该工具只读取内存/进程；不启动 broker、VM 或应用。输出含单调时间、实际采样耗时、进程清单年龄和错误。清单每 5 秒或阶段变化时重查，每个样本仍校验可执行路径/PID/启动时间；短命进程可能漏采。`adb-shared` 可能被其他设备共享，`cli-or-broker` 包含临时 CLI 客户端。`observer` 指采样器本身，单列以识别测量开销。
 
+全产品审计还包含同 SDK 下的 netsimd、crashpad 等 `emulator-helper-shared` 辅助进程，以及指定程序目录内的 Setup。枚举合并为单次 WMI 查询；路径仍逐个精确核对。`observedWorkingSetSumBytes` 是本次观测到的进程 WS 之和，共享页可能重复计入；它不是未采样时刻的硬峰值保证，存在错误/退出或清单刷新间隙时不能宣称完整覆盖。`observedPrivateCommitSumBytes` 单独列示，不当作物理 RAM。
+
 在另一个终端按实际状态更新 `stage.txt`：停机 30s、冷启动全程、系统空闲 60s、游戏主页 60s、资源加载、同一谱面游玩 60s、应用退出 60s、VM 停机后 30s。写入 `done` 或 Ctrl+C 停止并刷盘。至少三轮才分析重复趋势；阶段证据必须来自实际状态，不能仅靠写标签。宿主余量不足/保护停机时终止负载，不为凑齐样本重启。
 
 对照保存 `runtime.inspect`、组件版本、guest `/proc/meminfo`、应用 `metrics` 和采样进程自身开销。进程生命周期峰值不能归入当前阶段；阶段峰值由同一 PID+启动时间样本计算，有限频率可能漏掉瞬时峰值。guest PSS 已在 QEMU 内，显存和驱动占用须单独分析。
