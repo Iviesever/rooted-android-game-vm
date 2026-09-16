@@ -3,10 +3,28 @@ using System.Text.Json;
 namespace RootedAndroidGameVM.Core.Debugging;
 
 public sealed record ImportVerification(bool Verified, string Target, int VerifiedFiles, int ExpectedFiles, string? Reason,
-    string[] MissingFiles, string[] DifferentFiles, string[] MetadataRewrites, string[] ExtraFiles);
+    string[] MissingFiles, string[] DifferentFiles, string[] MetadataRewrites, string[] ExtraFiles, bool TargetExists = false);
+
+public sealed record ImportHashEnumeration(Dictionary<string, string> Files, string[] ConflictingPaths, int DuplicateRows, bool TargetExists);
 
 public static class ImportContentVerifier
 {
+    public static ImportHashEnumeration ParseHashes(string raw, string target)
+    {
+        var files = new Dictionary<string, string>(StringComparer.Ordinal);
+        var conflicts = new HashSet<string>(StringComparer.Ordinal); var duplicates = 0; var exists = false;
+        foreach (var line in raw.Split('\n').Select(line => line.TrimEnd('\r')))
+        {
+            if (line == "RGVM_DIRECTORY_PRESENT") { exists = true; continue; }
+            if (line.Length == 0) continue;
+            if (line.Length <= 66 || !System.Text.RegularExpressions.Regex.IsMatch(line[..64], "^[a-fA-F0-9]{64}$") ||
+                !line[66..].StartsWith(target + "/", StringComparison.Ordinal)) throw new InvalidDataException("解包文件散列输出格式无效。");
+            var name = line[(67 + target.Length)..]; var hash = line[..64];
+            if (!files.TryAdd(name, hash)) { duplicates++; if (files[name] != hash) conflicts.Add(name); }
+        }
+        return new(files, conflicts.Order().ToArray(), duplicates, exists);
+    }
+
     public static ImportVerification Compare(string target, IReadOnlyDictionary<string, string> expected,
         IReadOnlyDictionary<string, string> actual, bool knownMetadataRewrite = false)
     {

@@ -17,7 +17,7 @@ public static class InstallProfile
 {
     private static readonly DependencyManifest Manifest = DependencyManifest.LoadEmbedded();
 
-    public const string ProductVersion = "0.4.0";
+    public const string ProductVersion = "0.5.0";
     public const string SystemImagePackage = "system-images;android-35;google_apis_playstore;x86_64";
     public const long MinimumFreeBytes = 24L * 1024 * 1024 * 1024;
 

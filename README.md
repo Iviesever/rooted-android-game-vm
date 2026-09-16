@@ -5,7 +5,7 @@
 
 > 安装包按项目政策明确标注 `UNSIGNED`，Windows 可能显示 unknown publisher（未知发布者）警告。公开版本请从本仓库 GitHub Release 下载，并核对 SHA-256 或 GitHub provenance；本地候选包不等同于已公开发布的版本。
 
-## 0.4.0 安卓工作台
+## 0.5.0 安卓工作台
 
 统一入口按“使用安卓、应用与内容、文件管理、诊断与记录、AI 与自动化、检查点、运行设置”组织。普通操作使用按钮和列表，GUI 与 JSON CLI 共用同一服务；安卓仍在独立的模拟器窗口里运行。
 
@@ -16,7 +16,9 @@
 - [AI 调试流程](docs/ai-workflow.md)
 - [性能与本机验证记录](docs/validation-v0.4.0.md)
 
-本次本机升级为 UNSIGNED 本地候选，不发布 GitHub Release。原有公开发布门禁继续保留。
+0.5.0 增加可续作导入、按作用域处理的文件权限、可恢复的请求/任务身份、GUI与CLI共享会话摘要和按实例绑定的输入清理。页面和文件核验保留时间与原始依据，不把进程出现当成可操作页面。实测数据、测量边界及限制见[剩余review验收记录](docs/review-remaining-progress.md)。
+
+公开资产继续显式命名为UNSIGNED，并经过原有发布门禁；是否已公开以GitHub Release实际状态为准，本地候选不等同于公开版本。
 
 ## 日常使用
 

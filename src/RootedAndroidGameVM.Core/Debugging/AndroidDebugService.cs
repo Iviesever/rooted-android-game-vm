@@ -70,17 +70,17 @@ public sealed partial class AndroidDebugService : IDisposable
                 try { Instance.RequireStopped(); }
                 catch (DebugException error) when (error.Code == "instance_busy")
                 {
-                    return new { version = "0.4.0", status = "Unreachable", dataRoot = Paths.ProductRoot, serial = Options.Serial,
+                    return new { version = "0.5.0", status = "Unreachable", dataRoot = Paths.ProductRoot, serial = Options.Serial,
                         instanceActive = true, reason = "产品进程仍在运行，但ADB未确认连接；不能当成已停机。", hostMemory = HostMemory.Read(), memoryProtection = MemoryNotice?.Invoke() };
                 }
             }
-            return new { version = "0.4.0", status = status.ToString(), dataRoot = Paths.ProductRoot, serial = Options.Serial, hostMemory = HostMemory.Read(), memoryProtection = MemoryNotice?.Invoke() };
+            return new { version = "0.5.0", status = status.ToString(), dataRoot = Paths.ProductRoot, serial = Options.Serial, hostMemory = HostMemory.Read(), memoryProtection = MemoryNotice?.Invoke() };
         }
         var host = Instance.Require();
         var state = await StateAsync(ct);
         return new
         {
-            version = "0.4.0",
+            version = "0.5.0",
             status = "Running",
             dataRoot = Paths.ProductRoot,
             serial = Options.Serial,
@@ -261,8 +261,9 @@ public sealed partial class AndroidDebugService : IDisposable
         0 => point,
         _ => throw new DebugException("stale_observation", "未知图像旋转，拒绝输入。")
     };
-    public async Task<object> InputAsync(string observationId, InputFrame[] frames, CancellationToken ct)
+    public async Task<object> InputAsync(string observationId, InputFrame[] frames, CancellationToken ct, long? startAtQpc = null)
     {
+        InputClock.ResolveStart(startAtQpc, Stopwatch.GetTimestamp(), Stopwatch.Frequency);
         Instance.Require(force: true);
         await StateAsync(ct, force: true);
         ScreenObservation old;
@@ -280,7 +281,9 @@ public sealed partial class AndroidDebugService : IDisposable
         var initialRelease = await ReleaseAsync(fresh.Session);
         if (!initialRelease.Acknowledged) throw new DebugException("input_release_unverified", "输入前未确认旧触点释放。", "preparing_input", initialRelease.EvidencePath);
         ct.ThrowIfCancellationRequested();
-        var timings = new List<InputTiming>(); var clock = Stopwatch.StartNew();
+        var startTimestamp = InputClock.ResolveStart(startAtQpc, Stopwatch.GetTimestamp(), Stopwatch.Frequency);
+        var clockFrequency = Stopwatch.Frequency;
+        var timings = new List<InputTiming>();
         Exception? inputError = null;
         InputReleaseEvidence? cleanup = null;
         Progress.Value?.Invoke(new { stage = "sending_input", directory = dir, session = fresh.Session });
@@ -288,18 +291,18 @@ public sealed partial class AndroidDebugService : IDisposable
         {
             for (var i = 0; i < frames.Length; i++)
             {
-                while (clock.Elapsed.TotalMilliseconds < frames[i].AtMs)
+                while (InputClock.MillisecondsSince(startTimestamp) < frames[i].AtMs)
                 {
                     ct.ThrowIfCancellationRequested();
-                    var remaining = frames[i].AtMs - clock.Elapsed.TotalMilliseconds;
+                    var remaining = frames[i].AtMs - InputClock.MillisecondsSince(startTimestamp);
                     if (remaining > 18) await Task.Delay(TimeSpan.FromMilliseconds(remaining - 17), ct);
                     else Thread.SpinWait(128);
                 }
                 ct.ThrowIfCancellationRequested();
                 // Each message has a finite lifetime. Finally/reconnect releases all product-owned slots.
-                var sent = clock.Elapsed.TotalMilliseconds;
-                await Transport.SendAsync(frames[i].Touches.Select(p => ToNativeTouch(p, fresh)), ct, fresh.Session);
-                timings.Add(new(i, frames[i].AtMs, sent, sent - frames[i].AtMs));
+                var dispatch = await Transport.SendAsync(frames[i].Touches.Select(p => ToNativeTouch(p, fresh)), ct, fresh.Session);
+                var sent = (dispatch.SentTimestamp - startTimestamp) * 1000d / clockFrequency;
+                timings.Add(new(i, frames[i].AtMs, sent, sent - frames[i].AtMs, dispatch.SentTimestamp, dispatch.AcknowledgedTimestamp));
             }
         }
         catch (Exception error)
@@ -311,12 +314,13 @@ public sealed partial class AndroidDebugService : IDisposable
         finally
         {
             try { cleanup = await ReleaseAsync(fresh.Session); }
-            finally { await File.WriteAllTextAsync(Path.Combine(dir, "input.json"), DebugJson.Write(new { observation = old, frames, timings,
+            finally { await File.WriteAllTextAsync(Path.Combine(dir, "input.json"), DebugJson.Write(new { observation = old, frames, timings, startTimestamp, clockFrequency,
                 cancelled = ct.IsCancellationRequested, cleanup, failure = inputError is null ? null : DebugReply.Failure(inputError).Error }), CancellationToken.None); }
         }
         if (cleanup?.Acknowledged != true) throw new DebugException("input_release_unverified", "输入已结束，但未确认触点释放；请检查恢复记录并重新观察。", "releasing_input", cleanup?.EvidencePath);
         Progress.Value?.Invoke(new { stage = "verifying_after_input", directory = dir, session = fresh.Session, pid = fresh.AppPid });
-        return new { directory = dir, timings, cleanup, after = await ScreenshotAsync(dir, ct) };
+        return new { directory = dir, timings, startTimestamp, clockFrequency, clock = "Windows QPC / Stopwatch; RPC call and acknowledgement, not game response",
+            cleanup, after = await ScreenshotAsync(dir, ct) };
     }
     public async Task<object> ExecuteAsync(DebugRequest request, CancellationToken ct)
     {
@@ -336,6 +340,8 @@ public sealed partial class AndroidDebugService : IDisposable
             case "memory.snapshot": return ProcessMemory.Read(Paths);
             case "grpc.audit": return await Transport.AuditAuthenticationAsync(ct);
             case "schema": return new { protocolVersion = 1, commands = DebugCommandCatalog.Commands, inputLeaseSeconds = 5, inputCoordinates = "原始 PNG 像素", maxTouches = 10,
+                inputScheduling = new { optionalStart = "arguments.startAtQpc: Int64 Windows QPC timestamp", maximumFutureSeconds = 120,
+                    missedSchedule = "input_schedule_missed", sentTimestampMeaning = "RPC invocation, not game response", clockFrequencyInResult = true },
                 request = DebugProtocolSchema.Request, response = DebugProtocolSchema.Response, jobStates = DebugProtocolSchema.JobStates,
                 maxRequestBytes = 1024 * 1024, maxInlineJobResultBytes = StoredJobResult.MaxInlineBytes, jobResultsOnDisk = true, testStepResultsOnDisk = true };
             case "runtime.inspect":
@@ -366,7 +372,7 @@ public sealed partial class AndroidDebugService : IDisposable
             case "capabilities":
                 return new
                 {
-                    version = "0.4.0",
+                    version = "0.5.0",
                     protocol = 1,
                     ownedAvdOnly = true,
                     maxTouches = 10,
@@ -394,7 +400,7 @@ public sealed partial class AndroidDebugService : IDisposable
             case "preview.benchmark": return await PreviewBenchmarkAsync(request.Number("frames", 20), ct);
             case "frames.sample": return await SampleFrameTimingsAsync(package, request.Number("seconds", 15), ct);
             case "window.focus": return OwnedVmWindow.Show(Instance);
-            case "input": return await InputAsync(request.Text("observation"), request.Value<InputFrame[]>("frames") ?? [], ct);
+            case "input": return await InputAsync(request.Text("observation"), request.Value<InputFrame[]>("frames") ?? [], ct, request.Value<long?>("startAtQpc"));
             case "release":
                 var released = await ReleaseAsync();
                 if (!released.Acknowledged && released.State != "instance_stopped") throw new DebugException("input_release_unverified", "未确认触点释放；" + released.ErrorCode, "releasing_input", released.EvidencePath);

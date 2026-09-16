@@ -61,4 +61,5 @@ public sealed record ScreenObservation(string Id, string Session, string Path, s
     int ImageRotation = 0, bool? Blank = null, string? AppPid = null, long Revision = 0);
 public sealed record TouchPoint(int Id, int X, int Y, int Pressure = 1);
 public sealed record InputFrame(int AtMs, TouchPoint[] Touches);
-public sealed record InputTiming(int Index, double RequestedMs, double SentMs, double DeviationMs);
+public sealed record InputTiming(int Index, double RequestedMs, double SentMs, double DeviationMs,
+    long? SentTimestamp = null, long? AcknowledgedTimestamp = null);

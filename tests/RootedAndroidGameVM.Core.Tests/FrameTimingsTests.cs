@@ -5,6 +5,14 @@ namespace RootedAndroidGameVM.Core.Tests;
 public sealed class FrameTimingsTests
 {
     [Fact]
+    public void Nonoverlapping_history_is_not_silently_treated_as_continuous_coverage()
+    {
+        Assert.False(FrameTimingSummary.HistoryGap([1, 2, 3], [3, 4, 5]));
+        Assert.False(FrameTimingSummary.HistoryGap([1, 2, 3], [1, 2, 3]));
+        Assert.True(FrameTimingSummary.HistoryGap([1, 2, 3], [4, 5, 6]));
+        Assert.False(FrameTimingSummary.HistoryGap([], [1, 2]));
+    }
+    [Fact]
     public void Android_15_layer_debug_wrapper_is_removed_but_sequence_id_is_preserved()
     {
         Assert.Equal("SurfaceView[test.app/Main](BLAST)#129", FrameTimingSummary.NormalizeLayerName("RequestedLayerState{SurfaceView[test.app/Main](BLAST)#129 parentId=128}"));

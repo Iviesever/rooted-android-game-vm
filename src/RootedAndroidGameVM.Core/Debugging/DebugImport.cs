@@ -150,6 +150,21 @@ public sealed partial class AndroidDebugService
                 await Save("activity_ready");
                 for (var attempt = 0; attempt < 3; attempt++)
                 {
+                    if (record.Imported.TargetExists)
+                    {
+                        await Save("waiting_for_unpack");
+                        var existingUnpack = Stopwatch.StartNew();
+                        do
+                        {
+                            record.Imported = await VerifyImportOnceAsync(record, target, directory, ct);
+                            if (record.Imported.Verified) break;
+                            if (record.Imported.DifferentFiles.Length > 0 || record.Imported.ExtraFiles.Length > 0)
+                                throw new DebugException("import_content_mismatch", "已存在的解包资源有真实差异；不再次触发或覆盖。");
+                            await Task.Delay(1000, ct);
+                        } while (existingUnpack.Elapsed < TimeSpan.FromSeconds(30));
+                        if (record.Imported.Verified) break;
+                        throw new DebugException("import_incomplete", "App已建立解包目录但内容仍不完整；保留原目录和importId，未重复触发。");
+                    }
                     var remoteHash = (await ShellAsync("if test -f " + Q(remote) + "; then sha256sum " + Q(remote) + "; fi", false, ct)).Split(' ')[0].Trim();
                     if (remoteHash.Length == 0 && record.TriggerCount > 0)
                     {
@@ -187,13 +202,14 @@ public sealed partial class AndroidDebugService
                     } while (clock.Elapsed < TimeSpan.FromSeconds(12));
                     if (record.Imported.Verified) break;
                     // Never retrigger into a partially extracted directory, or hide real mismatches.
-                    if (record.Imported.MissingFiles.Length != record.Expected.Count || record.Imported.ExtraFiles.Length > 0)
+                    if (record.Imported.DifferentFiles.Length > 0 || record.Imported.ExtraFiles.Length > 0)
                         throw new DebugException("import_content_mismatch", "解包内容不完整或不同；资源/脚本/签名差异不能作为元数据忽略。");
                     record.App = await ObserveApplicationAsync(MalodyPackage, directory, ct);
                     if (!record.App.ActivityReady) throw new DebugException("app_not_ready", "等待解包时App不再就绪；保留已传文件及恢复编号。");
                 }
             }
             if (!record.Imported.Verified) throw new DebugException("import_not_observed", "同一已传文件触发后仍未观察到解包；未报告导入成功，可凭importId续作。");
+            record.App = await ObserveApplicationAsync(MalodyPackage, directory, ct);
             await Save("content_verified");
             await Save("waiting_for_activation");
             return new { directory, importId = id, record.SourceSha256, remote, target, record.Session, record.TransferVerified,
@@ -214,16 +230,22 @@ public sealed partial class AndroidDebugService
 
     private async Task<ImportVerification> VerifyImportOnceAsync(ImportRecord record, string target, string directory, CancellationToken ct)
     {
-        var raw = await ShellAsync("if test -d " + Q(target) + "; then find " + Q(target) + " -type f -exec sha256sum {} \\;; fi", false, ct);
-        await File.WriteAllTextAsync(Path.Combine(directory, "actual-sha256.txt"), raw, ct);
-        var actual = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var line in raw.Split('\n').Select(line => line.TrimEnd('\r')))
+        ImportHashEnumeration? previous = null, stable = null;
+        for (var scan = 0; scan < 4; scan++)
         {
-            if (line.Length <= 66) continue;
-            if (!Regex.IsMatch(line[..64], "^[a-fA-F0-9]{64}$") || !line[66..].StartsWith(target + "/", StringComparison.Ordinal))
-                throw new InvalidDataException("解包文件散列输出格式无效。");
-            if (!actual.TryAdd(line[(67 + target.Length)..], line[..64])) throw new InvalidDataException("解包文件清单存在重复路径。");
+            var raw = await ShellAsync("if test -d " + Q(target) + "; then echo RGVM_DIRECTORY_PRESENT; find " + Q(target) + " -type f -exec sha256sum {} +; fi", false, ct);
+            await File.WriteAllTextAsync(Path.Combine(directory, "actual-sha256.txt"), raw, ct);
+            var current = ImportContentVerifier.ParseHashes(raw, target);
+            await File.AppendAllTextAsync(Path.Combine(directory, "enumeration.ndjson"), DebugJson.Write(new { at = DateTimeOffset.UtcNow,
+                current.TargetExists, files = current.Files.Count, current.DuplicateRows, current.ConflictingPaths }) + "\n", ct);
+            if (!current.TargetExists || current.Files.Count == 0) { stable = current; break; }
+            if (current.ConflictingPaths.Length == 0 && previous is not null && previous.ConflictingPaths.Length == 0 &&
+                current.Files.Count == previous.Files.Count && current.Files.All(pair => previous.Files.GetValueOrDefault(pair.Key) == pair.Value))
+            { stable = current; break; }
+            previous = current; await Task.Delay(250, ct);
         }
+        if (stable is null) throw new DebugException("import_snapshot_unstable", "解包目录仍在变化，尚未取得连续一致的散列清单；保留原importId，不能将不稳定采样报成通过。");
+        var actual = stable.Files;
         var knownMetadata = false;
         if (record.SourceMetadata is not null && actual.TryGetValue("info.json", out var hash) && hash != record.Expected.GetValueOrDefault("info.json"))
         {
@@ -231,7 +253,7 @@ public sealed partial class AndroidDebugService
             await File.WriteAllTextAsync(Path.Combine(directory, "actual-info.json"), json, ct);
             knownMetadata = ImportContentVerifier.IsKnownMetadataRewrite(record.SourceMetadata, json);
         }
-        var result = ImportContentVerifier.Compare(target, record.Expected, actual, knownMetadata);
+        var result = ImportContentVerifier.Compare(target, record.Expected, actual, knownMetadata) with { TargetExists = stable.TargetExists };
         await File.WriteAllTextAsync(Path.Combine(directory, "verification.json"), DebugJson.Write(result), ct);
         return result;
     }

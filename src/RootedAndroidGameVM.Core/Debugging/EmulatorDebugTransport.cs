@@ -71,6 +71,13 @@ public sealed class EmulatorDebugTransport(OwnedInstance instance, int port) : I
     }
     public async Task<Image> ScreenshotAsync(CancellationToken ct) => await Client().getScreenshotAsync(
         new ImageFormat { Format = ImageFormat.Types.ImgFormat.Png }, _headers, DateTime.UtcNow.AddSeconds(8), ct);
+    public async Task<Image> SampleRgbaAsync(int width, int height, string expectedSession, CancellationToken ct)
+    {
+        if (width is < 64 or > 512 || height is < 36 or > 512) throw new ArgumentException("采样尺寸超限。");
+        var binding = Binding(expectedSession);
+        return await binding.Client.getScreenshotAsync(new ImageFormat { Format = ImageFormat.Types.ImgFormat.Rgba8888, Width = (uint)width, Height = (uint)height },
+            binding.Headers, DateTime.UtcNow.AddSeconds(3), ct);
+    }
     public async Task<(Image Image, int Width, int Height)> PreviewAsync(CancellationToken ct)
     {
         var client = Client();
@@ -88,16 +95,17 @@ public sealed class EmulatorDebugTransport(OwnedInstance instance, int port) : I
         for (var i = 0; i + 3 < bytes.Length; i += 4) if (bytes[i] > 4 || bytes[i + 1] > 4 || bytes[i + 2] > 4) return false;
         return true;
     }
-    public async Task SendAsync(IEnumerable<TouchPoint> points, CancellationToken ct, string? expectedSession = null)
+    public async Task<TouchDispatchTiming> SendAsync(IEnumerable<TouchPoint> points, CancellationToken ct, string? expectedSession = null)
     {
         await EnsureCleanAsync(ct, expectedSession);
         var batch = points.ToArray();
         // Preserve the last real coordinate for each owned contact; extra zero-coordinate UP events can affect UI gestures.
         _touches.Apply(batch.Where(p => p.Pressure > 0));
-        await SendRawAsync(batch, ct, expectedSession);
+        var timing = await SendRawAsync(batch, ct, expectedSession);
         _touches.Apply(batch);
+        return timing;
     }
-    private async Task SendRawAsync(IEnumerable<TouchPoint> points, CancellationToken ct, string? expectedSession = null)
+    private async Task<TouchDispatchTiming> SendRawAsync(IEnumerable<TouchPoint> points, CancellationToken ct, string? expectedSession = null)
     {
         var request = new TouchEvent { Display = 0 };
         request.Touches.AddRange(points.Select(p => new Touch
@@ -109,8 +117,11 @@ public sealed class EmulatorDebugTransport(OwnedInstance instance, int port) : I
             Expiration = (Touch.Types.EventExpiration)0
         }));
         var binding = Binding(expectedSession);
+        var sent = System.Diagnostics.Stopwatch.GetTimestamp();
         await binding.Client.sendTouchAsync(request, binding.Headers, DateTime.UtcNow.AddSeconds(3), ct);
+        var acknowledged = System.Diagnostics.Stopwatch.GetTimestamp();
         lock (_clientLock) InputSessionPolicy.RequireSame(binding.Session, _session ?? "disconnected");
+        return new(sent, acknowledged);
     }
     private async Task EnsureCleanAsync(CancellationToken ct, string? expectedSession = null)
     {

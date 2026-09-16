@@ -65,3 +65,37 @@
 附带补缺：生命周期ProcessRunner也保存双流与完整性标记；输入每次RPC和清理固定原VM会话，截图前后核对PID、前台与旋转，释放未确认保留错误，新broker重连先清理。上述输入防护目前只有相关逻辑回归，真实六指/取消/断连/跨会话验收仍未完成，不能因本节GUI通过而勾选第5项。
 
 本批最终验证：`session-delivery-full.trx`为292项非实机通过，`session-delivery-build.txt`完整构建0警告0错误。新增大于16MiB的立即响应保存为完整文件引用的边界回归，保留普通小响应形状；gRPC取消/超时/断连分别分类且不输出认证详情。最终停机摘要同时验证已停止实例的输入状态和独立App的最近文件传输核验。依然未执行最终覆盖安装或发布。
+
+## 第四批：真实输入、延迟、三轮性能及数据保持
+
+日期：2026-09-17。软件仍使用原现场配置，启动物理余量仅按用户要求为2560MiB。图形驱动、现有系统镜像、内存实验配置和正式游戏资源未改。
+
+大包补验暴露并修复了并发解包时目录枚举重复：相同路径/相同散列去重；同路径不同散列是未稳定采样，要求连续两份相同清单后才核验。已存在解包目录时继续等待，不再次触发。`controlled-qa-resume.summary.json`对原importId续作，仍只上传一次，1988/1989严格一致，info.json单列已知重写。额外为启用该独立QA副本向同一已传文件发送过VIEW，见`qa-retrigger-existing-to-enable`；没有新上传或新建第二个目录。
+
+真实Malody六轨：原D6-Controlled-QA-vm-3.msp（SHA-256 `949ea42251293f20f1651b2cfb0f7e34dee2ce05442f205226dccdf6fef9dacf`）作为隔离副本运行；正式皮肤目录没有改写。`measured-input-first/acceptance.json`显示六指共同按住、六轨效果、独立释放、三组短按和最终清零均通过，实际游戏分数截图为3,389,639。后续真实菜单重试及三轮输入再次进入同一场景并计分。
+
+释放证据来自独立Android Activity真实MotionEvent，不拿发送账本代替接收：`input-faults/acceptance.json`覆盖六指/逐指释放、取消、3秒超时、CLI断连和broker中断重连。CLI断连约5.60秒后按租约清零，重连约1.15秒后清零，原任务恢复为interrupted。`input-stale-session-rejection.summary.json`拒绝旧VM观察，新实例Activity记录0个输入事件。
+
+端到端测量边界与误差：
+
+- 发送端为实际gRPC调用时的Windows QPC；新增可选startAtQpc绝对调度，过期序列拒绝补发。sentMs/deviationMs只用于调度审计，未当作响应延迟。
+- 游戏侧用实际QA按键状态和帧更新日志。18次带QPC前后界限的时钟读取建立区间映射，含时钟文件陈旧区间、下一次Update和1ms取整；映射区间宽约62.66ms。只报告区间，未声称精确单一判定时刻（该精度仍未验证）。
+- 独立30Hz framebuffer观察：一次无新音符起点的短按，在发送后118.41ms首次取得明确可见反馈；上一未变观察为86.56ms，采样间隔31.85ms，该次RPC耗时12.76ms。此值包含图像采集传输，不能冒充Android处理函数耗时。原始均值帧及时间戳在`measured-input-first/visual.*`；RGBA行序经PNG对照确认，本引擎实际为top-down。
+- VM进程树WASAPI回环PCM实际捕获到5组对应声音，发送至可测PCM起点为约553.83、446.65、460.28、431.02、487.29ms，48kHz、16bit、5ms检测窗、噪声阈值8（前一秒背景峰值1）。同宿主校准音三次write→捕获起点35.43–39.01ms；相对playback位置推算，观测链路约16.52–24.38ms。Android AudioTrack夹具约180.01ms，说明游戏/音频库/资源路径还有额外延迟，不能全部归于产品。详细证据为`audio-calibration.json`、`input-faults/android-tone-latency.json`及`measured-input-first/acceptance.json`。
+- 依据：[微软进程回环说明](https://learn.microsoft.com/en-us/samples/microsoft/windows-classic-samples/applicationloopbackaudio-sample/)与[GetBuffer时钟定义](https://learn.microsoft.com/en-us/windows/win32/api/audioclient/nf-audioclient-iaudiocaptureclient-getbuffer)。本次维持用户主输出静音，验收边界是VM输出PCM；**扬声器声波传播、主观听感和精确声学延迟未验证**，不包含在上述通过项中。
+
+三轮固定配置、原六轨场景的独立稳态统计（`performance-acceptance.json`）：
+
+| 轮次 | 实际稳态覆盖秒 | FPS | P95 ms | P99 ms | 最慢帧 ms | 历史缺样 | 音频包/断续 |
+|---|---:|---:|---:|---:|---:|---:|---|
+| 1 | 69.50 | 94.17 | 18.19 | 41.32 | 499.50 | 0 | 7500 / 0 |
+| 2 | 69.09 | 94.06 | 18.04 | 41.35 | 467.18 | 0 | 7500 / 0 |
+| 3 | 69.67 | 93.30 | 18.06 | 42.39 | 341.08 | 0 | 7500 / 0 |
+
+三轮各捕获75秒PCM，无timestamp-error，相邻包时钟无缺口，均有持续有效音频。预期静默和素材包络不当成掉音；低幅片段不作无依据归因。加载另列：首次可观察游戏Update约14.37、1.01、1.42秒，后两轮为场景重试。加载边界按真实发送和新游戏时钟读取定义，含400ms轮询间隔；通过主机查询界限与相邻present时间建立约40–55ms的帧时钟区间，只统计完整落在加载窗口内的帧。首次加载含约13.40秒无新present帧，绝不混入稳态P99。暖加载样本少，其P99接近最慢帧，不能当作大样本推断。
+
+宿主整体CPU均值约0.83–1.17%，最大约2.70–3.70%，但这不能排除单核/GPU限制。大长帧不都发生在同一产品操作附近；已知场景含解密、纹理和QA日志工作，目前没有足够证据将全部长帧定为可修改的产品瓶颈。因此没有更换驱动、镜像、调内存或修改正式资源，也不声称提高了游戏帧率。若继续优化该延迟/长帧，需要另行缩小到游戏/引擎各级路径；现有统计与归因限制完整保留。
+
+恢复/保持：`data-retention-acceptance.json`确认多次正常sync停机、冷启动、受控取消、中断及同ID续作后，Root正常，正式皮肤/登记1995个文件与初始锚点一致；独立App六项私有/外部/共享测试值在更新及冷启动后仍由App读出。原曲目可见，安装前原曲目文件基线单独保存。中断只作用于隔离产物或独立输入夹具，未断电破坏唯一数据，未故意耗尽宿主内存。正常会话计数、日志和测试成绩变化不被虚称为整库逐字节不变。
+
+第四批候选：`release-candidate-full.trx`为295项非实机通过，完整构建0警告0错误。发布runner能力探针已通过：[run 35128870486](https://github.com/Iviesever/rooted-android-game-vm/actions/runs/35128870486)。最终安装、安装后回归、公开v0.5.0发布仍待完成。

@@ -4,6 +4,8 @@ namespace RootedAndroidGameVM.Core.Debugging;
 
 public sealed record FrameTimingSummary(int Frames, double? ObservedFps, double? P50Ms, double? P95Ms, double? P99Ms, double? MaxMs, double? ObservedSpanSeconds = null)
 {
+    public static bool HistoryGap(long[] previous, long[] current) => previous.Length > 0 && current.Length > 0 &&
+        current[^1] > previous[^1] && !current.Intersect(previous).Any();
     public static string NormalizeLayerName(string line)
     {
         line = line.Trim();

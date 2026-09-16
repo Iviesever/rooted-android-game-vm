@@ -5,6 +5,15 @@ namespace RootedAndroidGameVM.Core.Tests;
 public sealed class ImportContentVerifierTests
 {
     [Fact]
+    public void Changing_directory_enumeration_deduplicates_identical_rows_but_exposes_conflicting_hashes()
+    {
+        var a = new string('a', 64); var b = new string('b', 64);
+        var snapshot = ImportContentVerifier.ParseHashes($"RGVM_DIRECTORY_PRESENT\n{a}  /target/script.lua\n{a}  /target/script.lua\n{a}  /target/info.json\n{b}  /target/info.json\n", "/target");
+        Assert.True(snapshot.TargetExists); Assert.Equal(2, snapshot.Files.Count); Assert.Equal(2, snapshot.DuplicateRows);
+        Assert.Equal(["info.json"], snapshot.ConflictingPaths);
+        Assert.Throws<InvalidDataException>(() => ImportContentVerifier.ParseHashes($"{a}  /elsewhere/script.lua\n", "/target"));
+    }
+    [Fact]
     public void No_extraction_is_incomplete_and_never_activation_pending()
     {
         var result = ImportContentVerifier.Compare("target", new Dictionary<string, string> { ["script.lua"] = "one" }, new Dictionary<string, string>());

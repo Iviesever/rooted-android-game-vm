@@ -143,6 +143,10 @@ App结构化观察最多缓存10秒，返回原observedAt；refresh:true强制�
 
 用 `--wait` 运行这个请求。每个触点更新位置而保持 `pressure:1` 就是移动；不要创建新的 id 来代替同一个手指。序列最多 120 秒、10000 帧；最多十个触点。任务结束、取消或输入客户端租约过期会释放触点。协调进程异常退出时，重新连接后的首个输入也会清理所有产品触点；底层使用有限过期时间，不使用永不过期事件。
 
+可选 `arguments.startAtQpc` 为同一Windows宿主的绝对QPC时间戳，最多提前120秒；省略时保持就绪检查后立即开始的旧行为。准备完成时已经错过起点的序列返回input_schedule_missed，不补发。结果附startTimestamp、clockFrequency及每帧sentTimestamp/acknowledgedTimestamp，用于与独立游戏响应、图像或音频采集对时；这些发送/确认时戳本身不等于端到端延迟。
+
+`frames.sample`增加sameInstance、historyGaps、historyContinuous、requestedDurationCovered和主机采样时钟。检查summary.observedSpanSeconds才是实际呈现覆盖时长；历史环形缓冲缺乏重叠、App/VM变更或覆盖不足时，不能将统计当作完整稳态验收。
+
 ## 可复现测试步骤
 
 `test` 接受 `steps` 数组，每项是同样的请求结构。禁止递归 test 和在测试内部恢复检查点。结果记录每步时间、输出、失败和生成的文件目录。例如：

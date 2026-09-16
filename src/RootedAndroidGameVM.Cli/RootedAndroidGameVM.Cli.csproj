@@ -2,7 +2,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType><TargetFramework>net10.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
-    <RuntimeFrameworkVersion>10.0.11</RuntimeFrameworkVersion><IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract><EnableCompressionInSingleFile>true</EnableCompressionInSingleFile><DebugType>embedded</DebugType><Version>0.4.0</Version><AssemblyName>RootedAndroidGameVM.Cli</AssemblyName>
+    <RuntimeFrameworkVersion>10.0.11</RuntimeFrameworkVersion><IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract><EnableCompressionInSingleFile>true</EnableCompressionInSingleFile><DebugType>embedded</DebugType><Version>0.5.0</Version><AssemblyName>RootedAndroidGameVM.Cli</AssemblyName>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier><SelfContained>true</SelfContained><PublishSingleFile>true</PublishSingleFile>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="..\RootedAndroidGameVM.Core\RootedAndroidGameVM.Core.csproj" /></ItemGroup>
