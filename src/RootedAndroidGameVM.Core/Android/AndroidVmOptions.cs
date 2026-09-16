@@ -14,14 +14,15 @@ public sealed record AndroidVmOptions(
     int? GrpcPort = null,
     int CpuCores = 4,
     bool Vulkan = false,
-    int StartAvailableMb = 0)
+    int StartAvailableMb = 0,
+    bool LowRam = false)
 {
     public static AndroidVmOptions ForPaths(InstallPaths paths)
     {
         var profile = new RuntimeProfileStore(paths).Read();
         return new(
             "rooted_android_game_vm_api35", "emulator-5554", 5554,
-            profile.Renderer, profile.MemoryMb, paths.AvdHome, CpuCores: profile.CpuCores, Vulkan: profile.Vulkan, StartAvailableMb: profile.StartAvailableMb);
+            profile.Renderer, profile.MemoryMb, paths.AvdHome, CpuCores: profile.CpuCores, Vulkan: profile.Vulkan, StartAvailableMb: profile.StartAvailableMb, LowRam: profile.LowRam);
     }
 
     public static AndroidVmOptions ProductDefault => ForPaths(InstallPaths.CreateDefault());

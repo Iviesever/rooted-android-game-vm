@@ -37,6 +37,7 @@ public static class AndroidCommandFactory
         {
             arguments.AddRange(["-no-window", "-no-audio", "-no-boot-anim"]);
         }
+        if (options.LowRam) arguments.Add("-lowram");
         if (options.Verbose)
         {
             arguments.Add("-verbose");

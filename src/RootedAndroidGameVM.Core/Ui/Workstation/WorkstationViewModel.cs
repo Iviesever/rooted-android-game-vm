@@ -149,6 +149,9 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
     public int MemoryMb { get => _memoryMb; set => Set(ref _memoryMb, value); }
     private int _startAvailableMb;
     public int StartAvailableMb { get => _startAvailableMb; set => Set(ref _startAvailableMb, value); }
+    private bool _lowRam;
+    private int _vmHeapMb = 576;
+    public bool LowRam { get => _lowRam; set => Set(ref _lowRam, value); }
     public int Cores { get => _cores; set => Set(ref _cores, value); }
     public string SelectedRenderer { get => _selectedRenderer; set => Set(ref _selectedRenderer, value); }
     public bool Vulkan { get => _vulkan; set => Set(ref _vulkan, value); }
@@ -250,7 +253,8 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
         var result = await RunAsync("读取运行配置", new("runtime.inspect")); if (result is not { } data) return;
         var profile = data.GetProperty("requested").Deserialize<RuntimeProfile>(DebugJson.Options)!;
         Width = profile.Width; Height = profile.Height; Density = profile.Density; RefreshRate = profile.RefreshRate;
-        MemoryMb = profile.MemoryMb; StartAvailableMb = profile.StartAvailableMb; Cores = profile.CpuCores; SelectedRenderer = profile.Renderer; Vulkan = profile.Vulkan; DesktopDisplay = profile.DesktopDisplay;
+        MemoryMb = profile.MemoryMb; StartAvailableMb = profile.StartAvailableMb; LowRam = profile.LowRam; _vmHeapMb = profile.VmHeapMb;
+        Cores = profile.CpuCores; SelectedRenderer = profile.Renderer; Vulkan = profile.Vulkan; DesktopDisplay = profile.DesktopDisplay;
         var host = data.GetProperty("host"); HostMemory = $"可用 {host.GetProperty("availableMb").GetInt64() / 1024d:0.0} / {host.GetProperty("totalMb").GetInt64() / 1024d:0.0} GiB";
         if (data.TryGetProperty("observed", out var observed) && observed.ValueKind == JsonValueKind.Object)
         {
@@ -298,7 +302,7 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
     }
     public async Task ApplyProfileAsync()
     {
-        var requested = new RuntimeProfile(SelectedRenderer, Width, Height, Density, RefreshRate, MemoryMb, Cores, Vulkan, Width >= Height ? "landscape" : "portrait", DesktopDisplay, StartAvailableMb); requested.Validate();
+        var requested = new RuntimeProfile(SelectedRenderer, Width, Height, Density, RefreshRate, MemoryMb, Cores, Vulkan, Width >= Height ? "landscape" : "portrait", DesktopDisplay, StartAvailableMb, LowRam, _vmHeapMb); requested.Validate();
         var resume = IsRunning;
         if (resume && await RunAsync("保存并停止安卓", new("stop"), true) is null) return;
         if (await RunAsync("保存运行配置", DebugRequest.Create("runtime.configure", new { profile = requested }), true) is null) { await RefreshAsync(); return; }

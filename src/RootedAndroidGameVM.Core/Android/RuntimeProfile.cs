@@ -13,7 +13,9 @@ public sealed record RuntimeProfile(
     bool Vulkan = false,
     string Orientation = "landscape",
     bool DesktopDisplay = true,
-    int StartAvailableMb = 0)
+    int StartAvailableMb = 0,
+    bool LowRam = false,
+    int VmHeapMb = 576)
 {
     public static RuntimeProfile Recommended { get; } = new("host", 1920, 1080, 240, 120, 3072, 4);
 
@@ -27,8 +29,9 @@ public sealed record RuntimeProfile(
             throw new ArgumentException("显示尺寸必须在支持范围内，且不超过 4K 像素量。");
         if (Density is < 120 or > 640 || RefreshRate is not (60 or 90 or 120))
             throw new ArgumentException("密度范围为 120–640；刷新率可选 60、90 或 120 Hz。");
-        if (MemoryMb is < 1536 or > 8192 || MemoryMb > hostMemoryMb / 2)
-            throw new ArgumentException("安卓内存须为 1536–8192 MiB，并为宿主保留至少一半物理内存。");
+        if (MemoryMb < (LowRam ? 768 : 1536) || MemoryMb > 8192 || MemoryMb > hostMemoryMb / 2)
+            throw new ArgumentException("安卓内存须为 1536–8192 MiB；显式低内存模式允许从 768 MiB 起，并为宿主保留至少一半物理内存。");
+        if (VmHeapMb is < 128 or > 576) throw new ArgumentException("安卓 VM 堆上限须为 128–576 MiB。");
         if (CpuCores is < 2 or > 16 || CpuCores > Math.Max(2, hostLogicalCores / 2))
             throw new ArgumentException("处理器数量超限，须为宿主保留足够核心。");
         if (Orientation is not ("portrait" or "landscape")) throw new ArgumentException("未知初始方向。");
@@ -49,6 +52,8 @@ public sealed record RuntimeProfile(
         ["rgvm.vulkan"] = Vulkan ? "yes" : "no",
         ["rgvm.desktopDisplay"] = DesktopDisplay ? "yes" : "no",
         ["rgvm.startAvailableMb"] = StartAvailableMb.ToString(CultureInfo.InvariantCulture),
+        ["rgvm.lowRam"] = LowRam ? "yes" : "no",
+        ["vm.heapSize"] = VmHeapMb.ToString(CultureInfo.InvariantCulture),
         ["rgvm.runtimeProfile"] = "1"
     };
 
@@ -63,6 +68,7 @@ public sealed record RuntimeProfile(
             Number("hw.lcd.width", 1920), Number("hw.lcd.height", 1080), Number("hw.lcd.density", 240),
             Number("hw.lcd.vsync", 60), Number("hw.ramSize", Recommended.MemoryMb), Number("hw.cpu.ncore", 4),
             values.GetValueOrDefault("rgvm.vulkan") == "yes", values.GetValueOrDefault("hw.initialOrientation", "landscape"),
-            values.GetValueOrDefault("rgvm.desktopDisplay") == "yes", Number("rgvm.startAvailableMb", 0));
+            values.GetValueOrDefault("rgvm.desktopDisplay") == "yes", Number("rgvm.startAvailableMb", 0),
+            values.GetValueOrDefault("rgvm.lowRam") == "yes", Number("vm.heapSize", 576));
     }
 }

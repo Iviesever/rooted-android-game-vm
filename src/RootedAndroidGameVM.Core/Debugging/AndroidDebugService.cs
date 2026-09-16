@@ -277,7 +277,8 @@ public sealed partial class AndroidDebugService : IDisposable
                     requested = requestedProfile,
                     observed = observedDisplay,
                     host = memoryCapacity,
-                    startAdmission = observedDisplay is null ? VmMemoryPolicy.Assess(requestedProfile.MemoryMb, memoryCapacity, requestedProfile.StartAvailableMb) : null,
+                    observedMemory = observedDisplay is null ? null : await ReadGuestMemoryAsync(requestedProfile, ct),
+                    startAdmission = observedDisplay is null ? VmMemoryPolicy.Assess(requestedProfile.MemoryMb, memoryCapacity, requestedProfile.StartAvailableMb, requestedProfile.LowRam) : null,
                     requestedRefreshConfirmed = observedDisplay?.ConfirmsRequestedRate(requestedProfile.RefreshRate) ?? false
                 };
             case "runtime.configure":

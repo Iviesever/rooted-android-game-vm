@@ -79,6 +79,8 @@ $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.ex
 
 `runtime.configure.profile.startAvailableMb` 为启动物理余量门槛：省略或 `0` 保持自动估计；`4096` 表示可用物理内存至少 4 GiB。提交空间、guest 占宿主至多一半、启动期与运行期低内存保护仍独立检查。门槛不是内存配额、占用预测或节省量。运行设置界面也可修改；完整配置示例应保留原来的显示、GPU、guest 内存等字段。
 
+`profile.lowRam=true` 显式启用固定模拟器的 `-lowram`，允许 768 MiB 起的实验配额；默认关闭。普通 API-35 模式会把较小请求自动提高（本机请求 1536 MiB 实际为 2560 MiB），因此单改 `memoryMb` 不能证明节省。`vmHeapMb` 保留安卓 VM 堆上限（128–576 MiB），模拟器还可能根据屏幕/API 再调整它。`runtime.inspect.observedMemory` 在运行时列出实际分配、guest 可见内存和 `allocationMatchesRequest`，均不等于产品总宿主 RAM。低内存模式是可测试配置，不自动宣称任意应用的 2 GB 总占用或性能保证。
+
 跨起停连续审计使用 [MemoryProbe](../tools/RootedAndroidGameVM.MemoryProbe/README.md)。WS 包含共享页，私有提交不是独占物理 RAM；不要将多进程 WS、guest PSS 和整机差值混加。原始 `memory.snapshot` 无截图且不启动安卓。
 
 ## 六指同时按下，再独立松开

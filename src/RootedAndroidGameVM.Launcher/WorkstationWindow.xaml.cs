@@ -200,7 +200,7 @@ public partial class WorkstationWindow : Window
     {
         var profile = RuntimeProfile.Recommended;
         ViewModel.Width = profile.Width; ViewModel.Height = profile.Height; ViewModel.Density = profile.Density;
-        ViewModel.RefreshRate = profile.RefreshRate; ViewModel.MemoryMb = profile.MemoryMb; ViewModel.StartAvailableMb = profile.StartAvailableMb; ViewModel.Cores = profile.CpuCores;
+        ViewModel.RefreshRate = profile.RefreshRate; ViewModel.MemoryMb = profile.MemoryMb; ViewModel.StartAvailableMb = profile.StartAvailableMb; ViewModel.LowRam = profile.LowRam; ViewModel.Cores = profile.CpuCores;
         ViewModel.SelectedRenderer = profile.Renderer; ViewModel.Vulkan = profile.Vulkan;
         ViewModel.DesktopDisplay = profile.DesktopDisplay;
         ViewModel.Message = "已填入推荐配置，点击保存后才会应用";
