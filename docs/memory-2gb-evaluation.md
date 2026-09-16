@@ -70,3 +70,28 @@
 二进制预览的元数据先限制1MiB，PNG按已验证的声明长度分配、最高8MiB；不再先按通用64MiB上限分配后才检查预览大小。PNG、尺寸和会话契约保持。
 
 新增测试覆盖文本边界/换行/UTF-16、两路输出超限、被阻塞的stdin取消、非零退出码、启动前校验和预览长度头。**242项非实机测试通过，完整构建0警告/0错误。** 这些检查不能替代全产品2GB与正常游玩验收。
+
+## 原生分配取证与进一步排除（20:48）
+
+用户要求保留现有 Windows 显卡驱动，NVIDIA 551.61、Intel 31.0.101.5445 均未更新。
+
+- CDB非暂停附加获取的常规NT堆摘要只解释约158MiB提交，不能解释全部MEM_PRIVATE驻留。`!address -summary`在非暂停模式下遇到上下文读取错误，未作为完整映射结果；已有VirtualQueryEx/QueryWorkingSetEx分类继续单列。
+- 另一次短时分配入口跟踪，在Malody启动期间观察到31次≥4MiB且带MEM_COMMIT的申请：14次来自NVIDIA OpenGL驱动栈，合计262,134,848B；17次来自gfxstream栈，合计401,690,504B。这是入口请求累计，既不是成功分配总额，也不是同时存活/驻留量；缺少完整私有符号，不能把最近导出符号的名字当成确切内部函数。初版断点条件有语法错误并暂停了VM，修正后重试应用；此轮不用于帧率或峰值验收。最后已清除断点并明确detach，VM会话随后仍通过status/Root核验。
+- 原模拟器没有单独NVIDIA应用配置，线程优化继承值0。用户授权了仅该完整EXE路径的临时应用配置试验。普通调用及RunAs辅助程序在`NvAPI_DRS_SaveSettings`都返回-1；新会话查询确认应用配置仍不存在、继承值仍为0。因此未声称“关闭线程优化有效”，也没有修改全局配置。使用的ABI/设置ID来自[NVIDIA官方NVAPI头文件](https://github.com/NVIDIA/nvapi)。
+- 将broker及模拟器子进程的CPU亲和性限制到8个逻辑处理器，实测QEMU掩码255；2592个样本中91个含读取错误，最大2,189,783,040B，尚未完成谱面游玩。无足够收益，相关进程已退出，未固化亲和性策略。
+- 768MiB＋2GiB逻辑zstd交换＋swappiness180的组合已核验实际生效，但仍出现“系统界面没有响应”，即使`dumpsys activity lastanr`称没有记录。拒绝交付。原模块两个文件按备份散列恢复，再次冷启确认swappiness60、逻辑swap1572860KiB与1024MiB配置。
+
+## ANGLE路径的现有驱动限制
+
+现有API35镜像在`/system/lib64`自带ANGLE库，先前仅启用Vulkan的试验仍显示`OpenGL ES Translator`，不能把它当成已经验证过guest ANGLE。[上游启动属性实现](https://android.googlesource.com/platform/external/qemu/+/emu-master-dev/android/android-emu/android/userspace-boot-properties.cpp)说明了GuestAngle与Vulkan的关系；固定exe的`-help-feature`也确认环境变量覆盖入口。
+
+随后分别测试了：
+
+1. `GuestAngle,GuestUsesAngle,VulkanNativeSwapchain`加Vulkan；
+2. 仅GuestAngle加Vulkan，显式关闭GuestUsesAngle与VulkanNativeSwapchain。
+
+两组都在引擎兼容性检查阶段退出，原生日志明确指出NVIDIA **551.61.0低于所需553.35.0**。没有绕过版本检查，没有进入可做内存/游戏验收的阶段。首组产品启动任务还在等ADB，已明确取消该任务并确认工具退出；直接SDK诊断捕获了上述错误。
+
+用户随后明确选择保留现有系统驱动，这两组路径当前不可继续。此前为准备可审阅的更新方案，已只读导出原驱动185文件、1,745,742,317B并记录SHA-256；官方Studio616.92笔记本包支持信息已核对，但下载返回403，未获得安装包、未安装。原驱动签名目录有效，备份不等于已经验证过回装。后续不继续推动驱动更新。
+
+所有本轮VM、GUI、broker、采样器与调试器已停止；INI恢复1024/720p120/host/Vulkan=false/LowRam=true/heap576/4096启动门槛，原guest实验模块与8包状态维持上轮基线。源码功能仍为`1e64c7e`、242测试的版本，本轮没有集成任何未通过的运行策略。2GB目标和最终覆盖安装仍未完成；剩余允许的路线必须提供原生缓冲/图形后端或控制进程重构的数量依据，不能再用相同参数组合重复试验。
