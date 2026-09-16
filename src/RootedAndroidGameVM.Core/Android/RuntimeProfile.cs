@@ -21,8 +21,8 @@ public sealed record RuntimeProfile(
 
     public RuntimeProfile Validate(long hostMemoryMb = long.MaxValue, int hostLogicalCores = 128)
     {
-        if (StartAvailableMb != 0 && (StartAvailableMb < 4096 || StartAvailableMb > hostMemoryMb))
-            throw new ArgumentException("启动物理余量门槛须为 0（自动）或至少 4096 MiB，且不超过宿主物理内存。");
+        if (StartAvailableMb != 0 && (StartAvailableMb < VmMemoryPolicy.MinimumStartAvailableMb || StartAvailableMb > hostMemoryMb))
+            throw new ArgumentException($"启动物理余量门槛须为 0（自动）或至少 {VmMemoryPolicy.MinimumStartAvailableMb} MiB，且不超过宿主物理内存。");
         if (Renderer is not ("host" or "software" or "swiftshader" or "swiftshader_indirect"))
             throw new ArgumentException("未知图形后端。");
         if (Width is < 480 or > 3840 || Height is < 320 or > 3840 || (long)Width * Height > 8_294_400)

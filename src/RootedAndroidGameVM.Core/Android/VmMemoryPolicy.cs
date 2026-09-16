@@ -14,6 +14,7 @@ public static class VmMemoryPolicy
     // These margins are admission planning, not enforced process limits or peak guarantees.
     public const int ResidentOverheadMb = 1536;
     public const int CommitOverheadMb = 2560;
+    public const int MinimumStartAvailableMb = 2560;
     public static long ReserveMb(long totalMb) => Math.Clamp(totalMb / 8, 2048, 4096);
     public static long StopThresholdMb(long totalMb) => Math.Clamp(totalMb / 12, 1024, 2048);
 
@@ -25,8 +26,8 @@ public static class VmMemoryPolicy
         var plannedGuestMb = lowRam ? guestMb : Math.Max(guestMb, 2560);
         var estimate = (long)plannedGuestMb + ResidentOverheadMb;
         var reserve = ReserveMb(host.TotalMb);
-        if (startAvailableMb != 0 && (startAvailableMb < 4096 || startAvailableMb > host.TotalMb))
-            throw new ArgumentException("启动物理余量门槛须为 0（自动）或至少 4096 MiB，且不超过宿主物理内存。");
+        if (startAvailableMb != 0 && (startAvailableMb < MinimumStartAvailableMb || startAvailableMb > host.TotalMb))
+            throw new ArgumentException($"启动物理余量门槛须为 0（自动）或至少 {MinimumStartAvailableMb} MiB，且不超过宿主物理内存。");
         var required = startAvailableMb == 0 ? estimate + reserve : startAvailableMb;
         var commit = (long)plannedGuestMb + CommitOverheadMb + 1024;
         var allowed = plannedGuestMb <= host.TotalMb / 2 && host.AvailableMb >= required && host.AvailableCommitMb >= commit;

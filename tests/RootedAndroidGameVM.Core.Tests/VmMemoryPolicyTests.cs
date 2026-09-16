@@ -7,6 +7,21 @@ namespace RootedAndroidGameVM.Core.Tests;
 public sealed class VmMemoryPolicyTests
 {
     [Fact]
+    public void Explicit_2_5_gib_admission_retains_commit_and_runtime_protection()
+    {
+        var host = new HostMemorySnapshot(16111, 2560, 32, 84, 10000);
+        var profile = RuntimeProfile.Recommended with { MemoryMb = 1024, LowRam = true, StartAvailableMb = 2560 };
+        Assert.Equal(profile, profile.Validate(host.TotalMb, host.LogicalCores));
+        Assert.True(VmMemoryPolicy.Assess(1024, host, 2560, true).Allowed);
+        Assert.False(VmMemoryPolicy.Assess(1024, host with { AvailableMb = 2559 }, 2560, true).Allowed);
+        Assert.False(VmMemoryPolicy.Assess(1024, host with { AvailableCommitMb = 4607 }, 2560, true).Allowed);
+        Assert.Throws<ArgumentException>(() => (profile with { StartAvailableMb = 2559 }).Validate());
+        Assert.Throws<ArgumentException>(() => VmMemoryPolicy.Assess(1024, host, 2559, true));
+        Assert.True(new MemoryPressureTracker().ShouldStop(host with { AvailableMb = 400 }, TimeSpan.Zero));
+        Assert.Equal(profile, RuntimeProfile.FromAvdSettings(profile.ToAvdSettings().Select(pair => pair.Key + "=" + pair.Value)));
+    }
+
+    [Fact]
     public void Available_headroom_not_total_ram_controls_admission()
     {
         var host = new HostMemorySnapshot(16111, 7000, 32, 57, 16000);
