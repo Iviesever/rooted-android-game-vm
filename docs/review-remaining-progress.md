@@ -11,7 +11,7 @@ files.roots为未生成、已解锁且所属卷可写的external/obb/media根提
 - Material Files（真实非游戏应用）private完整流程见material-private-accepted-1584dc85.json；external/shared见material-scopes-users-0-external-shared-acceptance.json，run e13b21f8。中文/空格嵌套目录、空目录、新建和覆盖、App自身FileProvider读取、原文件备份、下载SHA全部通过。外部首次根由产品计划创建，规划阶段确无写入；新外部文件UID10211/mode660。
 - material-extra-roots-acceptance.json验证OBB/media首次根创建、App实读和回传；OBB UID10211/GID1079，media UID10200/GID1023，目录均2770。媒体只读查询有一次自然ADB离线，恢复同一会话后明确cleanup清理，再只读重查及下载；未重放上传。初始测试将media属主一概断言为App UID的错误假设已按实际上下层文件属性、系统包UID与App读取证据纠正。
 - readfixture-external-owner-acceptance.json的独立UID10213应用复验受影响的外部覆盖、文件权限、双向字节一致及六项应用自身读取；private/shared原值保持。结合先前三作用域往返证据，覆盖第二个独立功能应用，不把复制的元数据夹具算作第二应用。
-- metadata-boundary-acceptance.json仅在用户10安装labelcollision/labelfallback无代码APK；两条同名“质感文件”拥有不同appRef并分别正确解析，空名称回退真实包名，PNG图标48像素。主用户的包清单及安装身份前后相同；用户10四个第三方包无Malody。多用户文件传输仍未完成。
+- metadata-boundary-acceptance.json仅在用户10安装labelcollision/labelfallback无代码APK；两条相同本地化名称的条目拥有不同appRef并分别正确解析，空名称回退真实包名，PNG图标48像素。主用户的包清单及安装身份前后相同；用户10四个第三方包无Malody。多用户文件传输仍未完成。
 
 原错误计划7fe4f67431414f3d9a56675fa97e23fd的完整8项测试树经目录集合与SHA核对后保存在同父目录唯一备份，material-failed-root-preserved.json记录原值；未删除数据或手工修权限冒充验收。后续使用新计划验证修复。内存/镜像/显卡及正式游戏资源未调整；未重复600MiB传输。
 
