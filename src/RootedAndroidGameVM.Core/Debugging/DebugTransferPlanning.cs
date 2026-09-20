@@ -91,7 +91,7 @@ public sealed partial class AndroidDebugService
         var id = Guid.NewGuid().ToString("N"); var store = new TransferPlanStore(Paths.ProductRoot);
         var artifacts = store.DirectoryFor(id); ColdCheckpoint.Restrict(artifacts);
         await File.WriteAllTextAsync(Path.Combine(artifacts, "request.json"), DebugJson.Write(request), ct);
-        FileRootIdentity? destinationIdentity = null; ResolvedFileRoot? destinationRoot = null; string destinationPath; var destinationPrefix = "";
+        FileRootIdentity? destinationIdentity = null; ResolvedFileRoot? destinationRoot = null; string destinationPath; var destinationPrefix = ""; string? destinationAnchor = null;
         if (direction == "download")
         {
             if (string.IsNullOrWhiteSpace(destination.LocalDirectory) || !Path.IsPathFullyQualified(destination.LocalDirectory)) throw new ArgumentException("localDirectory须为绝对路径。");
@@ -107,9 +107,19 @@ public sealed partial class AndroidDebugService
             destinationRoot = await ResolveFileRootAsync(location.Root, ct);
             if (request.Flag("createParents") && location.Version is null)
             {
+                var requestedPath = location.Relative;
+                var probe = (await FileBridgeAsync(new { op = "probe", paths = new[] { destinationRoot.Path } }, session, ct))[0];
+                if (!probe.GetProperty("exists").GetBoolean() && location.Root.Kind is "external" or "obb" or "media")
+                {
+                    destinationAnchor = location.Root.Volume!;
+                    var prefix = FileTransferPolicy.ApplicationStoragePrefix(location.Root);
+                    if (destinationRoot.Path != FileTransferPolicy.JoinRemote(destinationAnchor, prefix)) throw new DebugException("path_escape", "应用外部根与卷不匹配。", "planning_transfer");
+                    requestedPath = FileTransferPolicy.JoinRemote(prefix, requestedPath);
+                    destinationRoot = destinationRoot with { Path = destinationAnchor };
+                }
                 // Resolve from the root outwards. Nothing is created until execution.
                 var paths = new List<string> { "" }; var path = "";
-                foreach (var part in location.Relative.Split('/', StringSplitOptions.RemoveEmptyEntries)) { path = FileTransferPolicy.JoinRemote(path, part); paths.Add(path); }
+                foreach (var part in requestedPath.Split('/', StringSplitOptions.RemoveEmptyEntries)) { path = FileTransferPolicy.JoinRemote(path, part); paths.Add(path); }
                 var ancestor = ""; var missing = false;
                 var probes = paths.Select((relative, index) => new TransferPlanEntry(index, "$destination", "", relative, new("directory", 0, "probe", null), null, "new"));
                 foreach (var batch in RemoteTargetBatches(probes, ""))
@@ -128,7 +138,7 @@ public sealed partial class AndroidDebugService
                         ancestor = relative;
                     }
                 }
-                destinationPrefix = location.Relative.Length == ancestor.Length ? "" : location.Relative[(ancestor.Length == 0 ? 0 : ancestor.Length + 1)..];
+                destinationPrefix = requestedPath.Length == ancestor.Length ? "" : requestedPath[(ancestor.Length == 0 ? 0 : ancestor.Length + 1)..];
                 destinationPath = ancestor;
             }
             else
@@ -246,7 +256,8 @@ public sealed partial class AndroidDebugService
         issues.AddRange(items.Where(item => item.Issue is not null).Select(item => item.Issue + ":" + item.TargetRelativePath));
         RequireCatalogSession(session);
         var plan = new TransferPlan(id, DateTimeOffset.UtcNow, instance, session, direction, format, consistency, selections.ToArray(), destinationIdentity,
-            destinationPath, items.ToArray(), applications.ToArray(), total, 0, null, issues.Distinct().ToArray(), artifacts);
+            destinationPath, items.ToArray(), applications.ToArray(), total, 0, null, issues.Distinct().ToArray(), artifacts, DestinationAnchor: destinationAnchor);
+        foreach (var item in plan.Entries) if (plan.Direction == "upload") FileTransferPolicy.ValidateAnchoredTarget(plan, FileTransferPolicy.JoinRemote(plan.DestinationPath, item.TargetRelativePath));
         var space = await ObserveTransferSpaceAsync(plan, destinationRoot, session, null, null, null, "overwrite", false, null, ct);
         var targetChecks = space.Checks.Where(check => check.Purposes.Any(purpose => purpose is "destination" or "destination-root" or "archive")).ToArray();
         if (space.Checks.Any(check => !check.Sufficient)) issues.Add("insufficient_space");
@@ -289,6 +300,7 @@ public sealed partial class AndroidDebugService
         plan.RequiredBytes,
         plan.AvailableBytes,
         plan.SpaceChecks,
+        initializesApplicationRoot = plan.DestinationAnchor is not null,
         plan.ApplicationsToStop,
         plan.Issues,
         conflicts = plan.Entries.Where(entry => entry.Conflict is "different" or "type_conflict" or "blocked" || entry.Issue is not null).Take(100).ToArray(),

@@ -2,6 +2,21 @@
 
 目标：[review-remaining-goal.md](review-remaining-goal.md)。开始于683c443；用户的目标变更另由a51dabd提交。本文保留历史批次证据；**它们不代表2026-09-20新增通用化与文件管理要求已经通过**。
 
+## 2026-09-20 B4/A：应用根准备、权限与第二应用证据
+
+files.roots为未生成、已解锁且所属卷可写的external/obb/media根提供creatable；createParents把缺失应用根与父目录纳入既有只读计划和逐项账本。原应用/用户/安装身份始终保留，内部卷锚点仅允许该应用路径及计划声明的准备祖先；执行/续作重新解析。private/device-private不自行mkdir，锁定和错误用户请求仍拒绝。CLI帮助与使用文档同步；GUI缺失根入口仍待C批，未冒充界面验收。
+
+首次真实初始化发现App无法读取：新根去掉setgid后子项成了0:0。修复以当前应用UID请求新增/替换项属主，从实际父目录继承GID和目录setgid，并在chown之后设置最终mode；合并已有目录不批量改权限，共享准备祖先不归App所有。目录与文件的实际权限来自设备回执。媒体根实测归MediaProvider UID10200，App可正常读取；[AOSP FUSE实现](https://android.googlesource.com/platform/packages/providers/MediaProvider/+/refs/heads/main/jni/FuseDaemon.cpp)明确不实现普通路径的chmod/chown，因此不承诺所有卷都呈现请求的应用UID，也不改底层卷绕过其规则。
+
+- Material Files（真实非游戏应用）private完整流程见material-private-accepted-1584dc85.json；external/shared见material-scopes-users-0-external-shared-acceptance.json，run e13b21f8。中文/空格嵌套目录、空目录、新建和覆盖、App自身FileProvider读取、原文件备份、下载SHA全部通过。外部首次根由产品计划创建，规划阶段确无写入；新外部文件UID10211/mode660。
+- material-extra-roots-acceptance.json验证OBB/media首次根创建、App实读和回传；OBB UID10211/GID1079，media UID10200/GID1023，目录均2770。媒体只读查询有一次自然ADB离线，恢复同一会话后明确cleanup清理，再只读重查及下载；未重放上传。初始测试将media属主一概断言为App UID的错误假设已按实际上下层文件属性、系统包UID与App读取证据纠正。
+- readfixture-external-owner-acceptance.json的独立UID10213应用复验受影响的外部覆盖、文件权限、双向字节一致及六项应用自身读取；private/shared原值保持。结合先前三作用域往返证据，覆盖第二个独立功能应用，不把复制的元数据夹具算作第二应用。
+- metadata-boundary-acceptance.json仅在用户10安装labelcollision/labelfallback无代码APK；两条同名“质感文件”拥有不同appRef并分别正确解析，空名称回退真实包名，PNG图标48像素。主用户的包清单及安装身份前后相同；用户10四个第三方包无Malody。多用户文件传输仍未完成。
+
+原错误计划7fe4f67431414f3d9a56675fa97e23fd的完整8项测试树经目录集合与SHA核对后保存在同父目录唯一备份，material-failed-root-preserved.json记录原值；未删除数据或手工修权限冒充验收。后续使用新计划验证修复。内存/镜像/显卡及正式游戏资源未调整；未重复600MiB传输。
+
+8项应用根边界回归，加上既有382项共390非实机通过。完整构建零警告错误，格式及Java源码重建通过；DEX为0221876cafbe6229197ba72f6902f20f9a154c7d0585e93e0efc792d495fed51。精确提交及CI见本机continuation.md顶部。以上为A/B局部证据；QA用户锁定/解锁后的完整数据流程、D剩余组合、C真实GUI、E新候选备份覆盖/装后/发布仍待完成。
+
 ## 2026-09-20 D5：独占调度与状态观察有界化
 
 真实停止任务c6ed142a36a34231a65e8c7b2b486c90在queued超时，请求目录只有request.json，同期状态ADB在读取getprop/dumpsys。原broker只在独占操作进入后拦截新读取，等待期间仍可被连续轮询越过。新增读/独占准入门：等待中的独占操作阻止后来的读取，已有操作退出后进入；取消等待会恢复准入，释放一次不会影响其他操作。session.summary在独占等待或运行期间都可返回OperationInProgress。

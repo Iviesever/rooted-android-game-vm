@@ -17,7 +17,7 @@ public sealed record TransferPlan(string PlanId, DateTimeOffset CreatedAt, strin
     string Format, string Consistency, TransferSelection[] Selections, FileRootIdentity? DestinationRoot, string DestinationPath,
     TransferPlanEntry[] Entries, TransferApplication[] ApplicationsToStop, long TotalBytes, long RequiredBytes, long? AvailableBytes,
     string[] Issues, string ArtifactDirectory, string Status = "planned", bool TransferVerified = false,
-    TransferSpaceCheck[]? SpaceChecks = null, TransferStorageBinding[]? StorageBindings = null);
+    TransferSpaceCheck[]? SpaceChecks = null, TransferStorageBinding[]? StorageBindings = null, string? DestinationAnchor = null);
 public sealed record TransferPlanCard(string PlanId, DateTimeOffset CreatedAt, string InstanceId, string Direction, string Status,
     int TotalEntries, long TotalBytes, string ArtifactDirectory);
 public sealed record TransferPlanHistory(string PlanId, string Direction, string Status, DateTimeOffset UpdatedAt,
@@ -26,6 +26,33 @@ public sealed record TransferPlanHistory(string PlanId, string Direction, string
 public static class FileTransferPolicy
 {
     public const int MaxEntries = 100000;
+    public static string ApplicationStoragePrefix(FileRootIdentity root) => root.Kind switch
+    {
+        "external" when root.Package is not null => "Android/data/" + root.Package,
+        "obb" when root.Package is not null => "Android/obb/" + root.Package,
+        "media" when root.Package is not null => "Android/media/" + root.Package,
+        _ => throw new DebugException("root_unavailable", "此根不允许由文件服务初始化。", "planning_transfer")
+    };
+    public static void ValidateAnchoredTarget(TransferPlan plan, string relative)
+    {
+        FileReferences.Relative(relative);
+        if (plan.DestinationAnchor is null) return;
+        var root = plan.DestinationRoot ?? throw new InvalidDataException("应用根准备缺少身份。");
+        if (plan.Direction != "upload" || root.Volume != plan.DestinationAnchor) throw new DebugException("path_escape", "应用根准备锚点无效。", "verifying_plan");
+        var prefix = ApplicationStoragePrefix(root);
+        if (relative == prefix || relative.StartsWith(prefix + "/", StringComparison.Ordinal)) return;
+        if (relative.Length > 0 && prefix.StartsWith(relative + "/", StringComparison.Ordinal) && plan.Entries.Any(item => item.CreateDirectory &&
+            item.SelectionId == "$destination" && item.Source.Kind == "directory" && JoinRemote(plan.DestinationPath, item.TargetRelativePath) == relative)) return;
+        throw new DebugException("path_escape", "目标不在所选应用数据目录内。", "verifying_plan");
+    }
+    public static bool RequiresApplicationOwner(TransferPlan plan, string relative)
+    {
+        ValidateAnchoredTarget(plan, relative);
+        if (plan.DestinationRoot?.Kind is not ("external" or "obb" or "media")) return false;
+        if (plan.DestinationAnchor is null) return true;
+        var prefix = ApplicationStoragePrefix(plan.DestinationRoot);
+        return relative == prefix || relative.StartsWith(prefix + "/", StringComparison.Ordinal);
+    }
     public static string TargetName(string name)
     {
         FileReferences.Relative(name);

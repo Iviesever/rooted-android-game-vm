@@ -70,6 +70,7 @@ public sealed partial class AndroidDebugService
     {
         if (plan.Direction == "download") return await FileTransferPolicy.LocalFingerprintAsync(FileTransferPolicy.LocalTarget(plan.DestinationPath, relative), ct);
         var path = FileTransferPolicy.JoinRemote(plan.DestinationPath, relative);
+        FileTransferPolicy.ValidateAnchoredTarget(plan, path);
         var data = await FileBridgeAsync(new { op = "batch-stat", root = root!.Path, paths = new[] { path }, hash = true }, root.Identity.Session, ct);
         var row = data[0];
         return row.GetProperty("exists").GetBoolean() ? Fingerprint(row.GetProperty("entry").Deserialize<RemoteFileEntry>(DebugJson.Options)!) : null;
@@ -104,7 +105,17 @@ public sealed partial class AndroidDebugService
         try
         {
             foreach (var identity in plan.Selections.Where(source => source.RemoteRoot is not null).Select(source => source.RemoteRoot!).Concat(plan.DestinationRoot is null ? [] : [plan.DestinationRoot]).Distinct())
-                roots[identity] = await ResolveFileRootAsync(resume ? identity with { Session = session } : identity, ct);
+            {
+                var resolved = await ResolveFileRootAsync(resume ? identity with { Session = session } : identity, ct);
+                if (identity == plan.DestinationRoot && plan.DestinationAnchor is { } anchor)
+                {
+                    if (anchor != identity.Volume || resolved.Path != FileTransferPolicy.JoinRemote(anchor, FileTransferPolicy.ApplicationStoragePrefix(identity)))
+                        throw new DebugException("stale_reference", "应用目录或卷身份已改变。", "verifying_plan");
+                    resolved = resolved with { Path = anchor };
+                    foreach (var item in plan.Entries) FileTransferPolicy.ValidateAnchoredTarget(plan, FileTransferPolicy.JoinRemote(plan.DestinationPath, item.TargetRelativePath));
+                }
+                roots[identity] = resolved;
+            }
             await QuiesceTransferApplicationsAsync(plan, options, ct);
             var verified = await VerifyTransferSourcesAsync(plan, roots, resume, ct);
             var destinationRoot = plan.DestinationRoot is null ? null : roots[plan.DestinationRoot];

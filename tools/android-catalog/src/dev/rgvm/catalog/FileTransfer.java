@@ -88,9 +88,19 @@ final class FileTransfer {
             throw new DeviceFiles.Failure("target_changed", "Destination content changed");
     }
     private static void permissions(File file, JSONObject request, boolean directory) throws Exception {
-        Os.chmod(file.getPath(), Integer.parseInt(request.getString(directory ? "directoryMode" : "fileMode"), 8));
+        int mode = Integer.parseInt(request.getString(directory ? "directoryMode" : "fileMode"), 8);
         if (request.optBoolean("privateData", false)) {
             Os.chown(file.getPath(), request.getInt("uid"), request.getInt("gid"));
+        } else if (request.optBoolean("externalData", false)) {
+            StructStat parent = Os.lstat(file.getParent());
+            if (!OsConstants.S_ISDIR(parent.st_mode)) throw new DeviceFiles.Failure("path_escape", "Application storage parent changed");
+            Os.chown(file.getPath(), request.getInt("applicationUid"), parent.st_gid);
+            if (directory) mode |= parent.st_mode & OsConstants.S_ISGID;
+        }
+        // chown can clear setgid. Apply the final mode afterwards so descendants keep
+        // the real volume's group rather than inheriting the root helper's group.
+        Os.chmod(file.getPath(), mode);
+        if (request.optBoolean("privateData", false)) {
             Process process = new ProcessBuilder("/system/bin/restorecon", file.getPath()).redirectErrorStream(true).start();
             while (process.getInputStream().read() >= 0) { }
             if (process.waitFor() != 0) throw new DeviceFiles.Failure("permission_restore_failed", "restorecon failed before commit");

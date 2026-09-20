@@ -5,7 +5,7 @@ namespace RootedAndroidGameVM.Core.Debugging;
 
 public sealed partial class AndroidDebugService
 {
-    private sealed record ResolvedFileRoot(FileRootIdentity Identity, string Path, string Title, bool Locked, string? UnavailableReason = null);
+    private sealed record ResolvedFileRoot(FileRootIdentity Identity, string Path, string Title, bool Locked, string? UnavailableReason = null, int? ApplicationUid = null);
 
     private async Task<JsonElement> FileBridgeAsync(object arguments, string session, CancellationToken ct)
     {
@@ -70,10 +70,13 @@ public sealed partial class AndroidDebugService
             var exists = state.GetProperty("exists").GetBoolean();
             var accessible = !root.Locked && state.GetProperty("accessible").GetBoolean();
             var version = CatalogText(state, "version");
+            var creatable = !exists && !root.Locked && root.Identity.Kind is "external" or "obb" or "media" && root.Identity.Volume is { } volume &&
+                byPath.TryGetValue(volume, out var baseState) && baseState.GetProperty("accessible").GetBoolean() &&
+                baseState.TryGetProperty("writable", out var baseWritable) && baseWritable.GetBoolean();
             return new FileRootDescriptor(FileReferences.Root(root.Identity), root.Identity.Kind, root.Title, root.Path, exists, accessible,
                 accessible && state.TryGetProperty("writable", out var writable) && writable.GetBoolean(), root.Locked,
                 root.Locked ? "data_locked" : CatalogText(state, "reason"),
-                accessible && version is not null ? FileReferences.Entry(new(root.Identity, "", version)) : null);
+                accessible && version is not null ? FileReferences.Entry(new(root.Identity, "", version)) : null, creatable);
         }).ToArray();
         return new
         {
@@ -109,7 +112,7 @@ public sealed partial class AndroidDebugService
         var title = identity.Kind switch { "private" => "私有数据 · Root", "device-private" => "设备保护数据 · Root", "external" => "应用外部文件", "obb" => "OBB资源", "media" => "应用媒体", _ => "共享存储" };
         if (volume is { Primary: false }) title += " · " + volume.Path.Split('/')[^1];
         if (string.IsNullOrEmpty(path) || !path.StartsWith('/')) return new(identity, "", title, !storage.Unlocked, "metadata_unavailable");
-        return new(identity, path, title, !storage.Unlocked && identity.Kind != "device-private");
+        return new(identity, path, title, !storage.Unlocked && identity.Kind != "device-private", ApplicationUid: app?.Uid);
     }
     private async Task<ResolvedFileRoot> ResolveFileRootAsync(FileRootIdentity identity, CancellationToken ct)
     {

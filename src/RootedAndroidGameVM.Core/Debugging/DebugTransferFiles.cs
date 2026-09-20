@@ -125,8 +125,11 @@ public sealed partial class AndroidDebugService
         TransferFingerprint source, TransferItemState state, TransferExecutionStore journal, bool resume, CancellationToken ct)
     {
         var relative = FileTransferPolicy.JoinRemote(plan.DestinationPath, state.TargetRelativePath);
+        FileTransferPolicy.ValidateAnchoredTarget(plan, relative);
         var expected = state.TargetRelativePath == item.TargetRelativePath ? item.Target : null;
         var privateData = root.Identity.Kind is "private" or "device-private";
+        var externalData = FileTransferPolicy.RequiresApplicationOwner(plan, relative);
+        if (externalData && root.ApplicationUid is null) throw new DebugException("metadata_unavailable", "未取得所选应用的UID，未写入应用外部目录。", "verifying_permissions");
         var scope = privateData ? "private" : root.Identity.Kind == "shared" ? "shared" : "external";
         var owner = await FileBridgeAsync(new { op = "stat", root = root.Path, relativePath = "" }, root.Identity.Session, ct);
         object Commit(string op) => new
@@ -139,10 +142,13 @@ public sealed partial class AndroidDebugService
             expectedTarget = expected,
             recover = resume,
             privateData,
+            externalData,
+            applicationUid = root.ApplicationUid,
             uid = owner.GetProperty("uid").GetInt32(),
             gid = owner.GetProperty("gid").GetInt32(),
             fileMode = FileAccessPolicy.FileMode(scope, expected?.Mode),
-            directoryMode = FileAccessPolicy.DirectoryMode(scope),
+            directoryMode = plan.DestinationAnchor is not null && FileTransferPolicy.ApplicationStoragePrefix(root.Identity).StartsWith(relative + "/", StringComparison.Ordinal)
+                ? "755" : FileAccessPolicy.DirectoryMode(scope),
             length = item.Source.Bytes,
             sha256 = item.Source.Sha256,
             modifiedUnixMs = item.Source.ModifiedUnixMs

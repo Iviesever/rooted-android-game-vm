@@ -11,7 +11,7 @@ public sealed record FileRootIdentity(string InstanceId, string Session, int Use
     string? Package = null, string? InstallationRevision = null, string? Volume = null);
 public sealed record RemoteFileIdentity(FileRootIdentity Root, string RelativePath, string Version);
 public sealed record FileRootDescriptor(string RootRef, string Kind, string Title, string DisplayPath,
-    bool Exists, bool Accessible, bool Writable, bool Locked, string? Reason, string? EntryRef);
+    bool Exists, bool Accessible, bool Writable, bool Locked, string? Reason, string? EntryRef, bool Creatable = false);
 public sealed record RemoteFileEntry(string Name, string RelativePath, string Kind, long Bytes, long ModifiedUnixMs,
     int Uid, int Gid, string Mode, string Version, string? LinkTarget = null, string? Sha256 = null, string? EntryRef = null);
 public sealed record FileBrowsePage(string RootRef, string RelativePath, RemoteFileEntry Directory,
