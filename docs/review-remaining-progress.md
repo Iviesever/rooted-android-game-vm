@@ -1,6 +1,14 @@
 # Review 剩余优化执行证据
 
-目标：[review-remaining-goal.md](review-remaining-goal.md)。开始于683c443；用户的目标变更另由a51dabd提交。本文是执行中记录，**不是v0.5.0整体验收通过或已安装/发布的声明**。
+目标：[review-remaining-goal.md](review-remaining-goal.md)。开始于683c443；用户的目标变更另由a51dabd提交。本文保留历史批次证据；**它们不代表2026-09-20新增通用化与文件管理要求已经通过**。
+
+## 2026-09-20 当前状态与产品纠偏
+
+现场复核：HEAD 为30372db；已安装程序为0.5.0.0，原生产程序备份及CI安装包散列、安装后CLI回归记录已存在（本机 `evidence/installed-050-hashes.json`、`installed-050-acceptance.json`）。GitHub `v0.5.0` Release 仍为草稿，publishedAt为空。此前段落的“尚未安装”属于对应批次当时状态。
+
+用户指出产品应为通用安卓虚拟机，文件管理不应要求手写包名。源码核查确认专属包名、GUI卡片、命令、拖放和页面状态已耦合到核心；同时文件列表没有分页且只取4096项，GUI单选、共享根仅Download。旧安装候选尚不满足纠偏要求，不能直接发布。
+
+已形成 [通用工作台与双向文件管理设计](generic-workstation-design.md)，同步目标与任务记录。本次仅完成核查和设计；A–E实现、GUI/CLI实机、数据恢复及新候选覆盖安装均未验证。内存门槛2560MiB例外保持，其余已结项边界不变。下列历史结果仍保留原证据与限制，不能外推为新设计通过。
 
 本机完整台账：`tasks/20260916-211326-review-remaining/`，含四文档、脚本及evidence（原始实机证据仅保存在本机，不进入公开发布资产）。内存优化仍结项；唯一后续例外是用户明确要求启动物理余量门槛改成2.5GiB。d534f9d实现2560MiB下限；前后profile逐字段核对仅startAvailableMb改变，运行期保护未改。
 
