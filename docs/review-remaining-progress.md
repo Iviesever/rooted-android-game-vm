@@ -118,6 +118,19 @@ B整项仍缺第二无关应用等验收，A多用户/无特定游戏环境、D�
 
 另外已复现容量缺陷：`space-volume-baseline.json`中8MiB隔离tmpfs目标被计划错误报告为根分区2027646976字节可用，未写目标；临时挂载已umount并验证。D2须修实际目标卷及目录/skip/resume/tar空间估算，不能把“空间不足”标通过。远端文件提交回执丢失后的BackupPath存在性/权限对账，以及A的多用户/第二应用、C真实GUI、E新版本备份覆盖发布仍待完成。VM已正常保存停机；未调整内存、镜像/驱动，未操作Windows GUI、未覆盖安装或公开发布。
 
+### D2：真实目标卷、分阶段空间预算与续作抵扣（2026-09-20）
+
+从0d174d0接续。规划与执行共用按卷的需求模型：按分配单元计文件/目录、分别计guest和host块暂存、归档缓存与完整归档输出，合并同卷不同阶段的峰值；宿主保持512MiB余量，VM潜在数据增长纳入宿主检查，分块写入前再检查宿主容量。执行按skip/same和已核验结果重算；不把账本offset当成实际已接收字节。新增spaceChecks/StorageBindings，执行头及结果指向spaceCheckPath，规划显示创建时间。查询最近存在的分配父目录，支持同一树中的嵌套挂载；guest用st_dev+statvfs.f_fsid识别同会话卷变化，host用实际目录句柄的卷GUID，也正确归并SUBST别名。旧计划缺少新增字段仍可读取，执行时重新计算。
+
+- `space-capacity-subset-acceptance.json`：真实8MiB tmpfs目标被正确报告为8388608字节，9MiB源需要9441280字节；insufficient_space在写入前返回，目标不存在、执行账本无完成项。skip不为被跳过的9MiB文件索取空间且旧值保持；空目录在小卷正常创建；目的地根在大卷、子目录在8MiB挂载时也按实际子卷拒绝。
+- `space-live-acceptance.json`：补强后的卷变化拒绝、重新规划成功；归档缓存D盘和目标C盘分别列预算，实际9MiB tar及空目录经独立Python tar读取/散列核对。保留完整归档副本并注入提交前中断记录，明确resume复用已核验缓存；没有块传输需求，但最终归档仍保留完整空间需求，重建归档SHA一致。
+- `space-prefix-acceptance.json`：在16MiB隔离目标准备真实8MiB暂存前缀并故意把故障回执offset写成9MiB。服务只抵扣实际核验的8MiB，所需增长1048576字节，补齐后9MiB SHA一致；不符前缀以staging_mismatch拒绝且目标未创建。故障回执注入明确记录，不宣称是自然断电。
+- `space-final-full.trx`通过371项非实机回归，包括分卷/同卷峰值、tar缓存不能抵扣最终归档、跳过目录子树、无验证offset不获抵扣、真实本机容量/物理暂存占用及SUBST归并；完整构建零警告错误、format verify和独立DEX重建通过。DEX为fb1061270d42ef4074157da2713fd0ea15e23f76e78f1cc6ba4ee82e5155f910。
+
+保留失败及修正依据：第一版只绑定st_dev，tmpfs重挂后设备号甚至mountinfo ID均被复用，旧计划在隔离新卷被错误接受；该挂载已卸载，原请求与失败断言保留。`space-filesystem-generation.json`独立观测相同device=71/mount ID12850而fsid不同，随后加fsid并完成真实拒绝验收。上述容量子集不重复传输；未重做600MiB。所有隔离tmpfs已卸载核实，最后VM正常保存停机；最终增加的结果路径字段和本机卷句柄解析由自动检查覆盖。
+
+D整体仍缺显式shell/诊断命令guest生命周期、远端提交回执丢失后的完整字段对账及剩余组合；A/B的第二无关应用/多用户、C真实GUI、E新版本备份覆盖/装后/发布继续未完成。未改内存配置、镜像或驱动，未操作Windows GUI，未覆盖生产程序或公开发布。
+
 本机完整台账：`tasks/20260916-211326-review-remaining/`，含四文档、脚本及evidence（原始实机证据仅保存在本机，不进入公开发布资产）。内存优化仍结项；唯一后续例外是用户明确要求启动物理余量门槛改成2.5GiB。d534f9d实现2560MiB下限；前后profile逐字段核对仅startAvailableMb改变，运行期保护未改。
 
 ## 第一批：导入、作用域权限和故障证据

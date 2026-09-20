@@ -43,6 +43,10 @@ GUI 与 AI/CLI 使用同一套 `apps.list → files.roots/browse → files.trans
 
 新计划可在source指定单个 `targetName` 改变目标名称。上传 `createParents: true` 配合 `destination.rootRef/relativePath` 会将缺失父目录按顺序写入计划和账本；规划阶段不创建它们，执行时仍验证目标变化与根边界。`contentsOnly: true` 用于目录内容传输，不能同时给该目录指定targetName。
 
+计划的 `spaceChecks` 分卷列出预计增长、保留余量、实际可用容量和用途：目标数据、块暂存、归档缓存/最终归档、账本以及VM数据所在宿主卷。`paths` 最多展示12个样本，`totalPaths` 是该卷实际分配路径数。多个目标卷时，旧 `availableBytes` 不再用某一卷冒充全部容量；应读取各项spaceChecks。宿主保留既有512MiB磁盘余量，这不是单文件大小限制。规划按覆盖策略给出预览，执行会按实际冲突策略和已核验进度重算，skip/same不占复制空间。检查是当时的容量估算，不能预留或锁住其他程序可能使用的空间。
+
+上传查询实际分配父目录所在文件系统，包含目录树中的嵌套挂载；同会话换卷会拒绝旧计划。归档缓存与最终文件可能在不同电脑磁盘，分别检查；同卷则按复制与归档阶段峰值合并。已有tar缓存不能抵扣最终归档所需空间。部分续作先核验实际暂存前缀，不直接采信旧offset。执行结果/执行头的 `spaceCheckPath` 指向带时间的本次容量依据，旧计划也会在执行时按新规则重验。
+
 文件与应用目录元数据请求还会记录安卓端工具归属。`files.tools.list` 可在运行或停机时查看最近100条记录；错误中的 `guestCleanupPath`、传输结果中的 `guestToolToken/guestCleanupPath` 指向清理证据。`cleaned` 表示该请求启动门已关闭、未发现仍活跃的所属工具；`pending` 表示设备不可用或清理未能核实，不能据此认定已退出。恢复同一实例后可明确调用 `files.tools.cleanup`（参数token），或由同计划 `files.transfer.resume` 先完成旧工具清理再续作。其他实例的记录拒绝处理；原VM会话已结束时标记 `session_ended`，不向新会话发送kill。此机制目前覆盖文件命令和应用目录元数据，不代表任意显式shell脚本或全部诊断命令都已完成guest清理验收。
 
 需要回退已完成的覆盖时，先从 `files.transfer.inspect` 的逐项账本核对实际backupPath。使用新引用读取该备份并校验，再以明确的新传输计划恢复原目标；恢复时同样备份当前版本。不要直接重放失败的旧写入。目录合并不是全批原子事务，回退范围应按已提交条目逐项确认；文件齐全也不代表应用内部数据库或跨设备还原已验证。

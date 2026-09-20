@@ -8,7 +8,7 @@ namespace RootedAndroidGameVM.Core.Debugging;
 public sealed record TransferOptions(string ConflictPolicy, bool StopApplications);
 public sealed record TransferExecutionHeader(string PlanId, TransferOptions Options, string Session, string JobId,
     string Status, DateTimeOffset UpdatedAt, string? Error = null, string? ArchivePath = null, string? ArchiveSha256 = null,
-    int OwnerPid = 0, long OwnerStartedTicks = 0, string? ErrorCode = null, string? GuestToolToken = null, string? GuestCleanupPath = null);
+    int OwnerPid = 0, long OwnerStartedTicks = 0, string? ErrorCode = null, string? GuestToolToken = null, string? GuestCleanupPath = null, string? SpaceCheckPath = null);
 public sealed record TransferItemState(int Index, string Status, string TargetRelativePath, long Offset = 0,
     string? TemporaryPath = null, string? BackupPath = null, string? Sha256 = null, string? Error = null, string? Permissions = null);
 

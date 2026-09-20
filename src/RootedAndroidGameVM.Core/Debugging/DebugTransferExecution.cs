@@ -9,7 +9,7 @@ namespace RootedAndroidGameVM.Core.Debugging;
 
 public sealed partial class AndroidDebugService
 {
-    private const int TransferChunkBytes = 8 * 1024 * 1024;
+    private const int TransferChunkBytes = TransferSpacePolicy.ChunkBytes;
     private static bool SameContent(TransferFingerprint? actual, TransferFingerprint? expected) =>
         actual is null ? expected is null : expected is not null && actual.Kind == expected.Kind && actual.Kind switch
         { "directory" => true, "symlink" => actual.LinkTarget == expected.LinkTarget, _ => actual.Bytes == expected.Bytes && actual.Sha256 == expected.Sha256 };
@@ -128,20 +128,17 @@ public sealed partial class AndroidDebugService
                 if (!SamePlannedTarget(actual, expected, item.Source.Kind == "directory" && expected?.Kind == "directory"))
                     throw new DebugException("plan_stale", "目标已改变：" + target, "verifying_targets");
             }
+            var spaceProgress = await VerifyTransferSpaceProgressAsync(plan, destinationRoot, roots, verified, states, effective, ct);
+            var space = await ObserveTransferSpaceAsync(plan, destinationRoot, session, states, spaceProgress, effective, options.ConflictPolicy, true, previous, ct);
+            var spacePath = Path.Combine(plan.ArtifactDirectory, "space-" + Guid.NewGuid().ToString("N") + ".json");
+            await File.WriteAllTextAsync(spacePath, DebugJson.Write(new { observedAt = DateTimeOffset.UtcNow, session, checks = space.Checks }), ct);
+            header = header with { SpaceCheckPath = spacePath }; await journal.SaveHeaderAsync(header, ct);
+            Progress.Value?.Invoke(new { stage = "verifying_space", plan.PlanId, checks = space.Checks, spacePath });
+            if (space.Checks.FirstOrDefault(check => !check.Sufficient) is { } insufficient)
+                throw new DebugException("insufficient_space", "目标或暂存卷空间不足：" + insufficient.Endpoint + " " + insufficient.Paths.First() +
+                    "，需要" + insufficient.RequiredBytes + "字节，可用" + insufficient.AvailableBytes + "字节。", "verifying_space", spacePath);
             if (plan.Direction == "download")
-            {
-                var completedBytes = plan.Entries.Where(item => states.TryGetValue(item.Index, out var state) && state.Status is "completed" or "staged" or "skipped")
-                    .Where(item => item.Source.Kind == "file").Sum(item => item.Source.Bytes);
-                ColdCheckpoint.RequireSpace(plan.DestinationPath, Math.Max(0, plan.RequiredBytes - completedBytes));
-                StoragePathPolicy.RejectReparsePoints(plan.DestinationPath); Directory.CreateDirectory(plan.DestinationPath);
-            }
-            else
-            {
-                var available = (await FileBridgeAsync(new { op = "space", root = destinationRoot!.Path }, session, ct)).GetProperty("availableBytes").GetInt64();
-                var remaining = plan.Entries.Where(item => item.Source.Kind == "file" && item.Conflict != "same")
-                    .Sum(item => states.TryGetValue(item.Index, out var state) ? state.Status is "completed" or "skipped" ? 0 : Math.Max(0, item.Source.Bytes - state.Offset) : item.Source.Bytes);
-                if (available < remaining + 16 * 1024 * 1024L) throw new DebugException("insufficient_space", "安卓目标剩余空间不足。", "verifying_space");
-            }
+            { StoragePathPolicy.RejectReparsePoints(plan.DestinationPath); Directory.CreateDirectory(plan.DestinationPath); }
             header = header with { Status = "running", UpdatedAt = DateTimeOffset.UtcNow }; await journal.SaveHeaderAsync(header, ct);
             skippedDirectories.Clear();
             foreach (var item in plan.Entries)
@@ -219,6 +216,7 @@ public sealed partial class AndroidDebugService
             header?.ArchiveSha256,
             header?.GuestToolToken,
             header?.GuestCleanupPath,
+            header?.SpaceCheckPath,
             completed = entries.Values.Count(entry => entry.Status is "completed" or "staged"),
             skipped = entries.Values.Count(entry => entry.Status == "skipped"),
             totalEntries = plan.Entries.Length,

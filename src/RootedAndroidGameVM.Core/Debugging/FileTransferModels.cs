@@ -16,7 +16,8 @@ public sealed record TransferApplication(string Package, int UserId, string Inst
 public sealed record TransferPlan(string PlanId, DateTimeOffset CreatedAt, string InstanceId, string Session, string Direction,
     string Format, string Consistency, TransferSelection[] Selections, FileRootIdentity? DestinationRoot, string DestinationPath,
     TransferPlanEntry[] Entries, TransferApplication[] ApplicationsToStop, long TotalBytes, long RequiredBytes, long? AvailableBytes,
-    string[] Issues, string ArtifactDirectory, string Status = "planned", bool TransferVerified = false);
+    string[] Issues, string ArtifactDirectory, string Status = "planned", bool TransferVerified = false,
+    TransferSpaceCheck[]? SpaceChecks = null, TransferStorageBinding[]? StorageBindings = null);
 public sealed record TransferPlanCard(string PlanId, DateTimeOffset CreatedAt, string InstanceId, string Direction, string Status,
     int TotalEntries, long TotalBytes, string ArtifactDirectory);
 public sealed record TransferPlanHistory(string PlanId, string Direction, string Status, DateTimeOffset UpdatedAt,

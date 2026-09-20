@@ -243,20 +243,21 @@ public sealed partial class AndroidDebugService
             applications.Add(new(current.Package, current.UserId, current.InstallationRevision, current.RunningPids.Length > 0));
         }
         var total = items.Where(item => item.Source.Kind == "file").Aggregate(0L, (sum, item) => checked(sum + item.Source.Bytes));
-        var pendingFiles = items.Where(item => item.Source.Kind == "file" && item.Conflict != "same" && item.Issue is null).ToArray();
-        var pendingBytes = pendingFiles.Aggregate(0L, (sum, item) => checked(sum + item.Source.Bytes));
-        var largest = pendingFiles.Select(item => item.Source.Bytes).DefaultIfEmpty().Max();
-        var newDirectories = items.Count(item => item.Source.Kind == "directory" && item.Target is null && item.Issue is null);
-        var required = checked(pendingBytes + (pendingFiles.Length > 0 && (direction == "upload" || format == "tar") ? largest + 16 * 1024 * 1024L : 0) +
-            (format == "tar" ? items.Count * 16384L : newDirectories * 4096L));
-        long? available = null;
-        if (direction == "upload") available = (await FileBridgeAsync(new { op = "space", root = destinationRoot!.Path }, session, ct)).GetProperty("availableBytes").GetInt64();
-        else { try { available = new DriveInfo(Path.GetPathRoot(destinationPath)!).AvailableFreeSpace; } catch (IOException) { } }
-        if (available is not null && required > available) issues.Add("insufficient_space");
         issues.AddRange(items.Where(item => item.Issue is not null).Select(item => item.Issue + ":" + item.TargetRelativePath));
         RequireCatalogSession(session);
         var plan = new TransferPlan(id, DateTimeOffset.UtcNow, instance, session, direction, format, consistency, selections.ToArray(), destinationIdentity,
-            destinationPath, items.ToArray(), applications.ToArray(), total, required, available, issues.Distinct().ToArray(), artifacts);
+            destinationPath, items.ToArray(), applications.ToArray(), total, 0, null, issues.Distinct().ToArray(), artifacts);
+        var space = await ObserveTransferSpaceAsync(plan, destinationRoot, session, null, null, null, "overwrite", false, null, ct);
+        var targetChecks = space.Checks.Where(check => check.Purposes.Any(purpose => purpose is "destination" or "destination-root" or "archive")).ToArray();
+        if (space.Checks.Any(check => !check.Sufficient)) issues.Add("insufficient_space");
+        plan = plan with
+        {
+            RequiredBytes = targetChecks.Sum(check => check.RequiredBytes),
+            AvailableBytes = targetChecks.Length == 1 ? targetChecks[0].AvailableBytes : null,
+            SpaceChecks = space.Checks,
+            StorageBindings = space.Bindings,
+            Issues = issues.Distinct().ToArray()
+        };
         await store.SaveAsync(plan, ct);
         return plan;
     }
@@ -274,6 +275,7 @@ public sealed partial class AndroidDebugService
     private static object TransferPlanSummary(TransferPlan plan) => new
     {
         plan.PlanId,
+        plan.CreatedAt,
         plan.Status,
         plan.TransferVerified,
         plan.Direction,
@@ -286,6 +288,7 @@ public sealed partial class AndroidDebugService
         plan.TotalBytes,
         plan.RequiredBytes,
         plan.AvailableBytes,
+        plan.SpaceChecks,
         plan.ApplicationsToStop,
         plan.Issues,
         conflicts = plan.Entries.Where(entry => entry.Conflict is "different" or "type_conflict" or "blocked" || entry.Issue is not null).Take(100).ToArray(),

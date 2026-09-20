@@ -89,6 +89,8 @@ public sealed partial class AndroidDebugService
             while (offset < item.Source.Bytes)
             {
                 var count = (int)Math.Min(TransferChunkBytes, item.Source.Bytes - offset); RequireCatalogSession(root.Identity.Session);
+                LocalTransferSpace.Require(Path.GetDirectoryName(temporary)!, count);
+                LocalTransferSpace.Require(plan.ArtifactDirectory, count);
                 var helper = await EnsureCatalogHelperAsync(root.Identity.Session, ct);
                 var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(DebugJson.Write(new { root = root.Path, relativePath = relative, version = source.Version, offset, length = count })));
                 if (File.Exists(wire)) File.Delete(wire);
@@ -173,6 +175,8 @@ public sealed partial class AndroidDebugService
                 var current = new FileInfo(sourcePath);
                 if (current.CreationTimeUtc.Ticks + ":" + current.LastWriteTimeUtc.Ticks + ":" + current.Length != source.Version) throw new DebugException("source_changed", "上传源已改变。", "reading_chunk");
                 var count = (int)Math.Min(TransferChunkBytes, item.Source.Bytes - offset);
+                LocalTransferSpace.Require(plan.ArtifactDirectory, count);
+                LocalTransferSpace.Require(Paths.AvdHome, checked(count * 2L + 65536));
                 await using (var input = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, true))
                 await using (var output = new FileStream(local, FileMode.Create, FileAccess.Write, FileShare.None, 65536, true))
                 {
@@ -222,6 +226,7 @@ public sealed partial class AndroidDebugService
         var temporary = target + ".partial"; StoragePathPolicy.RejectReparsePoints(temporary);
         using (File.Create(temporary)) { }
         ColdCheckpoint.RestrictFile(temporary);
+        LocalTransferSpace.Require(plan.DestinationPath, checked(plan.Entries.Where(item => item.Source.Kind == "file").Sum(item => TransferSpacePolicy.RoundUp(item.Source.Bytes, 512)) + plan.Entries.Length * 16384L + 1024));
         await using (var stream = new FileStream(temporary, FileMode.Open, FileAccess.Write, FileShare.None, 65536, true))
         {
             await using var writer = new TarWriter(stream, TarEntryFormat.Pax, leaveOpen: true);

@@ -39,10 +39,12 @@ final class DeviceFiles {
             if (op.equals("walk")) { walk(request); System.exit(0); return; }
             if (op.startsWith("transfer-")) result = FileTransfer.execute(request);
             else if (op.equals("batch-stat")) result = batchStat(request);
-            else if (op.equals("space")) {
-                File root = contained(request.getString("root"), "", false);
-                android.system.StructStatVfs space = Os.statvfs(root.getPath());
-                result = new JSONObject().put("availableBytes", space.f_bavail * space.f_frsize);
+            else if (op.equals("space")) result = space(request.getString("root"), request.optString("relativePath", ""));
+            else if (op.equals("spaces")) {
+                JSONArray paths = request.getJSONArray("paths"), rows = new JSONArray();
+                if (paths.length() > 100) throw new Failure("invalid_argument", "Too many space paths");
+                for (int i = 0; i < paths.length(); i++) rows.put(space(request.getString("root"), paths.getString(i)));
+                result = rows;
             }
             else if (op.equals("users")) result = users();
             else if (op.equals("storage")) result = storage(request.getInt("userId"));
@@ -63,12 +65,31 @@ final class DeviceFiles {
                 String code = error instanceof Failure ? ((Failure) error).code : "file_observation_failed";
                 if (error instanceof ErrnoException) {
                     int errno = ((ErrnoException) error).errno;
-                    code = errno == OsConstants.ENOENT ? "path_not_found" : errno == OsConstants.EACCES ? "permission_denied" : "file_io_error";
+                    code = errno == OsConstants.ENOENT ? "path_not_found" : errno == OsConstants.EACCES ? "permission_denied" : errno == OsConstants.ENOSPC ? "insufficient_space" : "file_io_error";
                 }
                 System.out.println(new JSONObject().put("ok", false).put("error",
                     new JSONObject().put("code", code).put("message", error.toString())).toString());
                 System.exit(0);
             } catch (Throwable fatal) { error.printStackTrace(System.err); System.exit(1); }
+        }
+    }
+    private static JSONObject space(String root, String requested) throws Exception {
+        String relative = requested;
+        while (true) {
+            try {
+                File directory = contained(root, relative, false);
+                StructStat stat = Os.lstat(directory.getPath());
+                if (OsConstants.S_ISDIR(stat.st_mode)) {
+                    android.system.StructStatVfs value = Os.statvfs(directory.getPath());
+                    return new JSONObject().put("relativePath", requested).put("resolvedRelativePath", relative).put("resolvedPath", directory.getPath())
+                        .put("volumeId", stat.st_dev + ":" + Long.toHexString(value.f_fsid)).put("allocationUnitBytes", value.f_frsize)
+                        .put("availableBytes", value.f_bavail * value.f_frsize);
+                }
+            } catch (ErrnoException error) {
+                if (error.errno != OsConstants.ENOENT && error.errno != OsConstants.ENOTDIR) throw error;
+            }
+            if (relative.length() == 0) throw new Failure("root_unavailable", "No existing allocation directory");
+            int slash = relative.lastIndexOf('/'); relative = slash < 0 ? "" : relative.substring(0, slash);
         }
     }
     private static boolean unlocked(UserManager manager, int user) throws Exception {
