@@ -19,6 +19,8 @@ public sealed class GenericApplicationContractTests
     [InlineData("files.push")]
     [InlineData("files.pull")]
     [InlineData("files.export")]
+    [InlineData("files.diff")]
+    [InlineData("files.sync")]
     public async Task Missing_application_fails_before_using_a_device_or_creating_artifacts(string command)
     {
         var path = Path.Combine(Path.GetTempPath(), "rgvm-no-target-" + Guid.NewGuid().ToString("N"));
@@ -35,6 +37,17 @@ public sealed class GenericApplicationContractTests
         Assert.Equal("/sdcard/Download/a.txt", AndroidDebugService.RemotePath("shared", "", "a.txt"));
         Assert.Throws<ArgumentException>(() => AndroidDebugService.RemotePath("shared", "", "../a.txt"));
         Assert.Throws<ArgumentException>(() => AndroidDebugService.RequirePackage(DebugRequest.Create("launch", new { package = "notes;id" })));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("folder/")]
+    public async Task Legacy_upload_does_not_turn_a_directory_path_into_a_file(string remote)
+    {
+        var path = Path.Combine(Path.GetTempPath(), "rgvm-no-filename-" + Guid.NewGuid().ToString("N"));
+        using var service = new AndroidDebugService(InstallPaths.FromProductRoot(path));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.ExecuteAsync(DebugRequest.Create("files.push", new { scope = "shared", remote }), default));
+        Assert.False(Directory.Exists(path));
     }
 
     [Theory]

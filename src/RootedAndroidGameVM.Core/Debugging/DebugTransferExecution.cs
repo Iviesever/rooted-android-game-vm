@@ -41,7 +41,7 @@ public sealed partial class AndroidDebugService
     }
     private async Task<Dictionary<int, TransferFingerprint>> VerifyTransferSourcesAsync(TransferPlan plan, Dictionary<FileRootIdentity, ResolvedFileRoot> roots, bool resume, CancellationToken ct)
     {
-        var result = new Dictionary<int, TransferFingerprint>();
+        var result = plan.Entries.Where(entry => entry.CreateDirectory).ToDictionary(entry => entry.Index, entry => entry.Source);
         foreach (var selection in plan.Selections)
         {
             List<(string Relative, TransferFingerprint Fingerprint)> observed;
@@ -144,7 +144,7 @@ public sealed partial class AndroidDebugService
             foreach (var item in plan.Entries)
             {
                 ct.ThrowIfCancellationRequested(); RequireCatalogSession(session);
-                var selection = plan.Selections.Single(source => source.Id == item.SelectionId); var target = effective[item.Index];
+                var selection = item.CreateDirectory ? null : plan.Selections.Single(source => source.Id == item.SelectionId); var target = effective[item.Index];
                 states.TryGetValue(item.Index, out var state);
                 if (state?.Status is "completed" or "staged")
                 {
@@ -175,7 +175,7 @@ public sealed partial class AndroidDebugService
                 });
                 state ??= new(item.Index, "pending", target);
                 state = plan.Direction == "download"
-                    ? await DownloadTransferEntryAsync(plan, item, selection, roots[selection.RemoteRoot!], verified[item.Index], state, journal, resume, ct)
+                    ? await DownloadTransferEntryAsync(plan, item, selection!, roots[selection!.RemoteRoot!], verified[item.Index], state, journal, resume, ct)
                     : await UploadTransferEntryAsync(plan, item, selection, destinationRoot!, verified[item.Index], state, journal, resume, ct);
                 await journal.SaveItemAsync(state, ct); states[item.Index] = state;
             }

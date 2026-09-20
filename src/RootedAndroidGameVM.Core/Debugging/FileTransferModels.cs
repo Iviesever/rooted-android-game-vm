@@ -6,12 +6,12 @@ using RootedAndroidGameVM.Core.Storage;
 
 namespace RootedAndroidGameVM.Core.Debugging;
 
-public sealed record TransferSource(string? EntryRef = null, string? RootRef = null, string RelativePath = "", string? LocalPath = null);
+public sealed record TransferSource(string? EntryRef = null, string? RootRef = null, string RelativePath = "", string? LocalPath = null, string? TargetName = null);
 public sealed record TransferDestination(string? LocalDirectory = null, string? EntryRef = null, string? RootRef = null, string RelativePath = "");
 public sealed record TransferSelection(string Id, string SourcePath, FileRootIdentity? RemoteRoot, string SourceKind, string TargetPrefix, string? Version);
 public sealed record TransferFingerprint(string Kind, long Bytes, string Version, string? Sha256, int? Uid = null, int? Gid = null, string? Mode = null, string? LinkTarget = null, long? ModifiedUnixMs = null);
 public sealed record TransferPlanEntry(int Index, string SelectionId, string RelativePath, string TargetRelativePath,
-    TransferFingerprint Source, TransferFingerprint? Target, string Conflict, string? Issue = null);
+    TransferFingerprint Source, TransferFingerprint? Target, string Conflict, string? Issue = null, bool CreateDirectory = false);
 public sealed record TransferApplication(string Package, int UserId, string InstallationRevision, bool RunningObserved);
 public sealed record TransferPlan(string PlanId, DateTimeOffset CreatedAt, string InstanceId, string Session, string Direction,
     string Format, string Consistency, TransferSelection[] Selections, FileRootIdentity? DestinationRoot, string DestinationPath,
@@ -25,6 +25,24 @@ public sealed record TransferPlanHistory(string PlanId, string Direction, string
 public static class FileTransferPolicy
 {
     public const int MaxEntries = 100000;
+    public static string TargetName(string name)
+    {
+        FileReferences.Relative(name);
+        if (name.Length == 0 || name.Contains('/')) throw new ArgumentException("targetName须为单个文件或目录名。");
+        return name;
+    }
+    public static TransferPlanEntry[] PlannedDirectories(string relative)
+    {
+        FileReferences.Relative(relative);
+        if (relative.Length == 0) return [];
+        var path = ""; var entries = new List<TransferPlanEntry>();
+        foreach (var segment in relative.Split('/'))
+        {
+            path = JoinRemote(path, segment);
+            entries.Add(new(entries.Count, "$destination", "", path, new("directory", 0, "planned-directory", null), null, "new", CreateDirectory: true));
+        }
+        return entries.ToArray();
+    }
     public static string JoinRemote(string left, string right) => left.Length == 0 ? right : right.Length == 0 ? left : left + "/" + right;
     public static string? WindowsNameIssue(string relative)
     {

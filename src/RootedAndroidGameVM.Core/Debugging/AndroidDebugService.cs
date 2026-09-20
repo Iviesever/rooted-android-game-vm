@@ -439,6 +439,16 @@ public sealed partial class AndroidDebugService : IDisposable
                     jobRecovery = true,
                     toolOutputArtifacts = true,
                     maxInlineJobResultBytes = StoredJobResult.MaxInlineBytes,
+                    fileTransfers = new
+                    {
+                        maxEntries = FileTransferPolicy.MaxEntries,
+                        chunkBytes = TransferChunkBytes,
+                        singleFileLimit = "available-space",
+                        legacyCommandsUseSharedService = true,
+                        legacySharedDirectory = "Download",
+                        plannedParentDirectories = true,
+                        sourceTargetName = true
+                    },
                     commands = DebugCommandCatalog.Commands.Select(command => command.Name).ToArray()
                 };
             case "start": await StartAsync(ct); return await StatusAsync(ct);

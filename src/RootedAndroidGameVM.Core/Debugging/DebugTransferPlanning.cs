@@ -75,7 +75,10 @@ public sealed partial class AndroidDebugService
         return entries;
     }
 
-    public async Task<object> PlanFileTransferAsync(DebugRequest request, CancellationToken ct)
+    public async Task<object> PlanFileTransferAsync(DebugRequest request, CancellationToken ct) =>
+        TransferPlanSummary(await CreateFileTransferPlanAsync(request, ct));
+
+    private async Task<TransferPlan> CreateFileTransferPlanAsync(DebugRequest request, CancellationToken ct)
     {
         var direction = request.Text("direction");
         if (direction is not ("upload" or "download")) throw new ArgumentException("direction须为upload或download。");
@@ -88,7 +91,7 @@ public sealed partial class AndroidDebugService
         var id = Guid.NewGuid().ToString("N"); var store = new TransferPlanStore(Paths.ProductRoot);
         var artifacts = store.DirectoryFor(id); ColdCheckpoint.Restrict(artifacts);
         await File.WriteAllTextAsync(Path.Combine(artifacts, "request.json"), DebugJson.Write(request), ct);
-        FileRootIdentity? destinationIdentity = null; ResolvedFileRoot? destinationRoot = null; string destinationPath;
+        FileRootIdentity? destinationIdentity = null; ResolvedFileRoot? destinationRoot = null; string destinationPath; var destinationPrefix = "";
         if (direction == "download")
         {
             if (string.IsNullOrWhiteSpace(destination.LocalDirectory) || !Path.IsPathFullyQualified(destination.LocalDirectory)) throw new ArgumentException("localDirectory须为绝对路径。");
@@ -102,10 +105,39 @@ public sealed partial class AndroidDebugService
             var targetRequest = DebugRequest.Create("files.stat", destination);
             var location = FileLocation(targetRequest); destinationIdentity = location.Root; destinationPath = location.Relative;
             destinationRoot = await ResolveFileRootAsync(location.Root, ct);
-            var target = await ObserveFileAsync(targetRequest, ct);
-            if (target.Kind != "directory") throw new DebugException("not_directory", "上传目标不是目录。", "planning_transfer");
+            if (request.Flag("createParents") && location.Version is null)
+            {
+                // Resolve from the root outwards. Nothing is created until execution.
+                var paths = new List<string> { "" }; var path = "";
+                foreach (var part in location.Relative.Split('/', StringSplitOptions.RemoveEmptyEntries)) { path = FileTransferPolicy.JoinRemote(path, part); paths.Add(path); }
+                var ancestor = ""; var missing = false;
+                var probes = paths.Select((relative, index) => new TransferPlanEntry(index, "$destination", "", relative, new("directory", 0, "probe", null), null, "new"));
+                foreach (var batch in RemoteTargetBatches(probes, ""))
+                {
+                    var observed = await FileBridgeAsync(new { op = "batch-stat", root = destinationRoot.Path, paths = batch.Select(item => item.TargetRelativePath).ToArray(), hash = false }, session, ct);
+                    foreach (var row in observed.EnumerateArray())
+                    {
+                        var relative = row.GetProperty("relativePath").GetString()!;
+                        if (!row.GetProperty("exists").GetBoolean())
+                        {
+                            if (relative.Length == 0) throw new DebugException("root_unavailable", "上传根目录不存在。", "planning_transfer");
+                            missing = true; continue;
+                        }
+                        if (missing || row.GetProperty("entry").GetProperty("kind").GetString() != "directory")
+                            throw new DebugException("not_directory", "上传目标的父路径不是普通目录。", "planning_transfer");
+                        ancestor = relative;
+                    }
+                }
+                destinationPrefix = location.Relative.Length == ancestor.Length ? "" : location.Relative[(ancestor.Length == 0 ? 0 : ancestor.Length + 1)..];
+                destinationPath = ancestor;
+            }
+            else
+            {
+                var target = await ObserveFileAsync(targetRequest, ct);
+                if (target.Kind != "directory") throw new DebugException("not_directory", "上传目标不是目录。", "planning_transfer");
+            }
         }
-        var selections = new List<TransferSelection>(); var items = new List<TransferPlanEntry>(); var issues = new List<string>();
+        var selections = new List<TransferSelection>(); var items = FileTransferPolicy.PlannedDirectories(destinationPrefix).ToList(); var issues = new List<string>();
         foreach (var source in sources)
         {
             ct.ThrowIfCancellationRequested();
@@ -140,12 +172,17 @@ public sealed partial class AndroidDebugService
                 sourceKind = scanned[0].Fingerprint.Kind; expectedVersion = scanned[0].Fingerprint.Version; prefix = Path.GetFileName(sourcePath);
                 if (prefix.Length == 0) throw new ArgumentException("请选择具体文件或文件夹，不直接上传驱动器根。");
             }
-            if (request.Flag("contentsOnly") && sourceKind == "directory") prefix = "";
+            if (source.TargetName is not null) prefix = FileTransferPolicy.TargetName(source.TargetName);
+            if (request.Flag("contentsOnly") && sourceKind == "directory")
+            {
+                if (source.TargetName is not null) throw new ArgumentException("contentsOnly不能与目录targetName混用。");
+                prefix = "";
+            }
             selections.Add(new(selectionId, sourcePath, identity, sourceKind, prefix, expectedVersion));
             foreach (var node in scanned)
             {
                 if (prefix.Length == 0 && node.Relative.Length == 0 && node.Fingerprint.Kind == "directory") continue;
-                var targetRelative = FileTransferPolicy.JoinRemote(prefix, node.Relative);
+                var targetRelative = FileTransferPolicy.JoinRemote(destinationPrefix, FileTransferPolicy.JoinRemote(prefix, node.Relative));
                 string? issue = null;
                 if (node.Fingerprint.Kind is not ("file" or "directory") && !(direction == "download" && format == "tar" && node.Fingerprint.Kind == "symlink")) issue = "unsupported_entry";
                 if (direction == "download" && format == "directory") issue ??= FileTransferPolicy.WindowsNameIssue(targetRelative);
@@ -221,7 +258,7 @@ public sealed partial class AndroidDebugService
         var plan = new TransferPlan(id, DateTimeOffset.UtcNow, instance, session, direction, format, consistency, selections.ToArray(), destinationIdentity,
             destinationPath, items.ToArray(), applications.ToArray(), total, required, available, issues.Distinct().ToArray(), artifacts);
         await store.SaveAsync(plan, ct);
-        return TransferPlanSummary(plan);
+        return plan;
     }
     private static IEnumerable<TransferPlanEntry[]> RemoteTargetBatches(IEnumerable<TransferPlanEntry> entries, string parent)
     {

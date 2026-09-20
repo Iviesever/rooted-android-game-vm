@@ -110,7 +110,7 @@ public sealed partial class AndroidDebugService
         if (item.Source.ModifiedUnixMs is { } modified) File.SetLastWriteTimeUtc(target, DateTimeOffset.FromUnixTimeMilliseconds(modified).UtcDateTime);
         return state with { Status = "completed", BackupPath = savedBackup, TemporaryPath = null };
     }
-    private async Task<TransferItemState> UploadTransferEntryAsync(TransferPlan plan, TransferPlanEntry item, TransferSelection selection, ResolvedFileRoot root,
+    private async Task<TransferItemState> UploadTransferEntryAsync(TransferPlan plan, TransferPlanEntry item, TransferSelection? selection, ResolvedFileRoot root,
         TransferFingerprint source, TransferItemState state, TransferExecutionStore journal, bool resume, CancellationToken ct)
     {
         var relative = FileTransferPolicy.JoinRemote(plan.DestinationPath, state.TargetRelativePath);
@@ -138,6 +138,14 @@ public sealed partial class AndroidDebugService
         };
         if (item.Source.Kind == "directory")
         {
+            if (resume && state.Status == "committing")
+            {
+                var recovered = await FileBridgeAsync(new { op = "transfer-state", root = root.Path, relativePath = relative, planId = plan.PlanId, index = item.Index }, root.Identity.Session, ct);
+                // A lost mkdir receipt can be completed by merging the directory. Child
+                // targets still retain their own planned identity checks; never replace it.
+                if (recovered.TryGetProperty("target", out var existingDirectory) && existingDirectory.GetProperty("kind").GetString() == "directory")
+                    return state with { Status = "completed", BackupPath = recovered.GetProperty("backupExists").GetBoolean() ? CatalogText(recovered, "backupPath") : null };
+            }
             state = state with { Status = "committing" }; await journal.SaveItemAsync(state, ct);
             var directory = await FileBridgeAsync(Commit("transfer-mkdir"), root.Identity.Session, ct);
             return state with { Status = "completed", BackupPath = CatalogText(directory, "backupPath") };
@@ -145,7 +153,7 @@ public sealed partial class AndroidDebugService
         var observed = await FileBridgeAsync(new { op = "transfer-state", root = root.Path, relativePath = relative, planId = plan.PlanId, index = item.Index }, root.Identity.Session, ct);
         if (state.Status == "committing" && observed.TryGetProperty("target", out var committed) && SameContent(Fingerprint(committed.Deserialize<RemoteFileEntry>(DebugJson.Options)!), item.Source))
             return state with { Status = "completed", Offset = item.Source.Bytes, Sha256 = item.Source.Sha256 };
-        var sourcePath = item.RelativePath.Length == 0 ? selection.SourcePath : Path.Combine(selection.SourcePath, item.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+        var sourcePath = item.RelativePath.Length == 0 ? selection!.SourcePath : Path.Combine(selection!.SourcePath, item.RelativePath.Replace('/', Path.DirectorySeparatorChar));
         var offset = observed.GetProperty("bytes").GetInt64();
         if (offset > item.Source.Bytes || offset > 0 && await PrefixHashAsync(sourcePath, offset, ct) != CatalogText(observed, "sha256"))
             throw new DebugException("staging_mismatch", "安卓暂存前缀与源不符，未覆盖目标。", "verifying_prefix");
@@ -190,7 +198,14 @@ public sealed partial class AndroidDebugService
         var result = await FileBridgeAsync(Commit("transfer-commit"), root.Identity.Session, ct);
         var target = result.GetProperty("target").Deserialize<RemoteFileEntry>(DebugJson.Options)!;
         if (target.Sha256 != item.Source.Sha256 || target.Bytes != item.Source.Bytes) throw new DebugException("checksum_mismatch", "提交后的安卓文件核验失败。", "verifying_target");
-        return state with { Status = "completed", TemporaryPath = null, BackupPath = CatalogText(result, "backupPath"), Sha256 = target.Sha256 };
+        return state with
+        {
+            Status = "completed",
+            TemporaryPath = null,
+            BackupPath = CatalogText(result, "backupPath"),
+            Sha256 = target.Sha256,
+            Permissions = target.Uid + ":" + target.Gid + ":" + target.Mode
+        };
     }
     private async Task<TransferExecutionHeader> CommitTransferArchiveAsync(TransferPlan plan, TransferExecutionHeader header,
         Dictionary<int, TransferItemState> states, TransferExecutionStore journal, CancellationToken ct)

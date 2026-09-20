@@ -35,7 +35,13 @@
 - 传输按块处理并检查 SHA-256。现有内容替换前保留 `.rgvm-backup-*`，逐项结果记载暂存、备份和完成状态。单计划最多100000项；具体空间不足或源/目标变化会拒绝执行。
 - “取消当前传输”停止本次任务。“传输记录与恢复”提供结果、记录目录和明确续作入口；不会自动重放。取消时已提交的条目可能保留，需按账本核查；已失效计划应重新规划。
 
-GUI 与 AI/CLI 使用同一套 `apps.list → files.roots/browse → files.transfer.plan/start/inspect` 接口。`files.transfer.list` 和 `session.summary` 提供恢复线索。旧版 `files.push/pull/list/sync` 的兼容适配尚在本轮待完成范围，旧命令限制不代表新文件页能力。
+GUI 与 AI/CLI 使用同一套 `apps.list → files.roots/browse → files.transfer.plan/start/inspect` 接口。`files.transfer.list` 和 `session.summary` 提供恢复线索。旧版 `files.list/push/pull/export/diff/sync` 也接入共享根、计划和执行器，保留原字段；列表默认返回完整目录，可显式用 `pageSize/cursor` 分页，不再静默截取4096项。所有传输共用100000条目计划上限及8MiB分块，不再有旧512MiB单文件上限。
+
+兼容请求仍使用 `package/scope/remote/local`，可另指定 `userId`（默认0）；`scope: shared` 的相对路径仍从该用户主存储的 **Download** 开始，不代表整个共享卷。`push` 的remote及 `pull` 的local是精确目标文件名；`sync/diff` 比较本地目录的内容，不额外嵌套本地顶层目录。sync保留目标多余文件，并传输空目录；diff只保存计划，不创建目标目录或复制内容。export保留 `directory/dataDirectory/includesPrivateData`，dataDirectory直接包含所选目录内容。
+
+兼容写入返回 `planId/artifactDirectory/transfer`；取消或失败时，从进度的planId或错误所指账本查询 `files.transfer.inspect`，核查后明确 `files.transfer.resume`。不要重发旧写入命令来代替续作。私有数据默认 `stopped-app`；仍在运行时拒绝执行，可显式 `stopApplications: true` 停止该应用。读取可显式选择 `consistency: live`，结果不保证应用数据一致性；散列核验不表示App已经读入。
+
+新计划可在source指定单个 `targetName` 改变目标名称。上传 `createParents: true` 配合 `destination.rootRef/relativePath` 会将缺失父目录按顺序写入计划和账本；规划阶段不创建它们，执行时仍验证目标变化与根边界。`contentsOnly: true` 用于目录内容传输，不能同时给该目录指定targetName。
 
 ## 日志、录像和记录目录
 

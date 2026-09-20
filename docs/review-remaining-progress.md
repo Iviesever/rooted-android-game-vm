@@ -90,6 +90,19 @@ B2a远端CI补记：[35491085130](https://github.com/Iviesever/rooted-android-ga
 
 B2b CI [35493701811](https://github.com/Iviesever/rooted-android-game-vm/actions/runs/35493701811)已success。C1提交130457c对应的 [CI 35496244492](https://github.com/Iviesever/rooted-android-game-vm/actions/runs/35496244492) 已completed/success（交接时复核）。旧files.*适配、第二无关应用/多用户、完整D矩阵、实际GUI及新候选E交付仍未完成；未覆盖生产程序或公开发布。
 
+### B3：旧文件命令接入共享服务（2026-09-20，局部验收完成）
+
+从6c012bd接续。files.list/push/pull/export/diff/sync移除独立执行路径，统一使用已发现根、持久计划、分块执行及账本。保留原name/details、remote/local/sha256/backup、directory/dataDirectory/includesPrivateData、deleted/results字段与语义；shared仍从Download开始，sync上传目录内容并保留目标额外文件，diff不写目标。source.targetName支持精确目标名；上传createParents将缺失目录按父先子后放入同一计划，执行前不创建目标。兼容结果和进度提供planId，可经原inspect/resume明确恢复。旧计划仍可读，目录提交回执丢失后续作合并已存在目录，不重放目录替换。
+
+- `compat-live-acceptance.json`：private/external/shared三作用域的指定文件名双向传输、缺失父目录、只读diff、目录内容同步、空目录、目标额外文件保持、电脑备份和安卓覆盖备份原值读取、目录导出内容及SHA通过。私有样本仍为dev.rgvm.acceptance.readfixture，权限10213:10213:600；这批不另称App实读或两个无关应用已通过。
+- `rgvm-compat-2ce8112792-all-4107.summary.json`：旧files.list完整返回既有4107项，未重建目录；`compat-list-pages-acceptance.json`补external/shared显式两页及旧字段核对。600MiB旧证据复用，未重传。
+- `compat-cancel-acceptance.json`：计划220066ab689a4926bb8733691b0e2198在部分目录已提交后显式取消，任务30455db2779dd277fd073bff59492370终态cancelled；同一计划明确resume后完成，8个1MiB文件回传SHA一致，空目录保持。该证据不替代guest进程清理、断连和超时矩阵。
+- `compat-final-full.trx`通过348项非实机回归；完整构建零警告错误，最终format verify与git diff检查通过。实测候选broker路径及二进制SHA留在compat-broker-final-identity/compat-tested-binaries；最后增加的目录路径拒绝和能力字段由自动检查覆盖，未将源码测试称为安装版验收。
+
+保留失败：首次启动成功后宿主余量跌到26MiB，既有保护正常保存停机（compat-memory-stop-status）；余量恢复约4.7GiB后确认原任务终态及无QEMU，再启动成功。第一次完整旧列表请求44bdab3da9094392bda6a294f87ae047遇到工具255且双流为空，原证据保留，明确重读后4107项通过；没有扩大自动重试或宣称根治。验证后VM正常保存停机；旧生产GUI自动拉起旧broker，下一次实测仍需重新核实归属。
+
+B整项仍缺第二无关应用等验收，A多用户/无特定游戏环境、D完整故障矩阵、C真实GUI及E新候选覆盖发布均未完成。用户只做后台CLI的限制继续有效，本批未操作GUI、未覆盖安装、未公开Release。提交及对应CI结果记录在本机同一台账，不沿用上一提交CI。
+
 本机完整台账：`tasks/20260916-211326-review-remaining/`，含四文档、脚本及evidence（原始实机证据仅保存在本机，不进入公开发布资产）。内存优化仍结项；唯一后续例外是用户明确要求启动物理余量门槛改成2.5GiB。d534f9d实现2560MiB下限；前后profile逐字段核对仅startAvailableMb改变，运行期保护未改。
 
 ## 第一批：导入、作用域权限和故障证据

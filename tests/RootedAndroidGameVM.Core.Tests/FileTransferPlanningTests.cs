@@ -6,6 +6,38 @@ namespace RootedAndroidGameVM.Core.Tests;
 public sealed class FileTransferPlanningTests
 {
     [Theory]
+    [InlineData("../outside")]
+    [InlineData("nested/file")]
+    [InlineData("/absolute")]
+    [InlineData("")]
+    public void Renaming_a_source_cannot_change_its_destination_directory(string name) =>
+        Assert.ThrowsAny<Exception>(() => FileTransferPolicy.TargetName(name));
+
+    [Fact]
+    public async Task Planned_parent_directories_survive_storage_and_old_plans_remain_readable()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "rgvm-parent-plan-" + Guid.NewGuid().ToString("N"));
+        var id = Guid.NewGuid().ToString("N");
+        try
+        {
+            var directories = FileTransferPolicy.PlannedDirectories("Download/中文 空格/empty");
+            Assert.Equal(new[] { "Download", "Download/中文 空格", "Download/中文 空格/empty" }, directories.Select(item => item.TargetRelativePath));
+            Assert.All(directories, item => Assert.True(item.CreateDirectory));
+            Assert.Empty(FileTransferPolicy.PlannedDirectories(""));
+            var store = new TransferPlanStore(root);
+            var plan = new TransferPlan(id, DateTimeOffset.UtcNow, new string('a', 32), "123:456", "upload", "directory", "live",
+                [], null, "", directories, [], 0, 12288, null, [], store.DirectoryFor(id));
+            await store.SaveAsync(plan, default);
+            Assert.Equal(directories, (await store.ReadAsync(id, default)).Entries);
+            var legacy = System.Text.Json.JsonSerializer.Deserialize<TransferPlanEntry>(
+                "{\"index\":0,\"selectionId\":\"s0\",\"relativePath\":\"\",\"targetRelativePath\":\"a\",\"source\":{\"kind\":\"file\",\"bytes\":1,\"version\":\"v\"},\"conflict\":\"new\"}", DebugJson.Options)!;
+            Assert.False(legacy.CreateDirectory);
+            Assert.False(Directory.Exists(Path.Combine(root, "Download")));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Theory]
     [InlineData("docs/正常名称.txt", null)]
     [InlineData("docs/😀.txt", null)]
     [InlineData("docs/CON.txt", "windows_name_unsupported")]
