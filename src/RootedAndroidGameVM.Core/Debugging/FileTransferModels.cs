@@ -17,6 +17,10 @@ public sealed record TransferPlan(string PlanId, DateTimeOffset CreatedAt, strin
     string Format, string Consistency, TransferSelection[] Selections, FileRootIdentity? DestinationRoot, string DestinationPath,
     TransferPlanEntry[] Entries, TransferApplication[] ApplicationsToStop, long TotalBytes, long RequiredBytes, long? AvailableBytes,
     string[] Issues, string ArtifactDirectory, string Status = "planned", bool TransferVerified = false);
+public sealed record TransferPlanCard(string PlanId, DateTimeOffset CreatedAt, string InstanceId, string Direction, string Status,
+    int TotalEntries, long TotalBytes, string ArtifactDirectory);
+public sealed record TransferPlanHistory(string PlanId, string Direction, string Status, DateTimeOffset UpdatedAt,
+    int TotalEntries, long TotalBytes, string ArtifactDirectory, bool CanResume, string? JobId);
 
 public static class FileTransferPolicy
 {
@@ -88,6 +92,8 @@ public sealed class TransferPlanStore(string productRoot)
         var path = DirectoryFor(plan.PlanId); ColdCheckpoint.Restrict(path);
         await AtomicJsonFile.WriteAsync(Path.Combine(path, "plan.json"), plan, ct);
         ColdCheckpoint.RestrictFile(Path.Combine(path, "plan.json"));
+        await AtomicJsonFile.WriteAsync(Path.Combine(path, "summary.json"), new TransferPlanCard(plan.PlanId, plan.CreatedAt, plan.InstanceId, plan.Direction,
+            plan.Status, plan.Entries.Length, plan.TotalBytes, path), ct);
     }
     public async Task<TransferPlan> ReadAsync(string id, CancellationToken ct)
     {
@@ -99,5 +105,31 @@ public sealed class TransferPlanStore(string productRoot)
         var plan = await JsonSerializer.DeserializeAsync<TransferPlan>(stream, AtomicJsonFile.Options, ct) ?? throw new InvalidDataException("传输计划损坏。");
         if (plan.PlanId != id || plan.Entries.Length > FileTransferPolicy.MaxEntries || plan.Direction is not ("upload" or "download")) throw new InvalidDataException("传输计划身份或结构不匹配。");
         return plan with { ArtifactDirectory = DirectoryFor(id) };
+    }
+    public async Task<IReadOnlyList<TransferPlanCard>> ListAsync(CancellationToken ct)
+    {
+        var root = Path.Combine(productRoot, "debug-runs", "transfers"); StoragePathPolicy.RejectReparsePoints(root);
+        if (!Directory.Exists(root)) return [];
+        var result = new List<TransferPlanCard>();
+        foreach (var directory in new DirectoryInfo(root).EnumerateDirectories().Where(info => Guid.TryParseExact(info.Name, "N", out _)).OrderByDescending(info => info.LastWriteTimeUtc).Take(100))
+        {
+            ct.ThrowIfCancellationRequested(); StoragePathPolicy.RejectReparsePoints(directory.FullName);
+            var card = Path.Combine(directory.FullName, "summary.json"); StoragePathPolicy.RejectReparsePoints(card);
+            if (File.Exists(card))
+            {
+                if (new FileInfo(card).Length > 65536) throw new InvalidDataException("计划摘要超过限制。");
+                await using var stream = new FileStream(card, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, true);
+                var value = await JsonSerializer.DeserializeAsync<TransferPlanCard>(stream, AtomicJsonFile.Options, ct) ?? throw new InvalidDataException("计划摘要损坏。");
+                if (value.PlanId != directory.Name) throw new InvalidDataException("计划摘要身份不符。");
+                result.Add(value with { ArtifactDirectory = directory.FullName });
+            }
+            else if (File.Exists(Path.Combine(directory.FullName, "plan.json")))
+            {
+                var plan = await ReadAsync(directory.Name, ct);
+                var value = new TransferPlanCard(plan.PlanId, plan.CreatedAt, plan.InstanceId, plan.Direction, plan.Status, plan.Entries.Length, plan.TotalBytes, directory.FullName);
+                await AtomicJsonFile.WriteAsync(card, value, ct); result.Add(value);
+            }
+        }
+        return result;
     }
 }

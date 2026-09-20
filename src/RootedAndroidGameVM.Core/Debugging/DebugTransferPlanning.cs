@@ -279,4 +279,20 @@ public sealed partial class AndroidDebugService
             nextOffset = offset + size < plan.Entries.Length ? offset + size : (int?)null
         };
     }
+    public async Task<object> ListTransferPlansAsync(CancellationToken ct) => new { transfers = await TransferHistoryAsync(ct) };
+    public async Task<TransferPlanHistory[]> TransferHistoryAsync(CancellationToken ct)
+    {
+        var cards = await new TransferPlanStore(Paths.ProductRoot).ListAsync(ct);
+        if (cards.Count == 0) return [];
+        var instance = ReadInstanceId(); var rows = new List<TransferPlanHistory>();
+        foreach (var card in cards.Where(card => card.InstanceId == instance))
+        {
+            var header = await new TransferExecutionStore(card.ArtifactDirectory).ReadHeaderAsync(ct);
+            if (header is not null) header = TransferExecutionLiveness.Observe(header);
+            var status = header?.Status ?? card.Status;
+            rows.Add(new(card.PlanId, card.Direction, status, header?.UpdatedAt ?? card.CreatedAt, card.TotalEntries, card.TotalBytes,
+                card.ArtifactDirectory, header is not null && TransferExecutionLiveness.CanResume(header), header?.JobId));
+        }
+        return rows.OrderByDescending(row => row.UpdatedAt).ToArray();
+    }
 }

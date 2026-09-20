@@ -72,6 +72,9 @@ public sealed class TransferExecutionTests
             OwnerPid: Environment.ProcessId, OwnerStartedTicks: 1);
         Assert.Equal("interrupted", TransferExecutionLiveness.Observe(header).Status);
         Assert.Equal("succeeded", TransferExecutionLiveness.Observe(header with { Status = "succeeded" }).Status);
+        Assert.True(TransferExecutionLiveness.CanResume(TransferExecutionLiveness.Observe(header)));
+        Assert.False(TransferExecutionLiveness.CanResume(header with { Status = "failed", ErrorCode = "plan_stale" }));
+        Assert.True(TransferExecutionLiveness.CanResume(header with { Status = "failed", ErrorCode = "device_offline" }));
     }
     [Fact]
     public void Duplicate_requests_keep_job_identity_but_changed_options_are_detectable()

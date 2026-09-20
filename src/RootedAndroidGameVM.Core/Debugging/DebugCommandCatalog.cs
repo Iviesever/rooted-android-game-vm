@@ -32,6 +32,7 @@ public static class DebugCommandCatalog
         new("files.stat", "验证条目身份并读取元数据，可选计算文件SHA-256", "{\"entryRef\":\"文件引用\",\"hash\":true}"),
         new("files.transfer.plan", "只读扫描多选源/目标并保存冲突与空间计划，不执行传输", "{\"direction\":\"download\",\"sources\":[{\"entryRef\":\"条目引用\"}],\"destination\":{\"localDirectory\":\"D:\\\\Exports\"}}"),
         new("files.transfer.inspect", "分页读取持久传输计划；计划不代表已复制", "{\"planId\":\"计划编号\",\"offset\":0,\"pageSize\":100}"),
+        new("files.transfer.list", "最近计划及明确执行状态/恢复入口", "{}"),
         new("files.transfer.start", "按计划执行分块传输；重复幂等键返回原任务", "{\"planId\":\"计划编号\",\"idempotencyKey\":\"本次执行唯一键\",\"conflictPolicy\":\"overwrite\",\"stopApplications\":true}"),
         new("files.transfer.resume", "核对源、目标和暂存后明确续作，不自动重放", "{\"planId\":\"计划编号\",\"idempotencyKey\":\"本次续作唯一键\"}"),
         new("apk.inspect", "APK 版本、包名与 ABI", "{\"path\":\"C:\\\\input\\\\app.apk\"}"),

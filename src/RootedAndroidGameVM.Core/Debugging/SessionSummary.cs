@@ -9,7 +9,7 @@ public sealed record SessionTaskSummary(string JobId, string RequestId, string C
 public sealed record SessionImportSummary(string ImportId, string Stage, bool ContentVerified, int ExactFiles, int ExpectedFiles,
     int MetadataRewrites, string? ErrorCode, DateTimeOffset ObservedAt, string Session, string Directory, string EvidencePath);
 public sealed record SessionTransferSummary(string Command, string Package, string Scope, string Remote, string Status,
-    string? Sha256, DateTimeOffset RecordedAt, string EvidencePath);
+    string? Sha256, DateTimeOffset RecordedAt, string EvidencePath, string? PlanId = null, bool CanResume = false);
 public sealed record SessionSummary(DateTimeOffset ObservedAt, string Instance, string Status, string? Session,
     string Package, ApplicationReadiness? App, PageEvidence? Page, SessionTaskSummary[] Tasks,
     SessionImportSummary? Files, InputReleaseEvidence? Input, int[] ActiveOwnedSlots, string ArtifactDirectory,
@@ -29,7 +29,7 @@ public static class SessionSummaryText
         var release = summary.Input;
         var transfer = summary.Transfer;
         var filesText = transfer is not null && (file is null || transfer.RecordedAt > file.ObservedAt)
-            ? $"最近文件核验：{transfer.Command} · {transfer.Scope}/{transfer.Remote} · {transfer.Status}（{transfer.RecordedAt:HH:mm:ss zzz}；App读取另验）"
+            ? $"最近文件核验：{transfer.Command} · {transfer.Scope}/{transfer.Remote} · {transfer.Status}（{transfer.RecordedAt:HH:mm:ss zzz}；App读取另验）" + (transfer.PlanId is null ? "" : "\n传输计划：" + transfer.PlanId)
             : file is null ? "最近文件核验：无记录" : $"最近文件核验：{(file.ContentVerified ? "内容已核验" : "未通过/未完成")} · 严格匹配 {file.ExactFiles}/{file.ExpectedFiles} · 已知元数据 {file.MetadataRewrites} · {file.ObservedAt:HH:mm:ss zzz}";
         return string.Join('\n',
             $"实例：{summary.Instance} · {summary.Status} · 会话 {summary.Session ?? "未观察到"}",
@@ -162,6 +162,23 @@ public sealed partial class DebugBroker
         if (observed.PendingRestore) recovery.Add("checkpoint.recover：中断的检查点恢复");
         foreach (var task in tasks.Where(task => task.Status == "interrupted")) recovery.Add("中断任务 " + task.JobId + "，查看原产物后决定续作");
         DebugRequest? resume = null;
+        var transfer = LatestTransferSummary(package);
+        if (observed.Status != "OperationInProgress")
+        {
+            var history = await _service.TransferHistoryAsync(ct);
+            var latest = history.FirstOrDefault();
+            if (latest is not null && (transfer is null || latest.UpdatedAt > transfer.RecordedAt))
+                transfer = new("files.transfer." + latest.Direction, "", "通用传输", $"{latest.TotalEntries}项", latest.Status, null,
+                    latest.UpdatedAt, Path.Combine(latest.ArtifactDirectory, "execution.json"), latest.PlanId, latest.CanResume);
+            foreach (var pending in history.Where(item => item.CanResume).Take(5))
+                recovery.Add("文件传输 " + pending.PlanId + "：可在文件管理中明确继续，沿用原计划与备份");
+            if (history.FirstOrDefault(item => item.CanResume) is { } resumable)
+                resume = DebugRequest.Create("files.transfer.resume", new
+                {
+                    planId = resumable.PlanId,
+                    idempotencyKey = "summary-resume-" + resumable.PlanId + "-" + resumable.UpdatedAt.UtcTicks
+                });
+        }
         var release = observed.Input;
         var next = observed.Status == "OperationInProgress" ? "等待当前独占任务完成，或取消相应任务；安卓状态暂未核验" :
             observed.Status == "Unreachable" ? "保留当前实例，检查连接和任务诊断；不要当作已停机重复启动" :
@@ -174,7 +191,7 @@ public sealed partial class DebugBroker
         var summary = new SessionSummary(DateTimeOffset.UtcNow, observed.Instance, observed.Status, observed.Session,
             package, observed.App, observed.Page, tasks, files, release, observed.ActiveOwnedSlots,
             tasks.FirstOrDefault()?.ArtifactDirectory ?? files?.Directory ?? Path.Combine(observed.DataRoot, "debug-runs"),
-            recovery.ToArray(), next, resume, "", LatestTransferSummary(package));
+            recovery.ToArray(), next, resume, "", transfer);
         summary = summary with { Text = SessionSummaryText.Render(summary) };
         return new { runtime = observed.Runtime, summary };
     }

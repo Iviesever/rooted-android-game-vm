@@ -76,6 +76,20 @@ B2a远端CI补记：[35491085130](https://github.com/Iviesever/rooted-android-ga
 
 尚待：600MiB提交/下载及恢复完整核验，其他冲突策略/并发/回退/工具清理、两个应用及多作用域实读、GUI/多用户/旧命令统一、完整发布与覆盖安装。生产程序未更新，B–E仍未完成。
 
+### C1：通用文件页与恢复入口（2026-09-20，实际GUI仍待验）
+
+源码文件页已切换共享后台：安卓用户和应用搜索选择、真实根目录树、路径/面包屑/后退与上级导航、分页、多选、文件与文件夹上传下载、拖放、应用数据根导出、冲突与停应用预览、取消和明确续作。新增files.transfer.list读取持久计划卡片；session.summary提供最近传输和恢复请求，停止时可查看记录。GUI实际点击/键盘/选择器尚未验收；用户明确要求暂时只做后台与CLI，C整项不得勾选。
+
+- `file-workspace-full.trx`：339项非实机通过，包含新文件页的用户/应用切换、过期回复丢弃、版本引用、多选/分页、取消归属和原计划续作，以及只读传输中断恢复的限定条件。完整构建零警告错误。离屏文件页与预览布局检查发现并修复资源模板引用及directory对象误当路径字符串的问题；离屏渲染不能替代实际GUI验收。
+- `transfer-large-final-acceptance.json`：原600MiB计划802c31de47634eb893b100a254a3e883明确续作后完成提交，下载计划28a46f2321e543109ea2f587e4a142c5也通过。源/安卓/回传SHA-256均为987523e7780392e283b404990c4e84e580bc75c451138b0c86c4f81c296eeebe。保留原取消/内存保护记录，没有重建上传计划或抹去失败历史。
+- `transfer-scope-read-acceptance.json`：独立测试应用的私有、外部应用数据及共享目录完成双向复制；新建/替换6值均由该App以UID10213实际读取。此结果只覆盖该测试应用，不能替代两个无关应用的完整验收。
+- `transfer-policies-acceptance.json`：skip/keep-both/overwrite及文件与目录类型冲突通过；覆盖备份读出原值，父目录自动改名后子文件保持结构。源或目标在计划后变化均以plan_stale拒绝，目标未被旧计划覆盖。完整回退、空间不足和guest取消清理仍待验。
+- `workspace-summary-live`、`workspace-summary-recovery-live`、`workspace-history-stopped`：实机最近传输、明确恢复请求与停机后23条历史记录可读。读取不会自动执行。
+
+重复元数据故障保留在f3210532…、0babf4d8…请求及metadata-repeat-full-logcat中：工具255且stdout/stderr为空，guest元数据程序exit0后adbd记录write failed/offline。日志也有安卓低内存回收，但尚未证明因果关系；连续12轮独立元数据读取正常。现仅对有完整空输出/255证据的只读目录元数据读取，核验同一实例及ADB在线后重读一次，保留原工具证据并报告retry阶段；写入不自动重试，不调整内存或镜像/驱动。故障自动恢复分支已做限定条件测试，实际自然故障触发该新分支仍待观察。
+
+B2b CI [35493701811](https://github.com/Iviesever/rooted-android-game-vm/actions/runs/35493701811)已success。本批新的CI以实际提交后的运行结果为准。旧files.*适配、第二无关应用/多用户、完整D矩阵、实际GUI及新候选E交付仍未完成；未覆盖生产程序或公开发布。
+
 本机完整台账：`tasks/20260916-211326-review-remaining/`，含四文档、脚本及evidence（原始实机证据仅保存在本机，不进入公开发布资产）。内存优化仍结项；唯一后续例外是用户明确要求启动物理余量门槛改成2.5GiB。d534f9d实现2560MiB下限；前后profile逐字段核对仅startAvailableMb改变，运行期保护未改。
 
 ## 第一批：导入、作用域权限和故障证据

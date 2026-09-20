@@ -8,7 +8,7 @@ namespace RootedAndroidGameVM.Core.Debugging;
 public sealed record TransferOptions(string ConflictPolicy, bool StopApplications);
 public sealed record TransferExecutionHeader(string PlanId, TransferOptions Options, string Session, string JobId,
     string Status, DateTimeOffset UpdatedAt, string? Error = null, string? ArchivePath = null, string? ArchiveSha256 = null,
-    int OwnerPid = 0, long OwnerStartedTicks = 0);
+    int OwnerPid = 0, long OwnerStartedTicks = 0, string? ErrorCode = null);
 public sealed record TransferItemState(int Index, string Status, string TargetRelativePath, long Offset = 0,
     string? TemporaryPath = null, string? BackupPath = null, string? Sha256 = null, string? Error = null);
 
@@ -62,6 +62,8 @@ public sealed class TransferExecutionStore(string directory)
 
 public static class TransferExecutionLiveness
 {
+    public static bool CanResume(TransferExecutionHeader header) => header.Status is "cancelled" or "interrupted" ||
+        header.Status == "failed" && header.ErrorCode is not ("plan_stale" or "stale_reference" or "source_changed" or "target_changed" or "plan_has_issues" or "checksum_mismatch" or "staging_mismatch");
     public static TransferExecutionHeader Observe(TransferExecutionHeader header)
     {
         if (header.Status is "succeeded" or "failed" or "cancelled" or "interrupted") return header;

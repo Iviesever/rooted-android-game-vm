@@ -190,6 +190,14 @@ public sealed class WorkstationViewModelTests
         Assert.True(profile.LowRam);
         Assert.Equal(512, profile.VmHeapMb);
     }
+    [Fact]
+    public async Task Structured_file_directory_is_not_mistaken_for_an_artifact_path()
+    {
+        using var model = new WorkstationViewModel(new FakeApi());
+        var result = await model.RunAsync("browse", new("files.browse"));
+        Assert.NotNull(result); Assert.False(model.HasError);
+        Assert.Equal(JsonValueKind.Object, result.Value.GetProperty("directory").ValueKind);
+    }
     private sealed class FakeApi : IWorkstationApi
     {
         public bool Running { get; set; }
@@ -225,6 +233,7 @@ public sealed class WorkstationViewModelTests
                 case "status": return Task.FromResult(JsonSerializer.SerializeToElement(new { status = Running ? "Running" : "Stopped", serial = "emulator-5554", state = new { awake = true, locked = false, foreground = "test.app" } }));
                 case "stop": Running = false; break;
                 case "start": Running = true; break;
+                case "files.browse": return Task.FromResult(JsonSerializer.SerializeToElement(new { directory = new { name = "files", kind = "directory" }, entries = Array.Empty<object>() }));
                 case "files.list": return FileRead?.Task ?? Task.FromResult(JsonSerializer.SerializeToElement(new { entries = new[] { new { name = "a.txt", details = "regular file|7|1001|1001|600" }, new { name = "child", details = "directory|4096|1001|1001|700" } } }));
                 case "logs": progress?.Invoke(JsonSerializer.SerializeToElement(new { jobId = "log-job", status = "running" })); return _logs.Task;
                 case "cancel": _logs.TrySetResult(JsonSerializer.SerializeToElement(new { cancelled = true })); break;

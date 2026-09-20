@@ -36,10 +36,11 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
     public WorkstationViewModel(IWorkstationApi api)
     {
         _api = api;
+        FileWorkspace = new(RunAsync);
         Navigation = [
             new(WorkstationSection.Android, "使用安卓", "\uE7F8", "打开安卓窗口，或在这里观察与定位操作"),
             new(WorkstationSection.Applications, "应用管理", "\uE71D", "安装、打开和管理安卓应用"),
-            new(WorkstationSection.Files, "文件管理", "\uE8B7", "浏览、上传、导出和比较应用数据"),
+            new(WorkstationSection.Files, "文件管理", "\uE8B7", "选择应用与目录，双向传输文件和文件夹"),
             new(WorkstationSection.Diagnostics, "诊断与记录", "\uE9D9", "持续日志、异常、录像和性能依据"),
             new(WorkstationSection.Automation, "AI 与自动化", "\uE943", "可复现的输入、测试步骤和 Shell 调试"),
             new(WorkstationSection.Checkpoints, "检查点", "\uE81C", "保存与恢复当前安卓环境"),
@@ -66,7 +67,7 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
         InstallCommand = Action(async () => { if (await RunAsync("安装应用", DebugRequest.Create("install", new { path = ApkPath }), true) is not null) await RefreshApplicationsAsync(); }, () => IsRunning && !IsBusy && File.Exists(ApkPath));
         LaunchCommand = Action(async () => await RunAsync("打开应用", DebugRequest.Create("launch", new { package = Package })), () => IsRunning && HasApplication && !IsBusy);
         StopApplicationCommand = Action(async () => await RunAsync("停止应用", DebugRequest.Create("force-stop", new { package = Package })), () => IsRunning && HasApplication && !IsBusy);
-        ManageFilesCommand = Action(async () => { SelectedNavigation = Navigation.Single(item => item.Section == WorkstationSection.Files); await BrowseFilesAsync(); }, () => IsRunning && HasApplication);
+        ManageFilesCommand = Action(() => { FileWorkspace.RequestedApplication = SelectedApplication; SelectedNavigation = Navigation.Single(item => item.Section == WorkstationSection.Files); return Task.CompletedTask; }, () => IsRunning && HasApplication);
         BrowseFilesCommand = Action(BrowseFilesAsync, () => CanBrowseFiles);
         ParentFolderCommand = Action(async () => { RemoteFolder = RemoteFolder.Contains('/') ? RemoteFolder[..RemoteFolder.LastIndexOf('/')] : ""; await BrowseFilesAsync(); }, () => CanBrowseFiles && RemoteFolder.Length > 0);
         UploadCommand = Action(async () => { if (await RunAsync("上传文件", FileRequest("files.push", JoinRemote(Path.GetFileName(LocalPath)), LocalPath), true) is not null) await BrowseFilesAsync(); }, () => CanBrowseFiles && !IsBusy && File.Exists(LocalPath));
@@ -105,6 +106,7 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
     }
 
     public IReadOnlyList<WorkstationNavigation> Navigation { get; }
+    public FileWorkspaceViewModel FileWorkspace { get; }
     public IReadOnlyList<FileScope> Scopes { get; }
     public IReadOnlyList<RendererChoice> Renderers { get; } = [new("host", "硬件加速 · Host"), new("software", "软件渲染 · 自动"), new("swiftshader", "软件渲染 · SwiftShader")];
     public IReadOnlyList<int> RefreshRates { get; } = [60, 90, 120];
@@ -236,7 +238,7 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
     private string JoinRemote(string name) => (RemoteFolder.TrimEnd('/') + "/" + name).TrimStart('/');
     private DebugRequest FileRequest(string command, string remote, string local) => DebugRequest.Create(command, new { package = Package, scope = Scope.Value, remote, local });
 
-    public async Task<JsonElement?> RunAsync(string title, DebugRequest request, bool exclusive = false)
+    public async Task<JsonElement?> RunAsync(string title, DebugRequest request, bool exclusive = false, Action<JsonElement>? progressObserver = null)
     {
         if (exclusive && IsBusy) return null;
         var item = new WorkItem(title); Work.Insert(0, item); SelectedWork = item;
@@ -249,15 +251,16 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
             {
                 item.Id = Text(update, "jobId"); item.Status = Text(update, "status") switch { "running" => "执行中", "cancelling" => "正在取消", "queued" => "排队中", "cancelled" => "已取消", "timed_out" => "已超时", "interrupted" => "已中断", var status => status };
                 if (update.TryGetProperty("stage", out var stage)) SessionHeadline = "会话摘要 · " + title + " · " + stage.GetString();
-                if (update.TryGetProperty("progress", out var progress) && progress.ValueKind == JsonValueKind.Object && progress.TryGetProperty("directory", out var directory))
+                if (update.TryGetProperty("progress", out var progress) && progress.ValueKind == JsonValueKind.Object && progress.TryGetProperty("directory", out var directory) && directory.ValueKind == JsonValueKind.String)
                 { item.Directory = directory.GetString(); RecordDirectory = item.Directory ?? ""; }
                 RefreshCommands();
+                progressObserver?.Invoke(update);
             });
             item.Details = Pretty(result); RawResult = item.Details; item.Status = "已完成"; Message = title + "已完成";
             var completedStage = result.ValueKind == JsonValueKind.Object ? Text(result, "stage") : "";
             if (completedStage is "process_observed" or "activity_ready") { item.Status = completedStage == "activity_ready" ? "Activity就绪" : "进程已出现"; Message = item.Status + "；页面可操作性仍待核验。"; }
             else if (request.Command == "release") { item.Status = "释放指令已确认"; Message = "释放指令已确认；应用内状态请结合观察核验。"; }
-            if (result.ValueKind == JsonValueKind.Object && result.TryGetProperty("directory", out var directory)) { item.Directory = directory.GetString(); RecordDirectory = item.Directory ?? ""; }
+            if (result.ValueKind == JsonValueKind.Object && result.TryGetProperty("directory", out var directory) && directory.ValueKind == JsonValueKind.String) { item.Directory = directory.GetString(); RecordDirectory = item.Directory ?? ""; }
             return result;
         }
         catch (OperationCanceledException) { item.Details = "任务已取消。"; item.Status = "已取消"; Message = title + "已取消"; return null; }
@@ -287,6 +290,7 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
             IsRunning = Text(status, "status") == "Running";
             Status = Text(status, "status") switch { "Running" => "安卓运行中", "NotInstalled" => "需要安装运行环境", "Unreachable" => "安卓进程存在，连接不可用", "OperationInProgress" => "安卓操作进行中", _ => "安卓已停止" };
             DataRoot = Text(status, "dataRoot"); Serial = Text(status, "serial");
+            FileWorkspace.UpdateContext(IsRunning, _session.Session, DataRoot);
             if (status.TryGetProperty("hostMemory", out var host))
                 HostMemory = $"可用 {host.GetProperty("availableMb").GetInt64() / 1024d:0.0} / {host.GetProperty("totalMb").GetInt64() / 1024d:0.0} GiB";
             RootStatus = status.TryGetProperty("root", out var root) ? root.GetBoolean() ? "Root 可用" : "Root 不可用" : "等待启动";

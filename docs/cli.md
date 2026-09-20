@@ -62,6 +62,7 @@ $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.ex
 | `files.browse` | `{"rootRef":"根引用","relativePath":"files","pageSize":200}` | 批量结构化目录页；也可仅指定目录entryRef |
 | `files.stat` | `{"entryRef":"条目引用","hash":true}` | 验证条目当前身份，可选计算普通文件SHA-256 |
 | `files.transfer.plan` | `{"direction":"download","sources":[{"entryRef":"条目引用"}],"destination":{"localDirectory":"D:\\Exports"}}` | 只读扫描并保存多选传输计划 |
+| `files.transfer.list` | `{}` | 最近100个计划的状态、更新时间、原jobId、产物目录及canResume；停止时可查询，不自动执行 |
 | `files.transfer.inspect` | `{"planId":"计划编号","offset":0,"pageSize":100}` | 分页查询持久计划，安卓停止时也可读取 |
 | `files.transfer.start` | `{"planId":"计划编号","idempotencyKey":"本次执行唯一键","conflictPolicy":"overwrite","stopApplications":true}` | 核对后执行，保留备份与逐项账本 |
 | `files.transfer.resume` | `{"planId":"计划编号","idempotencyKey":"本次续作唯一键"}` | 明确恢复旧计划，校验暂存前缀与已完成项 |

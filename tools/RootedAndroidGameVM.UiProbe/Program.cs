@@ -8,6 +8,7 @@ using RootedAndroidGameVM.Core.Android;
 using RootedAndroidGameVM.Core.Debugging;
 using RootedAndroidGameVM.Core.Ui.Workstation;
 using RootedAndroidGameVM.Launcher;
+using RootedAndroidGameVM.Launcher.Workstation;
 
 namespace RootedAndroidGameVM.UiProbe;
 
@@ -36,6 +37,8 @@ internal static class Program
             Console.WriteLine($"Binary preview decoded: {frame.Metadata.Width}x{frame.Metadata.Height}, {frame.Payload.Length} bytes.");
             return 0;
         }
+        var filesOnly = args.Length == 2 && args[0] == "--files";
+        if (filesOnly) args = [args[1]];
         var sessionOnly = args.Length == 2 && args[0] is "--session" or "--live-session";
         JsonElement? liveSnapshot = null;
         if (sessionOnly && args[0] == "--live-session")
@@ -55,7 +58,8 @@ internal static class Program
             model.RefreshRuntimeAsync().GetAwaiter().GetResult();
             model.RefreshApplicationsAsync().GetAwaiter().GetResult();
             model.SelectedApplication = model.Applications.FirstOrDefault(); // Explicit fixture selection, not a product default.
-            model.BrowseFilesAsync().GetAwaiter().GetResult();
+            model.FileWorkspace.RequestedApplication = model.SelectedApplication;
+            model.FileWorkspace.InitializeAsync().GetAwaiter().GetResult();
             model.RefreshCheckpointsAsync().GetAwaiter().GetResult();
         }
         if (sessionOnly && window.FindName("SessionExpander") is System.Windows.Controls.Expander expanded) expanded.IsExpanded = true;
@@ -66,7 +70,7 @@ internal static class Program
         var outputs = new List<object>();
         foreach (var size in new[] { new Size(1100, 720), new Size(1320, 860) })
         {
-            foreach (var section in sessionOnly ? model.Navigation.Take(1) : model.Navigation)
+            foreach (var section in sessionOnly ? model.Navigation.Take(1) : filesOnly ? model.Navigation.Where(item => item.Section == WorkstationSection.Files) : model.Navigation)
             {
                 model.SelectedNavigation = section;
                 content.Width = size.Width; content.Height = size.Height;
@@ -80,6 +84,35 @@ internal static class Program
                 outputs.Add(new { section = section.Section.ToString(), width = size.Width, height = size.Height, path });
             }
         }
+        if (filesOnly)
+        {
+            var review = new TransferReviewWindow(new TransferReviewModel(JsonSerializer.SerializeToElement(new
+            {
+                planId = "preview-plan",
+                direction = "download",
+                totalEntries = 3,
+                totalBytes = 123456,
+                counts = new { @new = 1, different = 1, merge = 1 },
+                issues = Array.Empty<string>(),
+                applicationsToStop = new[] { new TransferApplication("com.example.notes", 0, "revision", true) },
+                requiresConflictPolicy = true,
+                conflicts = new[] { new TransferPlanEntry(0, "source", "documents/笔记.txt", "documents/笔记.txt",
+                    new TransferFingerprint("file", 123456, "v", "hash"), null, "different") },
+                preview = Array.Empty<TransferPlanEntry>()
+            }, DebugJson.Options), @"D:\导出数据\笔记"));
+            var reviewContent = (FrameworkElement)review.Content; var reviewSize = new Size(840, 600);
+            reviewContent.Width = reviewSize.Width - 48; reviewContent.Height = reviewSize.Height - 48;
+            reviewContent.Measure(reviewSize); reviewContent.Arrange(new Rect(reviewSize)); reviewContent.UpdateLayout();
+            System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Render);
+            var grid = System.Windows.LogicalTreeHelper.GetChildren(reviewContent).OfType<System.Windows.Controls.DataGrid>().Single();
+            if (grid.Columns[0].ActualWidth < 320) throw new InvalidOperationException("Transfer target column is clipped.");
+            File.WriteAllText(Path.Combine(root, "review-column-widths.json"), JsonSerializer.Serialize(grid.Columns.Select(column => column.ActualWidth)));
+            var bitmap = new RenderTargetBitmap(840, 600, 96, 96, PixelFormats.Pbgra32); bitmap.Render(reviewContent);
+            var png = new PngBitmapEncoder(); png.Frames.Add(BitmapFrame.Create(bitmap));
+            using (var output = File.Create(Path.Combine(root, "TransferReview.png"))) png.Save(output);
+            review.Close();
+        }
+        if (model.HasError) errors.WriteLine(model.Error);
         File.WriteAllText(Path.Combine(root, "binding-errors.txt"), errors.ToString());
         File.WriteAllText(Path.Combine(root, "rendered.json"), JsonSerializer.Serialize(outputs, new JsonSerializerOptions { WriteIndented = true }));
         if (catalogSnapshot is not null)
@@ -114,12 +147,25 @@ internal static class Program
                     new { package = "com.example.reader", name = "文档阅读器", appRef = "reader-ref", userId = 0, system = false }
                 }
                 },
+                "users.list" => new { users = new[] { new AndroidUser(0, "所有者", true), new AndroidUser(10, "访客", false) } },
+                "files.roots" => new
+                {
+                    roots = new[] {
+                    new FileRootDescriptor("private-ref", "private", "私有数据", "/data/user/0/com.example.notes", true, true, true, false, null, "private-entry"),
+                    new FileRootDescriptor("external-ref", "external", "外部应用数据", "/storage/emulated/0/Android/data/com.example.notes", true, true, true, false, null, "external-entry"),
+                    new FileRootDescriptor("obb-ref", "obb", "扩展数据", "/storage/emulated/0/Android/obb/com.example.notes", false, false, false, false, "not_created", null),
+                    new FileRootDescriptor("shared-ref", "shared", "共享存储", "/storage/emulated/0", true, true, true, false, null, "shared-entry") }
+                },
+                "files.browse" => new FileBrowsePage("private-ref", "", SampleFile("", "directory"),
+                    [SampleFile("documents", "directory"), SampleFile("images", "directory"), SampleFile("readme.txt", "file"), SampleFile("中文笔记与较长的内容说明.json", "file")], 210, "next-page", "snapshot", DateTimeOffset.UtcNow),
+                "files.transfer.list" => new { transfers = new[] { new FileTransferHistoryRow("sample-plan", "download", "cancelled", DateTimeOffset.UtcNow, 210, 123456, @"D:\Android-Data\debug-runs\transfers\sample-plan", true) } },
                 "files.list" => new { entries = new[] { new { name = "documents", details = "directory|4096|10212|10212|700" }, new { name = "images", details = "directory|4096|10212|10212|700" }, new { name = "readme.txt", details = "regular file|1234|10212|10212|600" }, new { name = "中文文件名与较长的内容说明.json", details = "regular file|65536|10212|10212|600" } } },
                 "checkpoint.list" => new[] { new { id = "20260913-120000-example", path = @"D:\Android-Data\checkpoints\20260913-120000-example" } },
                 _ => new { success = true }
             };
             return Task.FromResult(JsonSerializer.SerializeToElement(result, DebugJson.Options));
         }
+        private static RemoteFileEntry SampleFile(string name, string kind) => new(name, name, kind, 123456, 1789890000000, 10123, 10123, kind == "directory" ? "700" : "600", "version", EntryRef: "ref-" + name);
         private static object SampleSession()
         {
             var at = DateTimeOffset.UtcNow;

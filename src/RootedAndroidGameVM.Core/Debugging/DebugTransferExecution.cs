@@ -111,7 +111,7 @@ public sealed partial class AndroidDebugService
             {
                 var target = MapTransferPath(item.TargetRelativePath, mappings);
                 if (states.TryGetValue(item.Index, out var existing)) target = existing.TargetRelativePath;
-                else if (options.ConflictPolicy == "keep-both" && item.Conflict is "different" or "type_conflict") target = KeepBothPath(target, plan.PlanId, item.Index);
+                else if (target == item.TargetRelativePath && options.ConflictPolicy == "keep-both" && item.Conflict is "different" or "type_conflict") target = KeepBothPath(target, plan.PlanId, item.Index);
                 if (item.Source.Kind == "directory" && target != item.TargetRelativePath) mappings.Add((item.TargetRelativePath, target));
                 effective[item.Index] = target;
                 if (plan.Format == "tar" || existing?.Status is "committing" or "completed" or "staged" or "skipped") continue;
@@ -187,7 +187,13 @@ public sealed partial class AndroidDebugService
         }
         catch (Exception error)
         {
-            header = header with { Status = error is OperationCanceledException ? "cancelled" : "failed", UpdatedAt = DateTimeOffset.UtcNow, Error = error.Message };
+            header = header with
+            {
+                Status = error is OperationCanceledException ? "cancelled" : "failed",
+                UpdatedAt = DateTimeOffset.UtcNow,
+                Error = error.Message,
+                ErrorCode = error is OperationCanceledException ? "cancelled" : error is DebugException failure ? failure.Code : "transfer_failed"
+            };
             await journal.SaveHeaderAsync(header, CancellationToken.None);
             throw new DebugException(error is OperationCanceledException ? "cancelled" : error is DebugException detail ? detail.Code : "transfer_failed",
                 error.Message, DebugOperation.Current.Value?.Stage ?? "transferring", journal.HeaderPath, error);

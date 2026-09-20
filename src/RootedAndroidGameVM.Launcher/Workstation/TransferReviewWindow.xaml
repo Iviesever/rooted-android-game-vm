@@ -1,0 +1,18 @@
+<Window x:Class="RootedAndroidGameVM.Launcher.Workstation.TransferReviewWindow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ Title="传输预览" Width="840" Height="630" MinWidth="700" MinHeight="540" WindowStartupLocation="CenterOwner" FontFamily="Segoe UI" FontSize="14" Background="#F3F5F9">
+ <Window.Resources><BooleanToVisibilityConverter x:Key="Visible"/><Style TargetType="Button"><Setter Property="Padding" Value="15,8"/><Setter Property="Margin" Value="8,0,0,0"/></Style></Window.Resources>
+ <Grid Margin="24" Background="#F3F5F9"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+  <StackPanel><TextBlock Text="确认传输内容" FontSize="24" FontWeight="SemiBold"/><TextBlock Text="{Binding Description}" Margin="0,10,0,6"/><TextBlock Text="{Binding Destination}" TextWrapping="Wrap" Foreground="#526278"/><TextBlock Text="{Binding CountText}" Margin="0,8,0,14"/></StackPanel>
+  <DataGrid Grid.Row="1" ItemsSource="{Binding Rows}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column" AutomationProperties.AutomationId="Transfer.Preview">
+   <DataGrid.Columns><DataGridTextColumn Header="目标位置" Binding="{Binding Path}" Width="*" MinWidth="320"/><DataGridTextColumn Header="类型" Binding="{Binding Kind}" Width="65"/><DataGridTextColumn Header="大小" Binding="{Binding Size}" Width="85"/><DataGridTextColumn Header="处理" Binding="{Binding Action}" Width="125"/></DataGrid.Columns>
+  </DataGrid>
+  <StackPanel Grid.Row="2" Margin="0,14,0,0">
+   <TextBlock Text="显示部分条目；完整清单保存在任务记录中。目录合并会保留目标额外文件。" Foreground="#68758B" FontSize="12" TextWrapping="Wrap"/>
+   <ItemsControl ItemsSource="{Binding DisplayIssues}" Margin="0,6,0,0" MaxHeight="65"><ItemsControl.ItemTemplate><DataTemplate><TextBlock Text="{Binding}" Foreground="#963D30" TextWrapping="Wrap"/></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+   <WrapPanel Margin="0,10,0,8"><TextBlock Text="同名冲突" VerticalAlignment="Center" Margin="0,0,10,0"/><ComboBox ItemsSource="{Binding Policies}" SelectedItem="{Binding Policy}" DisplayMemberPath="Title" Width="230" Padding="8,5" AutomationProperties.AutomationId="Transfer.ConflictPolicy"/></WrapPanel>
+   <StackPanel Visibility="{Binding HasApplications,Converter={StaticResource Visible}}"><TextBlock Text="{Binding Applications}" TextWrapping="Wrap" FontSize="12"/><CheckBox Content="停止以上应用后执行，以保持应用数据一致" IsChecked="{Binding StopApplications}" Margin="0,6,0,10" AutomationProperties.AutomationId="Transfer.StopApplications"/></StackPanel>
+   <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="改用 tar 归档" Visibility="{Binding NeedsArchive,Converter={StaticResource Visible}}" Click="Archive_Click"/><Button Content="取消" IsCancel="True"/><Button Content="{Binding ExecuteText}" IsEnabled="{Binding CanExecute}" Click="Execute_Click" IsDefault="True" AutomationProperties.AutomationId="Transfer.Execute"/></StackPanel>
+  </StackPanel>
+ </Grid>
+</Window>

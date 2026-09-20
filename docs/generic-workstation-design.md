@@ -74,6 +74,7 @@ flowchart LR
 | `files.browse` | `rootRef + relativePath` 或目录 `entryRef`、游标；返回结构化条目、类型/大小/修改时间/权限、`entryRef` 和下一页游标 |
 | `files.stat` | `entryRef`；返回当前身份/元数据，按需计算哈希，不让每次列表都散列全部文件 |
 | `files.transfer.plan` | 下载的条目集合/根，或上传的电脑路径集合及目标目录；返回计划 ID、冲突、空间需求、停应用要求和逐项决策 |
+| `files.transfer.list` | 查询最近100个持久计划的状态与明确续作入口，不依赖GUI选择 |
 | `files.transfer.inspect` | 按planId查询持久计划及条目页；明确区分计划与已执行状态 |
 | `files.transfer.start` | `planId`、显式冲突策略、是否停止目标应用、幂等键；返回现有 `jobId`，使用现有任务查询和取消机制 |
 

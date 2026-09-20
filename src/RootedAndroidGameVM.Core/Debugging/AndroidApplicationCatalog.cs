@@ -76,8 +76,18 @@ public sealed partial class AndroidDebugService
             var helper = await EnsureCatalogHelperAsync(session, ct);
             RequireCatalogSession(session);
             Progress.Value?.Invoke(new { stage = "reading_application_metadata", session, userId = user });
-            var raw = await ShellAsync("CLASSPATH=" + Q(helper) + " app_process / dev.rgvm.catalog.Main " + user + " " +
-                system.ToString().ToLowerInvariant() + " " + icons.ToString().ToLowerInvariant(), true, ct);
+            var script = "CLASSPATH=" + Q(helper) + " app_process / dev.rgvm.catalog.Main " + user + " " +
+                system.ToString().ToLowerInvariant() + " " + icons.ToString().ToLowerInvariant();
+            string raw;
+            try { raw = await ShellAsync(script, true, ct); }
+            catch (DebugException error) when (MetadataTransportPolicy.CanRetryRead(error))
+            {
+                ct.ThrowIfCancellationRequested(); RequireCatalogSession(session);
+                Progress.Value?.Invoke(new { stage = "retrying_application_metadata", session, attempt = 2, reason = "empty_adb_transport_exit", toolEvidencePath = error.Data["toolEvidencePath"] });
+                if ((await AdbAsync(["get-state"], ct)).Trim() != "device") throw;
+                RequireCatalogSession(session);
+                raw = await ShellAsync(script, true, ct); // A metadata read is safe to repeat; mutation commands never use this path.
+            }
             RequireCatalogSession(session);
             using var document = JsonDocument.Parse(raw);
             var result = document.RootElement;

@@ -54,6 +54,11 @@ public sealed class FileTransferPlanningTests
             Assert.Equal("planned", loaded.Status); Assert.False(loaded.TransferVerified);
             Assert.Equal("directory", Assert.Single(loaded.Entries).Source.Kind);
             Assert.False(Directory.Exists(plan.DestinationPath));
+            var card = Assert.Single(await new TransferPlanStore(root).ListAsync(default));
+            Assert.Equal(id, card.PlanId); Assert.Equal(1, card.TotalEntries); Assert.Equal("planned", card.Status);
+            File.Delete(Path.Combine(store.DirectoryFor(id), "summary.json"));
+            var migrated = Assert.Single(await new TransferPlanStore(root).ListAsync(default));
+            Assert.Equal(card, migrated); Assert.True(File.Exists(Path.Combine(store.DirectoryFor(id), "summary.json")));
             Assert.Throws<ArgumentException>(() => store.DirectoryFor("../outside"));
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }

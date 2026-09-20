@@ -32,6 +32,8 @@ public partial class WorkstationWindow : Window
     private readonly bool _offline;
 
     public WorkstationWindow() : this(new BrokerWorkstationApi()) { }
+    private void OpenFileHistory_Click(object sender, RoutedEventArgs e) =>
+        ViewModel.SelectedNavigation = ViewModel.Navigation.Single(item => item.Section == WorkstationSection.Files);
     private void OpenSessionRecords_Click(object sender, RoutedEventArgs e)
     {
         var directory = ViewModel.SessionArtifactDirectory;
@@ -100,7 +102,7 @@ public partial class WorkstationWindow : Window
             switch (ViewModel.Section)
             {
                 case WorkstationSection.Applications when ViewModel.IsRunning: await ViewModel.RefreshApplicationsAsync(); break;
-                case WorkstationSection.Files when ViewModel.IsRunning: await ViewModel.RefreshApplicationsAsync(); await ViewModel.BrowseFilesAsync(); break;
+                case WorkstationSection.Files: await ViewModel.FileWorkspace.InitializeAsync(); break;
                 case WorkstationSection.Diagnostics when ViewModel.IsRunning: await ViewModel.RefreshApplicationsAsync(); break;
                 case WorkstationSection.Checkpoints: await ViewModel.RefreshCheckpointsAsync(); break;
                 case WorkstationSection.Settings: await ViewModel.RefreshRuntimeAsync(); break;
@@ -156,31 +158,6 @@ public partial class WorkstationWindow : Window
         var dialog = new OpenFileDialog { Filter = "Android 应用|*.apk", Title = "选择要安装的 APK" };
         if (dialog.ShowDialog(this) == true) { ViewModel.ApkPath = dialog.FileName; await ViewModel.InspectApkAsync(); }
     }
-    private async void Upload_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new OpenFileDialog { Title = "上传到当前安卓目录" };
-        if (dialog.ShowDialog(this) == true) { ViewModel.LocalPath = dialog.FileName; await ViewModel.UploadCommand.ExecuteAsync(); }
-    }
-    private async void Download_Click(object sender, RoutedEventArgs e)
-    {
-        if (ViewModel.SelectedFile is not { } selected) { ViewModel.Message = "请先选择文件或文件夹"; return; }
-        if (selected.IsDirectory)
-        {
-            var dialog = new OpenFolderDialog { Title = "选择导出文件夹的保存位置" };
-            if (dialog.ShowDialog(this) == true) await ViewModel.DownloadAsync(dialog.FolderName);
-        }
-        else
-        {
-            var dialog = new SaveFileDialog { FileName = selected.Name };
-            if (dialog.ShowDialog(this) == true) await ViewModel.DownloadAsync(dialog.FileName);
-        }
-    }
-    private void BrowseSync_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new OpenFolderDialog { Title = "选择与当前安卓目录比较的本地文件夹" };
-        if (dialog.ShowDialog(this) == true) ViewModel.LocalPath = dialog.FolderName;
-    }
-    private async void File_DoubleClick(object sender, MouseButtonEventArgs e) => await ViewModel.EnterSelectedFolderAsync();
     private async void Restore_Click(object sender, RoutedEventArgs e)
     {
         if (ViewModel.SelectedCheckpoint is null) return;
