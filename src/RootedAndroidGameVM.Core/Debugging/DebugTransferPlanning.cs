@@ -112,10 +112,11 @@ public sealed partial class AndroidDebugService
                 if (!probe.GetProperty("exists").GetBoolean() && location.Root.Kind is "external" or "obb" or "media")
                 {
                     destinationAnchor = location.Root.Volume!;
+                    var accessAnchor = destinationRoot.VolumeAccessPath ?? destinationAnchor;
                     var prefix = FileTransferPolicy.ApplicationStoragePrefix(location.Root);
-                    if (destinationRoot.Path != FileTransferPolicy.JoinRemote(destinationAnchor, prefix)) throw new DebugException("path_escape", "应用外部根与卷不匹配。", "planning_transfer");
+                    if (destinationRoot.Path != FileTransferPolicy.JoinRemote(accessAnchor, prefix)) throw new DebugException("path_escape", "应用外部根与卷不匹配。", "planning_transfer");
                     requestedPath = FileTransferPolicy.JoinRemote(prefix, requestedPath);
-                    destinationRoot = destinationRoot with { Path = destinationAnchor };
+                    destinationRoot = destinationRoot with { Path = accessAnchor };
                 }
                 // Resolve from the root outwards. Nothing is created until execution.
                 var paths = new List<string> { "" }; var path = "";

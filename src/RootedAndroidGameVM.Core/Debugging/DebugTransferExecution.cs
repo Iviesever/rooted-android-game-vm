@@ -109,9 +109,10 @@ public sealed partial class AndroidDebugService
                 var resolved = await ResolveFileRootAsync(resume ? identity with { Session = session } : identity, ct);
                 if (identity == plan.DestinationRoot && plan.DestinationAnchor is { } anchor)
                 {
-                    if (anchor != identity.Volume || resolved.Path != FileTransferPolicy.JoinRemote(anchor, FileTransferPolicy.ApplicationStoragePrefix(identity)))
+                    var accessAnchor = resolved.VolumeAccessPath ?? anchor;
+                    if (anchor != identity.Volume || resolved.Path != FileTransferPolicy.JoinRemote(accessAnchor, FileTransferPolicy.ApplicationStoragePrefix(identity)))
                         throw new DebugException("stale_reference", "应用目录或卷身份已改变。", "verifying_plan");
-                    resolved = resolved with { Path = anchor };
+                    resolved = resolved with { Path = accessAnchor };
                     foreach (var item in plan.Entries) FileTransferPolicy.ValidateAnchoredTarget(plan, FileTransferPolicy.JoinRemote(plan.DestinationPath, item.TargetRelativePath));
                 }
                 roots[identity] = resolved;

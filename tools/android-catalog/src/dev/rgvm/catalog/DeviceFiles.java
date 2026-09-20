@@ -127,10 +127,38 @@ final class DeviceFiles {
             if (!(Boolean) type.getMethod("isVisibleForUser", int.class).invoke(volume, user) ||
                 !(Boolean) type.getMethod("isMountedReadable").invoke(volume)) continue;
             File path = (File) type.getMethod("getPathForUser", int.class).invoke(volume, user);
-            if (path != null) volumes.put(new JSONObject().put("path", path.getAbsolutePath()).put("primary", type.getMethod("isPrimary").invoke(volume)));
+            if (path != null) {
+                JSONObject row = new JSONObject().put("path", path.getAbsolutePath()).put("primary", type.getMethod("isPrimary").invoke(volume));
+                String access = userMountView(path, user);
+                if (access != null) row.put("accessPath", access);
+                volumes.put(row);
+            }
         }
         return new JSONObject().put("userId", user).put("name", info.getClass().getField("name").get(info))
             .put("unlocked", unlocked(manager, user)).put("volumes", volumes);
+    }
+    private static boolean accessibleDirectory(File path) {
+        try { return OsConstants.S_ISDIR(Os.lstat(path.getPath()).st_mode) && Os.access(path.getPath(), OsConstants.R_OK | OsConstants.X_OK); }
+        catch (Exception unavailable) { return false; }
+    }
+    private static String userMountView(File display, int user) throws Exception {
+        if (accessibleDirectory(display) || !display.getPath().startsWith("/storage/")) return null;
+        String relative = display.getPath().substring("/storage/".length());
+        String[] components = relative.split("/", -1);
+        for (String component : components) if (component.isEmpty() || component.equals(".") || component.equals("..")) return null;
+        String mount = "/mnt/user/" + user + "/" + components[0];
+        File candidate = new File("/mnt/user/" + user + "/" + relative);
+        // /storage is the invoking shell's view. Use another user's view only when
+        // Android actually mounted its FUSE instance; never fall back to raw /data/media.
+        for (String line : Files.readAllLines(new File("/proc/self/mountinfo").toPath(), StandardCharsets.UTF_8)) {
+            String[] sides = line.split(" - ", 2);
+            if (sides.length != 2) continue;
+            String[] fields = sides[0].split(" "), fileSystem = sides[1].split(" ");
+            if (fields.length < 5 || fileSystem.length < 2 || !fields[4].equals(mount) ||
+                !fileSystem[0].equals("fuse") || !fileSystem[1].equals("/dev/fuse")) continue;
+            if (candidate.getCanonicalPath().equals(candidate.getAbsolutePath()) && accessibleDirectory(candidate)) return candidate.getPath();
+        }
+        return null;
     }
     private static JSONObject probe(String path) throws Exception {
         JSONObject result = new JSONObject().put("path", path);

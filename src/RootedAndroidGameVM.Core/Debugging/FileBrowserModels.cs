@@ -5,13 +5,13 @@ using RootedAndroidGameVM.Core.Android;
 namespace RootedAndroidGameVM.Core.Debugging;
 
 public sealed record AndroidUser(int UserId, string Name, bool Unlocked);
-public sealed record AndroidStorageVolume(string Path, bool Primary);
+public sealed record AndroidStorageVolume(string Path, bool Primary, string? AccessPath = null);
 public sealed record AndroidUserStorage(int UserId, string Name, bool Unlocked, AndroidStorageVolume[] Volumes);
 public sealed record FileRootIdentity(string InstanceId, string Session, int UserId, string Kind,
     string? Package = null, string? InstallationRevision = null, string? Volume = null);
 public sealed record RemoteFileIdentity(FileRootIdentity Root, string RelativePath, string Version);
 public sealed record FileRootDescriptor(string RootRef, string Kind, string Title, string DisplayPath,
-    bool Exists, bool Accessible, bool Writable, bool Locked, string? Reason, string? EntryRef, bool Creatable = false);
+    bool Exists, bool Accessible, bool Writable, bool Locked, string? Reason, string? EntryRef, bool Creatable = false, string? AccessPath = null);
 public sealed record RemoteFileEntry(string Name, string RelativePath, string Kind, long Bytes, long ModifiedUnixMs,
     int Uid, int Gid, string Mode, string Version, string? LinkTarget = null, string? Sha256 = null, string? EntryRef = null);
 public sealed record FileBrowsePage(string RootRef, string RelativePath, RemoteFileEntry Directory,
@@ -20,6 +20,16 @@ public sealed record FilePageCursor(FileRootIdentity Root, string RelativePath, 
 
 public static class FileReferences
 {
+    public static string VolumeAccessPath(AndroidStorageVolume volume, int user)
+    {
+        if (volume.AccessPath is null) return volume.Path;
+        if (user < 0 || !volume.Path.StartsWith("/storage/", StringComparison.Ordinal))
+            throw new DebugException("path_escape", "卷访问视图缺少有效用户或逻辑卷。", "resolving_file");
+        var relative = volume.Path["/storage/".Length..]; Relative(relative);
+        if (relative.Length == 0 || volume.AccessPath != "/mnt/user/" + user + "/" + relative)
+            throw new DebugException("path_escape", "卷访问视图不属于所选用户和卷。", "resolving_file");
+        return volume.AccessPath;
+    }
     public static readonly string[] Kinds = ["private", "device-private", "external", "obb", "media", "shared"];
     private static string Encode<T>(string prefix, T value) => prefix + Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(value, DebugJson.Options))
         .TrimEnd('=').Replace('+', '-').Replace('/', '_');

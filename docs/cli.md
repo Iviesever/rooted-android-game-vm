@@ -96,6 +96,8 @@ $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.ex
 
 `files.roots`分别给出private、device-private、external、obb、media和shared的实际位置、存在/访问/写入/锁定状态及原因，不把未生成的目录当作空目录。根引用由当前应用安装身份、Android用户和实际可见存储卷重新解析，不接受任意绝对路径作为根。
 
+Android不同用户可能拥有不同的存储视图。若调用者的逻辑路径不能访问目标用户卷，后台只使用经当前挂载表核实的该用户FUSE视图；不会改挂载或转到原始下层存储。`displayPath`保留应用看到的逻辑路径，存在不同维护访问路径时另返回只读`accessPath`。操作仍传rootRef/entryRef，引用中的用户和逻辑卷身份不变；accessPath不能作为调用者自选的根参数。
+
 未生成的external/obb/media根在用户已解锁且所属卷可写时返回`creatable:true`；存在/可访问字段仍如实为false。CLI可用该rootRef和`createParents:true`规划初始化，计划返回`initializesApplicationRoot:true`。缺失的应用根及父目录进入同一逐项账本，规划阶段不写目标；执行时重新验证应用安装身份、用户与卷，只允许所选应用路径及声明的准备目录。private/device-private由Android准备，文件服务不自行创建这些根。
 
 `files.browse`返回`directory/entries/total/nextCursor/snapshot/observedAt`，每个条目包含名称、相对路径、类型、大小、时间、UID/GID、mode、版本及entryRef。pageSize为1–500，单目录上限100000项；超限明确失败，不静默截断。使用nextCursor时保持同一目录，变更返回stale_cursor；entryRef对应文件被替换/修改，或虚拟机重启后使用旧根，返回stale_reference。rootRef加relativePath可请求重新观察当前路径。链接只返回元数据，不跟随链接浏览或计算散列。

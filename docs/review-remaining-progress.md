@@ -2,6 +2,18 @@
 
 目标：[review-remaining-goal.md](review-remaining-goal.md)。开始于683c443；用户的目标变更另由a51dabd提交。本文保留历史批次证据；**它们不代表2026-09-20新增通用化与文件管理要求已经通过**。
 
+## 2026-09-20 A6/B5：多用户存储视图与完整后台流程
+
+多用户实测先完成user10私有文件往返及App自身读取，外部规划却在lstat失败。现场证明维护进程的/storage/emulated属于user0的FUSE视图；Android已挂载的/mnt/user/10/emulated/10可正常访问目标用户卷。修复在逻辑卷不可访问时，核实当前挂载表的同用户同卷FUSE挂载、目录访问和无链接条件后返回accessPath；主机再次约束其用户/卷对应关系。displayPath仍为应用使用的逻辑路径，rootRef.Volume与初始化计划锚点仍保存逻辑卷身份，实际I/O使用重新解析的访问路径。没有改挂载、权限策略、内存或系统镜像，也不转到/data/media下层绕过FUSE。
+
+multiuser-mapping-acceptance.json（run ff2934a2，最终尝试13646fe5）证明无特定游戏的QA用户10在private/external/shared三作用域上传不同内容到与user0相同的相对路径，App用户10的FileProvider准确读出预期值，下载字节一致，user0三个原SHA全部保持。private/external实际UID1010211，shared为该用户的MediaProvider UID1010200。私有部分跨修复冷启后只复核保留内容和旧引用拒绝，没有重放已完成上传。QA四包清单保持，元数据夹具不计作独立功能应用。
+
+multiuser-boundaries-acceptance.json验证user10引用不能换成user0逻辑卷或直接指定维护访问路径。正常停止QA用户后，交互用户仍0，凭据保护目录返回data_locked；设备保护目录仍可上传及下载，UID1010211/mode600/SHA一致。设备保护项是后台文件验收，未声明停止中的App已读取。测试最初误要求stop-user打印Success，实际命令exit0但stdout为空；独立活动用户状态及users.list确认已停止后继续，没有重复停止。
+
+保留原失败：首次多用户尝试只读清理超时并触发宿主保护正常停机；后来资源恢复后才继续。视图修复前外部计划c2c98f2925164e6bb37be545b1b46c9a以permission_denied失败且无外部写入，相关挂载/访问探针及逐项传输计划留在本机。主用户正式应用及原测试文件未因跨用户传输改变。
+
+7项用户存储视图边界回归，共397非实机通过；完整构建零警告错误，DEX源码重建一致（de25c1801183a25b7a2e643bf465468d41be1d69814d2d455e99dc3dfd940219）。A/B列明的后台应用与用户文件流程已有直接证据；剩余D组合正在按本机remaining-backend-matrix.md补验，C真实GUI与E最终安装发布仍未完成。精确提交、CI及当前运行状态见本机continuation.md顶部。
+
 ## 2026-09-20 B4/A：应用根准备、权限与第二应用证据
 
 files.roots为未生成、已解锁且所属卷可写的external/obb/media根提供creatable；createParents把缺失应用根与父目录纳入既有只读计划和逐项账本。原应用/用户/安装身份始终保留，内部卷锚点仅允许该应用路径及计划声明的准备祖先；执行/续作重新解析。private/device-private不自行mkdir，锁定和错误用户请求仍拒绝。CLI帮助与使用文档同步；GUI缺失根入口仍待C批，未冒充界面验收。
