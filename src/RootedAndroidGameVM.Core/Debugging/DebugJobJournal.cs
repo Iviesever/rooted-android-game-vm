@@ -39,7 +39,7 @@ public static class DebugJobJournalStore
     }
 
     public static DebugReply Interrupted(DebugJobJournal record, string journalPath) => new(false,
-        Error: new("interrupted", "原协调进程已结束，无法确认任务终态；未自动重放。检查阶段证据，导入可使用原importId续作，输入需重新观察后释放/重试。", record.Stage, journalPath),
+        Error: new("interrupted", "原协调进程已结束，无法确认任务终态；未自动重放。文件传输需检查原计划和账本后明确续作；输入需重新观察后释放/重试。", record.Stage, journalPath),
         RequestId: record.RequestId, JobId: record.JobId, Stage: record.Stage, Terminal: "interrupted",
         Session: record.Session, Pid: record.Pid, ArtifactDirectory: record.ArtifactDirectory);
 }

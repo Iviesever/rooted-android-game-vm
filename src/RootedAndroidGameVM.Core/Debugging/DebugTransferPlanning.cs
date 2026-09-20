@@ -8,7 +8,7 @@ namespace RootedAndroidGameVM.Core.Debugging;
 public sealed partial class AndroidDebugService
 {
     private static TransferFingerprint Fingerprint(RemoteFileEntry entry) =>
-        new(entry.Kind, entry.Bytes, entry.Version, entry.Sha256, entry.Uid, entry.Gid, entry.Mode, entry.LinkTarget);
+        new(entry.Kind, entry.Bytes, entry.Version, entry.Sha256, entry.Uid, entry.Gid, entry.Mode, entry.LinkTarget, entry.ModifiedUnixMs);
 
     private async Task<List<RemoteFileEntry>> ScanRemoteSelectionAsync(ResolvedFileRoot root, string relative, string manifestPath, CancellationToken ct)
     {
@@ -265,9 +265,15 @@ public sealed partial class AndroidDebugService
         if (plan.InstanceId != ReadInstanceId()) throw new DebugException("stale_reference", "计划属于其他实例。", "reading_transfer_plan");
         var offset = request.Number("offset", 0); var size = request.Number("pageSize", 100);
         if (offset < 0 || offset > plan.Entries.Length || size is < 1 or > 500) throw new ArgumentException("计划页范围无效。");
+        var executionStore = new TransferExecutionStore(plan.ArtifactDirectory);
+        var header = await executionStore.ReadHeaderAsync(ct);
+        if (header is not null) header = TransferExecutionLiveness.Observe(header);
+        var states = executionStore.ReadEntries();
         return new
         {
-            summary = TransferPlanSummary(plan),
+            summary = TransferPlanSummary(header is null ? plan : plan with { Status = header.Status, TransferVerified = header.Status == "succeeded" }),
+            execution = header,
+            executionEntries = states.Values.Where(item => item.Index >= offset && item.Index < offset + size).OrderBy(item => item.Index).ToArray(),
             entries = plan.Entries.Skip(offset).Take(size).ToArray(),
             offset,
             nextOffset = offset + size < plan.Entries.Length ? offset + size : (int?)null

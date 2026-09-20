@@ -62,6 +62,20 @@ B1远端CI补记：[35489301863](https://github.com/Iviesever/rooted-android-gam
 
 执行、幂等任务、覆盖备份、块传输、真实归档输出、取消/续作和GUI接入尚未实现/验收；B整项继续未完成。测试后VM和源码broker正常停止，未覆盖安装或发布。
 
+B2a远端CI补记：[35491085130](https://github.com/Iviesever/rooted-android-game-vm/actions/runs/35491085130)已success。
+
+### B2b：基础执行、幂等与暂存恢复（2026-09-20，部分验收）
+
+新增files.transfer.start/resume：明确策略、应用停止核验、源/目标重验、8MiB块、前缀及最终SHA、覆盖备份、逐项追加账本与真实tar输出。同命令/计划/幂等键派生固定jobId，参数改变拒绝，broker重启不会自动重放；明确resume才核对旧状态。执行进程身份含PID/启动时间，查询可将失去归属的运行记录标为interrupted。已完成项续作重验，暂存与备份位置保留。
+
+- `transfer-execute-live-acceptance.json`：17MiB二进制文件及中文小文件、嵌套目录、空目录的私有双向传输通过；源与下载SHA一致，目标UID10213/mode600。覆盖后原值在备份中读出。相同幂等键返回同job且目标版本未变；同键换参数被拒。实际tar经独立Python读取，Windows不兼容名称、中文及链接完整保留。
+- `execute-binary-transport.json`定位并修复二进制通道：65536字节样本经shell变为65792字节，经exec-out保持65536且SHA一致。原下载因output_limit拒绝提交，失败记录保留；`execute-resume-binary-fix-acceptance.json`证明更换会话后明确续作，17MiB与空目录最终核验通过。另一次冷启动后元数据工具退出255也保留，后续明确续作成功，未把失败请求重标成功。
+- `transfer-execute-full.trx`：323项非实机通过，包括幂等意图/任务身份、截断账本恢复、执行归属失效、并发修改目标拒绝和本地备份提交恢复。实际App读取、多作用域和完整故障矩阵仍需补验，不能由UID/mode或测试数量代替。
+
+600MiB实验未完成：显式取消后按暂存前缀续传，账本到629145600字节并进入committing；随后既有运行期保护在余量1233MiB时保存停机，任务cancelled。计划802c31de47634eb893b100a254a3e883及其账本/暂存保留，**不能标记最终提交或完整大文件往返通过**。前一次保护805MiB在计划阶段取消，见execute-memory-protection.json；本次见large-memory-protection.json。构建后台正常关闭、之后构建不复用服务，未改产品内存配置或保护阈值。用户释放内存后成功做过本批基本实测，资源再次波动时保留待验状态，没有关闭用户的其他程序。
+
+尚待：600MiB提交/下载及恢复完整核验，其他冲突策略/并发/回退/工具清理、两个应用及多作用域实读、GUI/多用户/旧命令统一、完整发布与覆盖安装。生产程序未更新，B–E仍未完成。
+
 本机完整台账：`tasks/20260916-211326-review-remaining/`，含四文档、脚本及evidence（原始实机证据仅保存在本机，不进入公开发布资产）。内存优化仍结项；唯一后续例外是用户明确要求启动物理余量门槛改成2.5GiB。d534f9d实现2560MiB下限；前后profile逐字段核对仅startAvailableMb改变，运行期保护未改。
 
 ## 第一批：导入、作用域权限和故障证据

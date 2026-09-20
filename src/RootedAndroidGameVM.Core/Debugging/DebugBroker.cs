@@ -159,10 +159,11 @@ public sealed partial class DebugBroker : IDisposable
         DebugJob created;
         lock (_jobs)
         {
+            var id = TransferDispatchIdentity.Applies(request.Command) ? TransferDispatchIdentity.JobId(request) : Guid.NewGuid().ToString("N");
+            if (TransferDispatchIdentity.Applies(request.Command) && ReplayTransfer(request, id) is { } replay) return replay;
             foreach (var old in _jobs.Values.Where(j => j.Completed).OrderBy(j => j.Created).Take(Math.Max(0, _jobs.Count - 127)))
                 _jobs.TryRemove(old.Id, out _);
             if (_jobs.Values.Count(j => !j.Completed) >= 16) return DebugReply.Failure(new DebugException("busy", "并发任务过多。"));
-            var id = Guid.NewGuid().ToString("N");
             created = new DebugJob(request.Command, request.RequestId!, id, DateTimeOffset.UtcNow,
                 Path.Combine(_service.Paths.ProductRoot, "debug-runs", "requests", id), JobJournalDirectory);
             created.Operation.Changed = () => created.Persist();
@@ -262,24 +263,58 @@ public sealed partial class DebugBroker : IDisposable
     }
     public void Dispose() { foreach (var job in _jobs.Values) job.Cancel.Cancel(); _service.Dispose(); _storageLease?.Dispose(); _mutations.Dispose(); }
     private string JobJournalDirectory => Path.Combine(_service.Paths.ProductRoot, "debug-runs", "jobs");
+    private DebugReply? ReplayTransfer(DebugRequest request, string id)
+    {
+        var directory = Path.Combine(_service.Paths.ProductRoot, "debug-runs", "requests", id);
+        var path = Path.Combine(directory, "request.json");
+        StoragePathPolicy.RejectReparsePoints(path);
+        if (!File.Exists(path)) return null;
+        if (new FileInfo(path).Length > 1024 * 1024) throw new InvalidDataException("幂等请求记录过大。");
+        var original = JsonSerializer.Deserialize<DebugRequest>(File.ReadAllText(path), DebugJson.Options)!;
+        if (TransferDispatchIdentity.Intent(original) != TransferDispatchIdentity.Intent(request))
+            throw new DebugException("idempotency_conflict", "同一幂等键已经用于不同执行参数。", "dispatching_transfer");
+        if (!_jobs.TryGetValue(id, out var job))
+        {
+            var journalPath = Path.Combine(JobJournalDirectory, id + ".json");
+            StoragePathPolicy.RejectReparsePoints(journalPath);
+            if (File.Exists(journalPath))
+            {
+                if (new FileInfo(journalPath).Length > 1024 * 1024) throw new InvalidDataException("任务记录过大。");
+                var record = JsonSerializer.Deserialize<DebugJobJournal>(File.ReadAllText(journalPath), DebugJson.Options)!;
+                if (record.JobId != id) throw new InvalidDataException("幂等任务身份不符。");
+                job = RestoreJob(record);
+            }
+            else
+            {
+                job = new(original.Command, original.RequestId ?? id, id, new DateTimeOffset(File.GetCreationTimeUtc(path)), directory, JobJournalDirectory);
+                job.Completed = true; job.Failure = new(false, Error: new("interrupted", "原执行分派中断，未自动重放；请检查计划后明确续作。"), Terminal: "interrupted");
+                job.Completion.TrySetResult(); _jobs[id] = job;
+            }
+        }
+        return new(true, new { jobId = job.Id, requestId = job.Operation.RequestId, status = job.Status, replayed = true },
+            RequestId: request.RequestId, JobId: job.Id, Stage: job.Operation.Stage, ArtifactDirectory: job.Operation.DirectoryPath);
+    }
     private void RestoreJobs()
     {
         foreach (var record in DebugJobJournalStore.Load(JobJournalDirectory))
-        {
-            var job = new DebugJob(record.Command, record.RequestId, record.JobId, record.Created, record.ArtifactDirectory, JobJournalDirectory);
-            job.Operation.Stage = record.Stage; job.Operation.Session = record.Session; job.Operation.Pid = record.Pid;
-            job.Progress = record.Progress; job.Completed = true;
-            job.OwnerPid = record.BrokerPid; job.OwnerStartedAtUtcTicks = record.BrokerStartedAtUtcTicks;
-            if (record.Completed && record.ResultPath is not null && record.ResultBytes is not null && record.Ok is not null)
-                job.Stored = new(record.ResultPath, record.ResultBytes.Value, record.Ok.Value, record.Error,
-                    job.Operation.Complete(new(record.Ok.Value, Error: record.Error)));
-            else job.Failure = record.Completed && record.Error is not null
-                ? job.Operation.Complete(new(false, Error: record.Error))
-                : DebugJobJournalStore.Interrupted(record, Path.Combine(JobJournalDirectory, record.JobId + ".json"));
-            _jobs[job.Id] = job;
-            job.Completion.TrySetResult();
-            if (!record.Completed) job.Persist();
-        }
+            RestoreJob(record);
+    }
+    private DebugJob RestoreJob(DebugJobJournal record)
+    {
+        var job = new DebugJob(record.Command, record.RequestId, record.JobId, record.Created, record.ArtifactDirectory, JobJournalDirectory);
+        job.Operation.Stage = record.Stage; job.Operation.Session = record.Session; job.Operation.Pid = record.Pid;
+        job.Progress = record.Progress; job.Completed = true;
+        job.OwnerPid = record.BrokerPid; job.OwnerStartedAtUtcTicks = record.BrokerStartedAtUtcTicks;
+        if (record.Completed && record.ResultPath is not null && record.ResultBytes is not null && record.Ok is not null)
+            job.Stored = new(record.ResultPath, record.ResultBytes.Value, record.Ok.Value, record.Error,
+                job.Operation.Complete(new(record.Ok.Value, Error: record.Error)));
+        else job.Failure = record.Completed && record.Error is not null
+            ? job.Operation.Complete(new(false, Error: record.Error))
+            : DebugJobJournalStore.Interrupted(record, Path.Combine(JobJournalDirectory, record.JobId + ".json"));
+        _jobs[job.Id] = job;
+        job.Completion.TrySetResult();
+        if (!record.Completed) job.Persist();
+        return job;
     }
     private sealed class DebugJob(string command, string requestId, string id, DateTimeOffset created, string directory, string journalDirectory)
     {

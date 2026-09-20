@@ -94,6 +94,9 @@ public static class AndroidCommandFactory
     public static ProcessSpec RootShell(AndroidSdkLayout layout, AndroidVmOptions options, string script) =>
         Adb(layout, options, "shell", RootPath + "exec su -c " + QuoteShell(RootPath + script));
 
+    public static ProcessSpec RootExecOut(AndroidSdkLayout layout, AndroidVmOptions options, string script) =>
+        Adb(layout, options, "exec-out", RootPath + "exec su -c " + QuoteShell(RootPath + script));
+
     public static ProcessSpec FindRootShell(AndroidSdkLayout layout, AndroidVmOptions options) =>
         Adb(layout, options, "shell", RootPath + "command -v su");
 

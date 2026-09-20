@@ -26,7 +26,7 @@ import org.json.JSONObject;
 
 final class DeviceFiles {
     private static final int MAX_ENTRIES = 100000;
-    private static final class Failure extends Exception {
+    static final class Failure extends Exception {
         final String code;
         Failure(String code, String message) { super(message); this.code = code; }
     }
@@ -37,7 +37,8 @@ final class DeviceFiles {
             String op = request.getString("op");
             Object result;
             if (op.equals("walk")) { walk(request); System.exit(0); return; }
-            if (op.equals("batch-stat")) result = batchStat(request);
+            if (op.startsWith("transfer-")) result = FileTransfer.execute(request);
+            else if (op.equals("batch-stat")) result = batchStat(request);
             else if (op.equals("space")) {
                 File root = contained(request.getString("root"), "", false);
                 android.system.StructStatVfs space = Os.statvfs(root.getPath());
@@ -123,7 +124,7 @@ final class DeviceFiles {
             return result.put("exists", true).put("accessible", false).put("reason", "permission_denied");
         }
     }
-    private static File contained(String root, String relative, boolean allowFinalLink) throws Exception {
+    static File contained(String root, String relative, boolean allowFinalLink) throws Exception {
         if (!root.startsWith("/") || relative.startsWith("/") || relative.indexOf('\0') >= 0)
             throw new Failure("path_escape", "Root-relative path required");
         File base = new File(root);
@@ -143,17 +144,17 @@ final class DeviceFiles {
         if (!parent.equals(canonicalRoot) && !parent.getPath().startsWith(canonicalRoot.getPath() + "/")) throw new Failure("path_escape", "Path escaped selected root");
         return current;
     }
-    private static String hex(byte[] value) {
+    static String hex(byte[] value) {
         char[] alphabet = "0123456789abcdef".toCharArray(), result = new char[value.length * 2];
         for (int i = 0; i < value.length; i++) { result[2 * i] = alphabet[(value[i] & 255) >>> 4]; result[2 * i + 1] = alphabet[value[i] & 15]; }
         return new String(result);
     }
-    private static String version(StructStat stat) throws Exception {
+    static String version(StructStat stat) throws Exception {
         String identity = stat.st_dev + ":" + stat.st_ino + ":" + stat.st_mode + ":" + stat.st_uid + ":" + stat.st_gid + ":" + stat.st_size + ":" +
             stat.st_mtim.tv_sec + ":" + stat.st_mtim.tv_nsec + ":" + stat.st_ctim.tv_sec + ":" + stat.st_ctim.tv_nsec;
         return hex(MessageDigest.getInstance("SHA-256").digest(identity.getBytes(StandardCharsets.UTF_8)));
     }
-    private static JSONObject entry(File file, String relative, boolean hash, String allowedRoot) throws Exception {
+    static JSONObject entry(File file, String relative, boolean hash, String allowedRoot) throws Exception {
         StructStat stat = Os.lstat(file.getPath());
         String kind = OsConstants.S_ISDIR(stat.st_mode) ? "directory" : OsConstants.S_ISREG(stat.st_mode) ? "file" : OsConstants.S_ISLNK(stat.st_mode) ? "symlink" : "special";
         String original = version(stat);

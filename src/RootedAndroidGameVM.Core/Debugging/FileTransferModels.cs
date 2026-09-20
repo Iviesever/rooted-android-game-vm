@@ -9,7 +9,7 @@ namespace RootedAndroidGameVM.Core.Debugging;
 public sealed record TransferSource(string? EntryRef = null, string? RootRef = null, string RelativePath = "", string? LocalPath = null);
 public sealed record TransferDestination(string? LocalDirectory = null, string? EntryRef = null, string? RootRef = null, string RelativePath = "");
 public sealed record TransferSelection(string Id, string SourcePath, FileRootIdentity? RemoteRoot, string SourceKind, string TargetPrefix, string? Version);
-public sealed record TransferFingerprint(string Kind, long Bytes, string Version, string? Sha256, int? Uid = null, int? Gid = null, string? Mode = null, string? LinkTarget = null);
+public sealed record TransferFingerprint(string Kind, long Bytes, string Version, string? Sha256, int? Uid = null, int? Gid = null, string? Mode = null, string? LinkTarget = null, long? ModifiedUnixMs = null);
 public sealed record TransferPlanEntry(int Index, string SelectionId, string RelativePath, string TargetRelativePath,
     TransferFingerprint Source, TransferFingerprint? Target, string Conflict, string? Issue = null);
 public sealed record TransferApplication(string Package, int UserId, string InstallationRevision, bool RunningObserved);
@@ -69,7 +69,7 @@ public static class FileTransferPolicy
         StoragePathPolicy.RejectReparsePoints(path);
         if (after.Length != bytes || after.LastWriteTimeUtc.Ticks != modified || after.CreationTimeUtc.Ticks != created)
             throw new DebugException("source_changed", "文件在扫描时发生变化。", "planning_transfer", path);
-        return new("file", bytes, created + ":" + modified + ":" + bytes, hash);
+        return new("file", bytes, created + ":" + modified + ":" + bytes, hash, ModifiedUnixMs: new DateTimeOffset(new DateTime(modified, DateTimeKind.Utc)).ToUnixTimeMilliseconds());
     }
 }
 
@@ -95,7 +95,7 @@ public sealed class TransferPlanStore(string productRoot)
         StoragePathPolicy.RejectReparsePoints(path);
         if (!File.Exists(path)) throw new DebugException("plan_not_found", "传输计划不存在。", "reading_transfer_plan");
         if (new FileInfo(path).Length > 128L * 1024 * 1024) throw new InvalidDataException("传输计划超过容量限制。");
-        await using var stream = File.OpenRead(path);
+        await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, true);
         var plan = await JsonSerializer.DeserializeAsync<TransferPlan>(stream, AtomicJsonFile.Options, ct) ?? throw new InvalidDataException("传输计划损坏。");
         if (plan.PlanId != id || plan.Entries.Length > FileTransferPolicy.MaxEntries || plan.Direction is not ("upload" or "download")) throw new InvalidDataException("传输计划身份或结构不匹配。");
         return plan with { ArtifactDirectory = DirectoryFor(id) };

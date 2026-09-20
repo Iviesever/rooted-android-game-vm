@@ -1,6 +1,6 @@
 # 通用安卓工作台与双向文件管理设计
 
-日期：2026-09-20。状态：**A1、A2、B1及B2a持久传输计划已实现并有对应证据；执行/恢复、完整GUI和最终交付仍待完成**。依据：用户本轮纠偏及 [目标范围](review-remaining-goal.md)，实际进展见 [执行证据](review-remaining-progress.md)。
+日期：2026-09-20。状态：**A1、A2、B1、B2a及B2b基础执行已实现；执行器仅部分实测，完整GUI、故障矩阵和最终交付仍待完成**。依据：用户本轮纠偏及 [目标范围](review-remaining-goal.md)，实际进展见 [执行证据](review-remaining-progress.md)。
 
 ## 1. 产品边界与本轮决策
 
@@ -65,7 +65,7 @@ flowchart LR
   T --> J[统一任务进度 / 结果 / 恢复记录]
 ```
 
-以下是接口设计；当前已实现`apps.list/apps.resolve/users.list/files.roots/files.browse/files.stat/files.transfer.plan/files.transfer.inspect`，执行与续作仍待实现。继续使用已有请求外壳及任务协议，命令通过 `capabilities` / `schema` 自描述。
+以下接口及files.transfer.resume已实现，验收范围以执行证据为准；GUI/旧接口仍需完整接入。继续使用已有请求外壳及任务协议，命令通过 `capabilities` / `schema` 自描述。
 
 | 命令 | 输入与结果 |
 | --- | --- |

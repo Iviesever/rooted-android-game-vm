@@ -63,6 +63,8 @@ $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.ex
 | `files.stat` | `{"entryRef":"条目引用","hash":true}` | 验证条目当前身份，可选计算普通文件SHA-256 |
 | `files.transfer.plan` | `{"direction":"download","sources":[{"entryRef":"条目引用"}],"destination":{"localDirectory":"D:\\Exports"}}` | 只读扫描并保存多选传输计划 |
 | `files.transfer.inspect` | `{"planId":"计划编号","offset":0,"pageSize":100}` | 分页查询持久计划，安卓停止时也可读取 |
+| `files.transfer.start` | `{"planId":"计划编号","idempotencyKey":"本次执行唯一键","conflictPolicy":"overwrite","stopApplications":true}` | 核对后执行，保留备份与逐项账本 |
+| `files.transfer.resume` | `{"planId":"计划编号","idempotencyKey":"本次续作唯一键"}` | 明确恢复旧计划，校验暂存前缀与已完成项 |
 | `apk.inspect` | `{"path":"D:\\app.apk"}` | 检查包名、版本、ABI |
 | `install` | `{"path":"D:\\app.apk"}` | 保留数据安装/升级 |
 | `launch` / `force-stop` | `{"package":"test.app"}` | 启动/停止指定应用 |
@@ -95,9 +97,13 @@ $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.ex
 
 `files.transfer.plan`支持多选文件/文件夹，下载来源可使用entryRef或rootRef+relativePath；上传来源使用绝对localPath，上传目标使用目录entryRef或rootRef+relativePath。默认保留所选顶层文件夹名称与空目录，contentsOnly:true仅复制其内容。计划保存到debug-runs/transfers/<planId>/plan.json；包含源SHA/版本/权限、目标观察、冲突、空间估算和需停止的应用。相同文件计为same，目录合并为merge，同名差异与类型冲突分别为different/type_conflict；源间目标重名也会阻止执行，不依赖选择顺序覆盖。
 
-Windows无法原样落地的名称会在directory计划中列出问题。下载format:tar的计划保留这些名称和链接元数据，不跟随链接读取；实际归档写出仍待执行器实现。私有写入要求consistency:stopped-app；私有导出默认该模式，可显式选择live并保持一致性未验证。生成计划不停止应用、不创建目标目录、不复制任何目标内容；status:planned和transferVerified:false必须与传输成功区分。inspect的pageSize为1–500，nextOffset为空表示结束。
+Windows无法原样落地的名称会在directory计划中列出问题。下载format:tar保留这些名称和链接元数据，不跟随链接读取。私有写入要求consistency:stopped-app；私有导出默认该模式，可显式选择live并保持一致性未验证。生成计划不停止应用、不创建目标目录、不复制任何目标内容；status:planned和transferVerified:false必须与传输成功区分。inspect的pageSize为1–500，nextOffset为空表示结束。
 
-当前尚未提供files.transfer.start或resume；执行、GUI对新根/多用户的完整接入及旧文件命令适配仍待后续批次，不能据此认为双向文件管理已全部交付。
+执行策略：默认fail拒绝未解决冲突，skip跳过冲突，keep-both保留双方并固定新名字，overwrite在核对目标后保留原文件/目录备份再提交。目录默认合并，不删除额外文件。stopApplications:true只停止计划中列出的应用；不自动重新启动应用。文件使用8MiB块和最终SHA校验，暂存/备份位置记录在execution.ndjson中；中断不自动重放。跨VM会话只能明确resume后重新核验绑定，不能直接start旧会话计划。
+
+相同命令、planId和idempotencyKey返回原jobId；参数变化返回idempotency_conflict，不再次写入。resume沿用原执行策略并使用新幂等键。inspect同时返回execution与条目账本；原执行进程消失时显示interrupted。成功结果保留updatedAt，表示原完成记录，不声称重复请求时重新读取了所有目标。applicationReadVerified:false仍需目标App实际读取验证。
+
+当前已验证私有17MiB双向复制、备份、实际tar特殊名称/链接及一次跨会话续作。600MiB传输曾被运行期内存保护中断，提交/完整往返仍未验收；全部策略/故障、多作用域、GUI和旧命令适配仍待后续批次，不能据此认为完整文件管理已交付。
 
 `session.summary`返回runtime与summary，`summary.text`就是GUI展开“会话摘要”显示的同一份文字。它列出实例、App/PID、近期任务阶段、最近传输核验、触点释放依据、产物目录、可恢复点与下一步。启动/停机/恢复期间仍可返回任务进度，安卓状态标为OperationInProgress，不等独占操作结束才显示。ADB不可用但产品进程仍在时为Unreachable，不能误当已停机。
 
