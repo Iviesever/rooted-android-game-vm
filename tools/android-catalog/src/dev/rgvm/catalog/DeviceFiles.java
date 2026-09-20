@@ -18,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
 import java.util.Collections;
 import java.util.List;
 import org.json.JSONArray;
@@ -35,7 +36,14 @@ final class DeviceFiles {
             JSONObject request = new JSONObject(new String(Base64.decode(encoded, Base64.DEFAULT), StandardCharsets.UTF_8));
             String op = request.getString("op");
             Object result;
-            if (op.equals("users")) result = users();
+            if (op.equals("walk")) { walk(request); System.exit(0); return; }
+            if (op.equals("batch-stat")) result = batchStat(request);
+            else if (op.equals("space")) {
+                File root = contained(request.getString("root"), "", false);
+                android.system.StructStatVfs space = Os.statvfs(root.getPath());
+                result = new JSONObject().put("availableBytes", space.f_bavail * space.f_frsize);
+            }
+            else if (op.equals("users")) result = users();
             else if (op.equals("storage")) result = storage(request.getInt("userId"));
             else if (op.equals("probe")) {
                 JSONArray rows = new JSONArray();
@@ -168,6 +176,11 @@ final class DeviceFiles {
                     throw new Failure("source_changed", "File changed while hashing");
                 row.put("sha256", hex(digest.digest()));
             }
+            finally {
+                // Android streams constructed from an existing descriptor need not own it.
+                try { Os.close(descriptor); }
+                catch (ErrnoException closed) { if (closed.errno != OsConstants.EBADF) throw closed; }
+            }
         }
         return row;
     }
@@ -204,5 +217,54 @@ final class DeviceFiles {
         if (request.has("snapshot") && !snapshot.equals(request.getString("snapshot"))) throw new Failure("stale_cursor", "Directory contents changed; restart enumeration");
         return new JSONObject().put("directory", self).put("entries", rows).put("snapshot", snapshot).put("total", names.size())
             .put("offset", offset).put("nextOffset", offset + rows.length() < names.size() ? offset + rows.length() : JSONObject.NULL);
+    }
+    private static Object batchStat(JSONObject request) throws Exception {
+        String root = request.getString("root");
+        JSONArray paths = request.getJSONArray("paths"), results = new JSONArray();
+        if (paths.length() > 500) throw new Failure("invalid_argument", "Too many paths");
+        for (int i = 0; i < paths.length(); i++) {
+            String relative = paths.getString(i);
+            try {
+                File path = contained(root, relative, true);
+                boolean hash = request.optBoolean("hash", false) && OsConstants.S_ISREG(Os.lstat(path.getPath()).st_mode);
+                results.put(new JSONObject().put("relativePath", relative).put("exists", true)
+                    .put("entry", entry(path, relative, hash, new File(root).getCanonicalPath())));
+            } catch (ErrnoException error) {
+                if (error.errno != OsConstants.ENOENT && error.errno != OsConstants.ENOTDIR) throw error;
+                results.put(new JSONObject().put("relativePath", relative).put("exists", false)
+                    .put("reason", error.errno == OsConstants.ENOTDIR ? "parent_not_directory" : "missing"));
+            }
+        }
+        return results;
+    }
+    private static void walk(JSONObject request) throws Exception {
+        String root = request.getString("root"), relative = request.optString("relativePath", "");
+        String canonicalRoot = new File(root).getCanonicalPath();
+        ArrayDeque<String> pending = new ArrayDeque<String>(); pending.push(relative);
+        List<String> directories = new ArrayList<String>(), versions = new ArrayList<String>();
+        int count = 0;
+        while (!pending.isEmpty()) {
+            if (++count > MAX_ENTRIES) throw new Failure("transfer_limit", "Selection exceeds 100000 entries");
+            String current = pending.pop();
+            File target = contained(root, current, true);
+            StructStat stat = Os.lstat(target.getPath());
+            JSONObject item = entry(target, current, OsConstants.S_ISREG(stat.st_mode), canonicalRoot);
+            System.out.println(new JSONObject().put("kind", "entry").put("entry", item).toString());
+            if (OsConstants.S_ISDIR(stat.st_mode)) {
+                directories.add(target.getPath()); versions.add(item.getString("version"));
+                List<String> children = new ArrayList<String>();
+                try (DirectoryStream<Path> stream = Files.newDirectoryStream(target.toPath())) {
+                    for (Path child : stream) {
+                        children.add(child.getFileName().toString());
+                        if (children.size() + pending.size() + count > MAX_ENTRIES) throw new Failure("transfer_limit", "Selection exceeds 100000 entries");
+                    }
+                }
+                Collections.sort(children, Collections.reverseOrder());
+                for (String child : children) pending.push(current.length() == 0 ? child : current + "/" + child);
+            }
+        }
+        for (int i = 0; i < directories.size(); i++)
+            if (!versions.get(i).equals(version(Os.lstat(directories.get(i))))) throw new Failure("source_changed", "Directory changed during selection scan");
+        System.out.println(new JSONObject().put("kind", "complete").put("entries", count).toString());
     }
 }

@@ -30,6 +30,8 @@ public static class DebugCommandCatalog
         new("files.roots", "应用私有/设备保护/外部/OBB/媒体及共享卷的真实根目录", "{\"appRef\":\"应用引用，可省略以查看共享存储\",\"userId\":0}"),
         new("files.browse", "批量读取结构化目录页；使用下一游标继续，目录变化须重读", "{\"rootRef\":\"根引用\",\"relativePath\":\"\",\"pageSize\":200}"),
         new("files.stat", "验证条目身份并读取元数据，可选计算文件SHA-256", "{\"entryRef\":\"文件引用\",\"hash\":true}"),
+        new("files.transfer.plan", "只读扫描多选源/目标并保存冲突与空间计划，不执行传输", "{\"direction\":\"download\",\"sources\":[{\"entryRef\":\"条目引用\"}],\"destination\":{\"localDirectory\":\"D:\\\\Exports\"}}"),
+        new("files.transfer.inspect", "分页读取持久传输计划；计划不代表已复制", "{\"planId\":\"计划编号\",\"offset\":0,\"pageSize\":100}"),
         new("apk.inspect", "APK 版本、包名与 ABI", "{\"path\":\"C:\\\\input\\\\app.apk\"}"),
         new("install", "保留数据安装并启动，不降级", "{\"path\":\"C:\\\\input\\\\app.apk\"}"),
         new("launch", "启动并观察进程；waitForActivity可等待前台Activity，均不代表页面可操作", "{\"package\":\"test.app\",\"waitForActivity\":true}"),

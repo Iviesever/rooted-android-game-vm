@@ -471,6 +471,8 @@ public sealed partial class AndroidDebugService : IDisposable
             case "files.roots": return await FileRootsAsync(request, ct);
             case "files.browse": return await BrowseDirectoryAsync(request, ct);
             case "files.stat": return await ObserveFileAsync(request, ct);
+            case "files.transfer.plan": return await PlanFileTransferAsync(request, ct);
+            case "files.transfer.inspect": return await ReadTransferPlanAsync(request, ct);
             case "launch": return await LaunchAsync(request, ct);
             case "app.observe": return await ObserveApplicationAsync(package, NewRecord("app-observation"), ct);
             case "force-stop": AndroidPackageName.Parse(package); Instance.Require(); await _controller.ForceStopPackageAsync(package, ct); return new { package, stopped = true };

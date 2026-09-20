@@ -1,6 +1,6 @@
 # 通用安卓工作台与双向文件管理设计
 
-日期：2026-09-20。状态：**A1核心去专属化、A2应用目录、B1只读文件目录已实现并有对应证据；完整 A–E 尚未验收**。依据：用户本轮纠偏及 [目标范围](review-remaining-goal.md)，实际进展见 [执行证据](review-remaining-progress.md)。
+日期：2026-09-20。状态：**A1、A2、B1及B2a持久传输计划已实现并有对应证据；执行/恢复、完整GUI和最终交付仍待完成**。依据：用户本轮纠偏及 [目标范围](review-remaining-goal.md)，实际进展见 [执行证据](review-remaining-progress.md)。
 
 ## 1. 产品边界与本轮决策
 
@@ -65,7 +65,7 @@ flowchart LR
   T --> J[统一任务进度 / 结果 / 恢复记录]
 ```
 
-以下是接口设计；当前已实现`apps.list/apps.resolve/users.list/files.roots/files.browse/files.stat`，传输计划与执行仍待实现。继续使用已有请求外壳及任务协议，命令通过 `capabilities` / `schema` 自描述。
+以下是接口设计；当前已实现`apps.list/apps.resolve/users.list/files.roots/files.browse/files.stat/files.transfer.plan/files.transfer.inspect`，执行与续作仍待实现。继续使用已有请求外壳及任务协议，命令通过 `capabilities` / `schema` 自描述。
 
 | 命令 | 输入与结果 |
 | --- | --- |
@@ -74,6 +74,7 @@ flowchart LR
 | `files.browse` | `rootRef + relativePath` 或目录 `entryRef`、游标；返回结构化条目、类型/大小/修改时间/权限、`entryRef` 和下一页游标 |
 | `files.stat` | `entryRef`；返回当前身份/元数据，按需计算哈希，不让每次列表都散列全部文件 |
 | `files.transfer.plan` | 下载的条目集合/根，或上传的电脑路径集合及目标目录；返回计划 ID、冲突、空间需求、停应用要求和逐项决策 |
+| `files.transfer.inspect` | 按planId查询持久计划及条目页；明确区分计划与已执行状态 |
 | `files.transfer.start` | `planId`、显式冲突策略、是否停止目标应用、幂等键；返回现有 `jobId`，使用现有任务查询和取消机制 |
 
 `appRef` 绑定持久实例 ID、Android 用户和应用身份；卸载重装后须重新解析安装身份。`rootRef`、`entryRef` 和传输计划还绑定观察到的 VM 会话及路径版本，不能拿旧引用操作新实例。引用是结构化定位方式，不是绕过权限检查的凭证。

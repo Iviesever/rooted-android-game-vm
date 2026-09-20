@@ -8,6 +8,8 @@ The host verifies the embedded DEX digest, stages it in a root-owned directory o
 
 File metadata uses Android [Os](https://developer.android.com/reference/android/system/Os) and [StructStat](https://developer.android.com/reference/android/system/StructStat). Directory pages fingerprint all entries and reject changed cursors rather than silently dropping entries. Links are listed but never followed for browsing or hashing; opened file descriptors are checked against the resolved root. The maintenance volume inventory is filtered by user visibility and mounted state. The app-attributed `getVolumeList` route rejects UID 0 (`callingPackage does not match UID`), so it is not used. These reflection paths require real-device validation for a different Android image.
 
+Transfer planning uses a bounded `walk` NDJSON stream with a mandatory completion record, preserving empty directories and per-file hashes. It also supports batched target observations and free-space queries. Existing file descriptors are explicitly closed after hashing, including on Android where a stream constructed from a supplied descriptor may not own it. These operations are read-only; a saved plan is not an executed transfer.
+
 Build inputs: JDK 21, SDK platform 36 revision 2, build-tools 35.0.0. The embedded manifest records source-tree, DEX, Android API JAR and D8 JAR hashes. The source-tree hash covers sorted `relative/java/path=sha256\n` rows, with each source normalized to UTF-8/LF. Source or compiler changes require regenerating the artifact and reviewing the manifest diff:
 
 ```powershell

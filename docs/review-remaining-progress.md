@@ -48,6 +48,20 @@ A2远端结果补记：[CI 35487448022](https://github.com/Iviesever/rooted-andr
 
 B1仅证明上述只读后台。非主用户/额外实体卷、GUI点击、旧files.*适配、多选传输计划、大文件/目录双向传输、取消续作及最终安装仍待后续批次。VM及源码broker已正常停止，未覆盖生产程序或发布旧草稿。
 
+B1远端CI补记：[35489301863](https://github.com/Iviesever/rooted-android-game-vm/actions/runs/35489301863)已success，不能将此结果扩大为后续执行器验收。
+
+### B2a：持久多选传输计划（2026-09-20）
+
+新增files.transfer.plan/inspect：批量扫描来源并落盘NDJSON，保留空目录、每个普通文件SHA/版本、权限与链接元数据；计划汇总新增/相同/合并/同名差异/类型冲突、Windows不支持名称、空间估算和需停止的应用。重复/被父目录包含的选择去重；目标碰撞明确标出。计划写本机受限任务记录，不停止App、不创建用户目标目录、不执行复制。安卓停止或broker重启后仍可分页查阅，status=planned且transferVerified=false。
+
+- `transfer-plan-live-acceptance.json`：私有目录4109项（4107文件、所选根和另一个空目录）完整进入计划，普通文件全部有SHA，空目录保留；来源App PID前后相同，电脑目标目录未创建。上传计划识别same/different/type_conflict，安卓已有目标内容仍为old-value，新目标文件不存在。Windows不支持名称和链接在普通目录计划中标出；tar计划可保留这些条目，但**没有实际写出归档**。
+- `plan-after-broker-restart.summary.json`：正常停止安卓、退出原broker后，新broker读取原planId，仍为planned/4109项/未传输。
+- `transfer-plan-full.trx`：317项非实机通过；transfer-plan-build-final.txt完整构建零警告错误。Java哈希路径显式关闭自有文件描述符，避免递归扫描依赖进程退出才回收。
+
+本批遇到一次独立启动失败：请求fdd7b0be025a4ef09f97baa1079195d6、job840ac572f8704094acb58febebdc16d0；package服务和system_server存在，但sys.boot_completed未完成，8分钟后明确timed_out并退出本次实例。plan-startup-*保留只读启动/电源/系统日志；没有擅自调内存或改镜像。确认任务终态且QEMU已退出后，同配置正常冷启动复核请求468366c0b88646dca992a910fda53250成功，Root正常。本次未定位该偶发启动延迟根因，不把复核通过写成已根治。
+
+执行、幂等任务、覆盖备份、块传输、真实归档输出、取消/续作和GUI接入尚未实现/验收；B整项继续未完成。测试后VM和源码broker正常停止，未覆盖安装或发布。
+
 本机完整台账：`tasks/20260916-211326-review-remaining/`，含四文档、脚本及evidence（原始实机证据仅保存在本机，不进入公开发布资产）。内存优化仍结项；唯一后续例外是用户明确要求启动物理余量门槛改成2.5GiB。d534f9d实现2560MiB下限；前后profile逐字段核对仅startAvailableMb改变，运行期保护未改。
 
 ## 第一批：导入、作用域权限和故障证据

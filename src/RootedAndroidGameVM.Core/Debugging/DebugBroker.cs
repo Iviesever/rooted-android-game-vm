@@ -22,7 +22,7 @@ public sealed partial class DebugBroker : IDisposable
     private bool _exclusive;
     private StorageOperationLease? _storageLease;
     private static readonly HashSet<string> Quick = ["status", "memory.snapshot", "capabilities", "schema", "runtime.inspect", "screen", "preview", "apps", "metrics", "checkpoint.list", "files.list", "clipboard", "release", "wake", "key"];
-    private static readonly HashSet<string> Readers = ["status", "memory.snapshot", "capabilities", "schema", "runtime.inspect", "screen", "preview", "preview.benchmark", "frames.sample", "apps", "apps.list", "apps.resolve", "users.list", "files.roots", "files.browse", "files.stat", "app.observe", "metrics", "checkpoint.list", "files.list", "logs", "record", "trace", "licenses"];
+    private static readonly HashSet<string> Readers = ["status", "memory.snapshot", "capabilities", "schema", "runtime.inspect", "screen", "preview", "preview.benchmark", "frames.sample", "apps", "apps.list", "apps.resolve", "users.list", "files.roots", "files.browse", "files.stat", "files.transfer.plan", "files.transfer.inspect", "app.observe", "metrics", "checkpoint.list", "files.list", "logs", "record", "trace", "licenses"];
     public async Task RunAsync(CancellationToken ct)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _shutdown.Token); ct = linked.Token;
