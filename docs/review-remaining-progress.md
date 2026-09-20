@@ -88,7 +88,7 @@ B2a远端CI补记：[35491085130](https://github.com/Iviesever/rooted-android-ga
 
 重复元数据故障保留在f3210532…、0babf4d8…请求及metadata-repeat-full-logcat中：工具255且stdout/stderr为空，guest元数据程序exit0后adbd记录write failed/offline。日志也有安卓低内存回收，但尚未证明因果关系；连续12轮独立元数据读取正常。现仅对有完整空输出/255证据的只读目录元数据读取，核验同一实例及ADB在线后重读一次，保留原工具证据并报告retry阶段；写入不自动重试，不调整内存或镜像/驱动。故障自动恢复分支已做限定条件测试，实际自然故障触发该新分支仍待观察。
 
-B2b CI [35493701811](https://github.com/Iviesever/rooted-android-game-vm/actions/runs/35493701811)已success。本批新的CI以实际提交后的运行结果为准。旧files.*适配、第二无关应用/多用户、完整D矩阵、实际GUI及新候选E交付仍未完成；未覆盖生产程序或公开发布。
+B2b CI [35493701811](https://github.com/Iviesever/rooted-android-game-vm/actions/runs/35493701811)已success。C1提交130457c对应的 [CI 35496244492](https://github.com/Iviesever/rooted-android-game-vm/actions/runs/35496244492) 已completed/success（交接时复核）。旧files.*适配、第二无关应用/多用户、完整D矩阵、实际GUI及新候选E交付仍未完成；未覆盖生产程序或公开发布。
 
 本机完整台账：`tasks/20260916-211326-review-remaining/`，含四文档、脚本及evidence（原始实机证据仅保存在本机，不进入公开发布资产）。内存优化仍结项；唯一后续例外是用户明确要求启动物理余量门槛改成2.5GiB。d534f9d实现2560MiB下限；前后profile逐字段核对仅startAvailableMb改变，运行期保护未改。
 
