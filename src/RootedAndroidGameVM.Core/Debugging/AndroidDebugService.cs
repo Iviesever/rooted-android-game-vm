@@ -467,6 +467,10 @@ public sealed partial class AndroidDebugService : IDisposable
             case "apps": return await _controller.ListThirdPartyPackagesAsync(ct);
             case "apps.list": return await ListApplicationsAsync(request, ct);
             case "apps.resolve": return await ResolveApplicationAsync(request, ct);
+            case "users.list": return await ListAndroidUsersAsync(ct);
+            case "files.roots": return await FileRootsAsync(request, ct);
+            case "files.browse": return await BrowseDirectoryAsync(request, ct);
+            case "files.stat": return await ObserveFileAsync(request, ct);
             case "launch": return await LaunchAsync(request, ct);
             case "app.observe": return await ObserveApplicationAsync(package, NewRecord("app-observation"), ct);
             case "force-stop": AndroidPackageName.Parse(package); Instance.Require(); await _controller.ForceStopPackageAsync(package, ct); return new { package, stopped = true };
@@ -509,5 +513,5 @@ public sealed partial class AndroidDebugService : IDisposable
             default: throw new ArgumentException("未知命令：" + request.Command);
         }
     }
-    public void Dispose() { Transport.Dispose(); Instance.Dispose(); _stateGate.Dispose(); _captureGate.Dispose(); _summaryGate.Dispose(); _catalogGate.Dispose(); }
+    public void Dispose() { Transport.Dispose(); Instance.Dispose(); _stateGate.Dispose(); _captureGate.Dispose(); _summaryGate.Dispose(); _catalogGate.Dispose(); _helperGate.Dispose(); }
 }

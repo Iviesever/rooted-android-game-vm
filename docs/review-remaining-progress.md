@@ -34,6 +34,20 @@ A–E整项仍未勾选；应用元数据/搜索、多根与分页、多选计�
 
 本批VM已正常保存停机；未覆盖安装、未发布旧草稿。A整项仍缺无Malody环境等验收，B–E继续未完成。
 
+A2远端结果补记：[CI 35487448022](https://github.com/Iviesever/rooted-android-game-vm/actions/runs/35487448022)在1ce2f6e上通过：独立重建DEX散列一致，296测试、构建零警告错误、format及actionlint通过。原始结果存本机catalog-ci.json和catalog-ci-summary.txt。
+
+### B1：真实根目录、批量目录页与文件引用（2026-09-20）
+
+新增users.list/files.roots/files.browse/files.stat。应用引用重新核对安装身份；根从包管理元数据和按用户过滤的已挂载卷推导，区分私有、设备保护、外部、OBB、媒体与共享。不存在/未解锁/缺元数据的根保留明确状态。目录元数据一次批量读取，单页1–500项、目录容量100000项；超限或目录变化明确失败，不再用无提示截断表示完整清单。新引用绑定持久实例、运行会话、用户、作用域及文件版本；SHA计算检查实际打开的描述符位于选定根内，链接仅列元数据。
+
+首次实机发现getVolumeList要求调用包名与UID匹配，UID0不能走应用归属接口。保留browser-roots-initial-failure.json及工具双流；展开反射异常后改为只读维护卷清单getVolumes，按用户可见/已挂载过滤。没有修改系统权限策略或镜像。
+
+- `file-browser-live-acceptance.json`：主用户解锁状态与六类根发现；私有隔离目录4107个文件分9页全部返回且无重复，UID10213、mode600。中文/空格、竖线、换行、反斜杠及emoji文件名都能定位并计算正确SHA。静态链接只列元数据，跟随链接/目录越界/伪造卷被拒；修改文件后旧entryRef与旧分页游标被拒。
+- 同一记录及browser-cold-*：正常停机/冷启动后旧根引用返回stale_reference；新引用能再次读取4107项及正确散列/权限，Root可用。测试写入只用于独立夹具准备，未写正式应用文件；这不是双向传输验收。
+- `file-browser-full.trx`：308项非实机通过；file-browser-build-final.txt完整构建零警告错误，file-browser-format-final.txt格式通过；file-browser-rebuild-verified.txt源码重建与18,200字节内置DEX一致。
+
+B1仅证明上述只读后台。非主用户/额外实体卷、GUI点击、旧files.*适配、多选传输计划、大文件/目录双向传输、取消续作及最终安装仍待后续批次。VM及源码broker已正常停止，未覆盖生产程序或发布旧草稿。
+
 本机完整台账：`tasks/20260916-211326-review-remaining/`，含四文档、脚本及evidence（原始实机证据仅保存在本机，不进入公开发布资产）。内存优化仍结项；唯一后续例外是用户明确要求启动物理余量门槛改成2.5GiB。d534f9d实现2560MiB下限；前后profile逐字段核对仅startAvailableMb改变，运行期保护未改。
 
 ## 第一批：导入、作用域权限和故障证据

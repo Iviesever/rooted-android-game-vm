@@ -81,7 +81,9 @@ public sealed class ApplicationCatalogTests
         var repo = new DirectoryInfo(AppContext.BaseDirectory);
         while (repo is not null && !File.Exists(Path.Combine(repo.FullName, "RootedAndroidGameVM.sln"))) repo = repo.Parent;
         Assert.NotNull(repo);
-        var source = File.ReadAllText(Path.Combine(repo.FullName, "tools", "android-catalog", "src", "dev", "rgvm", "catalog", "Main.java")).Replace("\r\n", "\n");
-        Assert.Equal(manifest.RootElement.GetProperty("sourceSha256").GetString(), Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))).ToLowerInvariant());
+        var sourceRoot = Path.Combine(repo.FullName, "tools", "android-catalog", "src");
+        var index = string.Concat(Directory.EnumerateFiles(sourceRoot, "*.java", SearchOption.AllDirectories).Order(StringComparer.Ordinal).Select(path =>
+            Path.GetRelativePath(sourceRoot, path).Replace('\\', '/') + "=" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(File.ReadAllText(path).Replace("\r\n", "\n")))).ToLowerInvariant() + "\n"));
+        Assert.Equal(manifest.RootElement.GetProperty("sourceSha256").GetString(), Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(index))).ToLowerInvariant());
     }
 }

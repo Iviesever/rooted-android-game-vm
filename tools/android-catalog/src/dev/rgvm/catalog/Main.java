@@ -23,7 +23,7 @@ import org.json.JSONObject;
 
 /** Read-only package metadata bridge. No package installation, data mutation or network. */
 public final class Main {
-    private static Context context(int userId) throws Exception {
+    static Context context(int userId) throws Exception {
         Looper.prepareMainLooper();
         Class<?> activityThread = Class.forName("android.app.ActivityThread");
         Object thread = activityThread.getMethod("systemMain").invoke(null);
@@ -47,6 +47,7 @@ public final class Main {
     }
 
     public static void main(String[] args) {
+        if (args.length == 2 && args[0].equals("fs")) { DeviceFiles.run(args[1]); return; }
         try {
             if (args.length != 3) throw new IllegalArgumentException("userId includeSystem includeIcons required");
             int userId = Integer.parseInt(args[0]);

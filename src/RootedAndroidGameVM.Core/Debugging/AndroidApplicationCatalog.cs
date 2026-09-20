@@ -8,6 +8,7 @@ namespace RootedAndroidGameVM.Core.Debugging;
 public sealed partial class AndroidDebugService
 {
     private readonly SemaphoreSlim _catalogGate = new(1, 1);
+    private readonly SemaphoreSlim _helperGate = new(1, 1);
     private readonly Dictionary<(int User, bool System, bool Icons), ApplicationCatalogSnapshot> _catalogCache = [];
 
     private string CatalogSession()
@@ -134,6 +135,12 @@ public sealed partial class AndroidDebugService
     }
 
     private async Task<string> EnsureCatalogHelperAsync(string session, CancellationToken ct)
+    {
+        await _helperGate.WaitAsync(ct);
+        try { return await EnsureCatalogHelperCoreAsync(session, ct); }
+        finally { _helperGate.Release(); }
+    }
+    private async Task<string> EnsureCatalogHelperCoreAsync(string session, CancellationToken ct)
     {
         var assembly = typeof(AndroidDebugService).Assembly;
         using var manifestStream = assembly.GetManifestResourceStream("RootedAndroidGameVM.catalog-manifest.json")!;
