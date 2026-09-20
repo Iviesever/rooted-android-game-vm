@@ -13,6 +13,31 @@ public static class BinaryProcess
     public static async Task<string> RunTextAsync(ProcessSpec spec, int limit, CancellationToken ct) =>
         System.Text.Encoding.UTF8.GetString(await RunCoreAsync(spec, (stream, token) => ReadBoundedAsync(stream, limit, token), ct, textEvidence: true));
 
+    public static async Task<long> RunLinesToFileAsync(ProcessSpec spec, string path, long limit, Func<string, Task> onLine, CancellationToken ct)
+    {
+        await using var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read, BlockSize, true);
+        return await RunCoreAsync(spec, async (stream, token) =>
+        {
+            using var reader = new StreamReader(stream, System.Text.Encoding.UTF8, leaveOpen: true); long bytes = 0;
+            while (await reader.ReadLineAsync(token) is { } line)
+            {
+                var data = System.Text.Encoding.UTF8.GetBytes(line + "\n");
+                var count = (int)Math.Min(data.Length, Math.Max(0, limit - bytes));
+                await output.WriteAsync(data.AsMemory(0, count), token); await output.FlushAsync(token); bytes += count;
+                if (count != data.Length) throw LimitExceeded();
+                await onLine(line);
+            }
+            return bytes;
+        }, ct, textEvidence: true, stdoutArtifactPath: path);
+    }
+
+    public static async Task<long> RunToArtifactAsync(ProcessSpec spec, string path, long limit, CancellationToken ct)
+    {
+        await using var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read, BlockSize, true);
+        return await RunCoreAsync(spec, (stream, token) => CopyBoundedAsync(stream, file, limit, token), ct,
+            textEvidence: true, stdoutArtifactPath: path);
+    }
+
     public static async Task<long> RunToFileAsync(ProcessSpec spec, string path, long limit, CancellationToken ct)
     {
         var temporary = path + ".partial-" + Guid.NewGuid().ToString("N");
@@ -28,7 +53,7 @@ public static class BinaryProcess
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 
-    private static async Task<T> RunCoreAsync<T>(ProcessSpec spec, Func<Stream, CancellationToken, Task<T>> read, CancellationToken ct, bool textEvidence = false)
+    private static async Task<T> RunCoreAsync<T>(ProcessSpec spec, Func<Stream, CancellationToken, Task<T>> read, CancellationToken ct, bool textEvidence = false, string? stdoutArtifactPath = null)
     {
         ct.ThrowIfCancellationRequested();
         var started = DateTimeOffset.UtcNow;
@@ -72,7 +97,7 @@ public static class BinaryProcess
             Kill(); await process.WaitForExitAsync(CancellationToken.None);
             if (evidence is not null)
             {
-                var stdoutPath = Path.ChangeExtension(evidence, ".stdout.txt");
+                var stdoutPath = stdoutArtifactPath ?? Path.ChangeExtension(evidence, ".stdout.txt");
                 var stderrPath = Path.ChangeExtension(evidence, ".stderr.txt");
                 if (stdout.IsCompletedSuccessfully && stdout.Result is byte[] output) await File.WriteAllBytesAsync(stdoutPath, output);
                 if (stderr.IsCompletedSuccessfully) await File.WriteAllBytesAsync(stderrPath, stderr.Result);

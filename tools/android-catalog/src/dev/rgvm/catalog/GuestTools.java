@@ -19,11 +19,11 @@ import org.json.JSONObject;
 
 /** Closes a request's launch gate and reaps only its initial-environment token. */
 final class GuestTools {
-    private static final String ROOT = "/data/local/tmp/rgvm-owned-tools";
-    private static final class Owned {
-        final int pid; final String started, name;
-        Owned(int pid, String started, String name) { this.pid = pid; this.started = started; this.name = name; }
-        JSONObject json() throws Exception { return new JSONObject().put("pid", pid).put("startedTicks", started).put("name", name); }
+    static final String ROOT = "/data/local/tmp/rgvm-owned-tools";
+    static final class Owned {
+        final int pid, group, session; final String started, name; int anchor; String anchorStarted;
+        Owned(int pid, String started, String name, int group, int session) { this.pid = pid; this.started = started; this.name = name; this.group = group; this.session = session; }
+        JSONObject json() throws Exception { return new JSONObject().put("pid", pid).put("startedTicks", started).put("name", name).put("processGroup", group).put("processSession", session); }
     }
     private static final class Scan {
         final List<Owned> owned = new ArrayList<Owned>();
@@ -52,7 +52,30 @@ final class GuestTools {
         String after = new String(read(new File(directory, "stat"), 8192), StandardCharsets.UTF_8);
         String[] current = after.substring(after.lastIndexOf(')') + 2).split(" +");
         if (!fields[19].equals(current[19]) || current[0].equals("Z") || current[0].equals("X")) return null;
-        return new Owned(pid, fields[19], before.substring(before.indexOf('(') + 1, end));
+        return new Owned(pid, fields[19], before.substring(before.indexOf('(') + 1, end), Integer.parseInt(current[2]), Integer.parseInt(current[3]));
+    }
+    static Owned identity(int pid) throws Exception {
+        String stat = new String(read(new File("/proc/" + pid + "/stat"), 8192), StandardCharsets.UTF_8);
+        int end = stat.lastIndexOf(')'); String[] fields = stat.substring(end + 2).split(" +");
+        if (fields[0].equals("Z") || fields[0].equals("X")) return null;
+        return new Owned(pid, fields[19], stat.substring(stat.indexOf('(') + 1, end), Integer.parseInt(fields[2]), Integer.parseInt(fields[3]));
+    }
+    static List<Owned> members(int group, int session) throws Exception {
+        List<Owned> result = new ArrayList<Owned>(); File[] directories = new File("/proc").listFiles();
+        if (directories == null) throw new IllegalStateException("Cannot enumerate process group");
+        for (File directory : directories) if (directory.getName().matches("[0-9]+")) {
+            try { Owned value = identity(Integer.parseInt(directory.getName())); if (value != null && value.group == group && value.session == session) result.add(value); }
+            catch (Exception gone) { if (directory.exists()) throw gone; }
+        }
+        return result;
+    }
+    private static Owned confirm(Owned process, String token) throws Exception {
+        Owned direct = observe(process.pid, token);
+        if (direct != null && direct.started.equals(process.started)) return direct;
+        if (process.anchor == 0) return null;
+        Owned anchor = observe(process.anchor, token), current = identity(process.pid);
+        return anchor != null && anchor.started.equals(process.anchorStarted) && anchor.group == anchor.pid && anchor.session == anchor.pid &&
+            current != null && current.started.equals(process.started) && current.group == anchor.pid && current.session == anchor.pid ? current : null;
     }
     private static Scan scan(String token) throws Exception {
         Scan result = new Scan(); File[] processes = new File("/proc").listFiles();
@@ -63,6 +86,37 @@ final class GuestTools {
             try { Owned value = observe(pid, token); if (value != null) result.owned.add(value); }
             catch (Exception error) {
                 if (directory.exists()) result.errors.put(new JSONObject().put("pid", pid).put("error", error.getClass().getSimpleName()));
+            }
+        }
+        File groupDirectory = new File(ROOT + "/" + token + "/groups");
+        if (groupDirectory.exists()) {
+            if (!OsConstants.S_ISDIR(Os.lstat(groupDirectory.getPath()).st_mode)) throw new IllegalStateException("Invalid process group directory");
+            File[] records = groupDirectory.listFiles();
+            if (records == null || records.length > 1024) throw new IllegalStateException("Invalid process group inventory");
+            for (File record : records) try {
+                if (!record.getName().matches("[0-9]+-[0-9]+\\.json") || !OsConstants.S_ISREG(Os.lstat(record.getPath()).st_mode)) throw new IllegalStateException("Invalid process group record");
+                JSONObject data = new JSONObject(new String(read(record, 4096), StandardCharsets.UTF_8));
+                int pid = data.getInt("pid"); String started = data.getString("startedTicks");
+                if (!record.getName().equals(pid + "-" + started + ".json")) throw new IllegalStateException("Process group identity mismatch");
+                Owned leader = null; try { leader = observe(pid, token); } catch (Exception gone) { if (new File("/proc/" + pid).exists()) throw gone; }
+                List<Owned> children = members(pid, pid);
+                if (leader == null || !leader.started.equals(started) || leader.group != pid || leader.session != pid) {
+                    if (!children.isEmpty()) result.errors.put(new JSONObject().put("code", "group_owner_unverified").put("group", pid));
+                    continue;
+                }
+                for (Owned child : children) {
+                    boolean present = false;
+                    for (Owned existing : result.owned) if (existing.pid == child.pid) { present = true; break; }
+                    if (!present) { child.anchor = pid; child.anchorStarted = started; result.owned.add(child); }
+                }
+            } catch (Exception error) {
+                if (record.exists()) {
+                    boolean gone = false;
+                    if (record.getName().matches("[0-9]+-[0-9]+\\.json")) {
+                        int pid = Integer.parseInt(record.getName().split("-")[0]); gone = members(pid, pid).isEmpty();
+                    }
+                    if (!gone) result.errors.put(new JSONObject().put("code", "group_record_unverified").put("error", error.getClass().getSimpleName()));
+                }
             }
         }
         return result;
@@ -92,6 +146,7 @@ final class GuestTools {
             JSONObject result;
             if (op.equals("prepare")) {
                 if (closed.exists()) throw new IllegalStateException("Tool lease is closed");
+                File groups = new File(home, "groups"); directory(groups); Os.chown(groups.getPath(), 0, 2000); Os.chmod(groups.getPath(), 0730);
                 marker(open);
                 if (closed.exists()) throw new IllegalStateException("Tool lease closed while preparing");
                 result = new JSONObject().put("prepared", true).put("token", token);
@@ -99,7 +154,9 @@ final class GuestTools {
                 // The tombstone is retained: a delayed prepare or launch cannot reopen it.
                 marker(closed);
                 if (open.exists() && !open.delete()) throw new IllegalStateException("Cannot close tool launch gate");
-                long deadline = android.os.SystemClock.elapsedRealtime() + 3000;
+                long started = android.os.SystemClock.elapsedRealtime();
+                long grace = Math.max(200, Math.min(3000, request.optInt("graceMilliseconds", 200)));
+                long deadline = started + grace + 3000;
                 Map<Integer, Owned> observed = new LinkedHashMap<Integer, Owned>();
                 JSONArray signals = new JSONArray(); Scan current; int round = 0;
                 do {
@@ -107,9 +164,14 @@ final class GuestTools {
                     for (Owned process : current.owned) {
                         observed.put(process.pid, process);
                         try {
-                            Owned fresh = observe(process.pid, token);
+                            // Keep an authenticated group leader alive until its descendants have exited.
+                            boolean hasChildren = false;
+                            if (process.pid == process.group) for (Owned child : current.owned)
+                                if (child.pid != process.pid && child.group == process.pid && child.session == process.pid) { hasChildren = true; break; }
+                            if (hasChildren) continue;
+                            Owned fresh = confirm(process, token);
                             if (fresh == null || !fresh.started.equals(process.started)) continue;
-                            int signal = round < 2 ? OsConstants.SIGTERM : OsConstants.SIGKILL;
+                            int signal = android.os.SystemClock.elapsedRealtime() - started < grace ? OsConstants.SIGTERM : OsConstants.SIGKILL;
                             Os.kill(fresh.pid, signal);
                             signals.put(fresh.json().put("signal", signal));
                         } catch (ErrnoException gone) { if (gone.errno != OsConstants.ESRCH) throw gone; }

@@ -5,6 +5,33 @@ namespace RootedAndroidGameVM.Core.Tests;
 
 public sealed class TransferExecutionTests
 {
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    [Fact]
+    public async Task Lost_receipt_does_not_hide_a_missing_or_changed_original_backup()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "rgvm-receipt-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(directory);
+        try
+        {
+            var target = Path.Combine(directory, "target"); var backup = Path.Combine(directory, "backup");
+            await File.WriteAllTextAsync(target, "replacement"); await File.WriteAllTextAsync(backup, "original");
+            var expected = (await FileTransferPolicy.LocalFingerprintAsync(backup, default))!;
+            var source = (await FileTransferPolicy.LocalFingerprintAsync(target, default))!;
+            var item = new TransferPlanEntry(0, "s0", "", "target", source, expected, "different");
+            async Task<string?> Recover(TransferFingerprint? prior)
+            {
+                var method = typeof(AndroidDebugService).GetMethod("CommitLocalTransferAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+                return await (Task<string?>)method.Invoke(null, [target, null, backup, item, prior, true, CancellationToken.None])!;
+            }
+            await File.WriteAllTextAsync(backup, "changed");
+            Assert.Equal("backup_changed", (await Assert.ThrowsAsync<DebugException>(() => Recover(expected))).Code);
+            Assert.Equal("replacement", await File.ReadAllTextAsync(target));
+            File.Delete(backup);
+            Assert.Equal("backup_missing", (await Assert.ThrowsAsync<DebugException>(() => Recover(expected))).Code);
+            Assert.Null(await Recover(null)); Assert.Equal("replacement", await File.ReadAllTextAsync(target));
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
     [Fact]
     public void Binary_download_uses_exec_out_instead_of_shell_terminal_translation()
     {

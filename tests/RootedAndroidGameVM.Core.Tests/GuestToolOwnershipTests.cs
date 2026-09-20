@@ -40,8 +40,12 @@ public sealed class GuestToolOwnershipTests
     [InlineData("files.tools.cleanup", false)]
     [InlineData("input", false)]
     [InlineData("start", false)]
-    [InlineData("root-shell", false)]
-    public void File_tools_have_a_scope_without_changing_shell_or_input_lifetimes(string command, bool scoped) =>
+    [InlineData("root-shell", true)]
+    [InlineData("shell", true)]
+    [InlineData("logs", true)]
+    [InlineData("record", true)]
+    [InlineData("trace", true)]
+    public void Foreground_tools_have_a_scope_without_changing_VM_or_input_lifetimes(string command, bool scoped) =>
         Assert.Equal(scoped, GuestToolPolicy.UsesLease(command));
 
     [Theory]

@@ -7,14 +7,15 @@ using RootedAndroidGameVM.Core.Storage;
 
 namespace RootedAndroidGameVM.Core.Debugging;
 
+public sealed record GuestToolResource(string Kind, string Path, string? LocalPath = null);
 public sealed record GuestToolRecord(string Token, string InstanceId, string Session, string? RequestId, string? JobId,
-    int OwnerPid, long OwnerStartedTicks, string Status, DateTimeOffset UpdatedAt, JsonElement? Cleanup = null, string? Error = null);
+    int OwnerPid, long OwnerStartedTicks, string Status, DateTimeOffset UpdatedAt, JsonElement? Cleanup = null, string? Error = null, GuestToolResource[]? Resources = null);
 
 [System.Runtime.Versioning.SupportedOSPlatform("windows")]
 public static class GuestToolPolicy
 {
     public static bool UsesLease(string command) => command.StartsWith("files.", StringComparison.Ordinal) && !command.StartsWith("files.tools.", StringComparison.Ordinal) ||
-        command is "apps.list" or "apps.resolve" or "users.list";
+        command is "apps.list" or "apps.resolve" or "users.list" or "logs" or "record" or "trace" or "shell" or "root-shell";
     public static void ValidateToken(string token)
     {
         if (token.Length != 32 || token.Any(c => !(c is >= '0' and <= '9' or >= 'a' and <= 'f'))) throw new ArgumentException("guest工具token无效。");
@@ -67,14 +68,14 @@ public sealed partial class AndroidDebugService
         if (record.Token != token || requireCurrentInstance && record.InstanceId != ReadInstanceId()) throw new DebugException("instance_mismatch", "guest工具属于其他实例。", "reading_guest_tools");
         return record;
     }
-    private async Task<JsonElement> GuestToolControlAsync(string token, string op, string session, CancellationToken ct)
+    private async Task<JsonElement> GuestToolControlAsync(string token, string op, string session, CancellationToken ct, int graceMilliseconds = 200)
     {
         var prior = _suppressGuestTools.Value; _suppressGuestTools.Value = true;
         try
         {
             RequireCatalogSession(session);
             var helper = await EnsureCatalogHelperAsync(session, ct);
-            var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(DebugJson.Write(new { op, token })));
+            var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(DebugJson.Write(new { op, token, graceMilliseconds })));
             var raw = await ShellAsync("CLASSPATH=" + Q(helper) + " app_process / dev.rgvm.catalog.Main tools " + Q(encoded), true, ct);
             RequireCatalogSession(session);
             using var document = JsonDocument.Parse(raw); var value = document.RootElement;
@@ -116,6 +117,14 @@ public sealed partial class AndroidDebugService
         }
         finally { scope.Opening.Release(); }
     }
+    private async Task<string> ForegroundShellAsync(string script, bool root, CancellationToken ct)
+    {
+        await OwnedGuestScriptAsync("true", ct);
+        var scope = _guestToolScope.Value ?? throw new InvalidOperationException("前台Shell缺少请求归属。");
+        var helper = await EnsureCatalogHelperAsync(scope.Record!.Session, ct);
+        var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(DebugJson.Write(new { token = scope.Token, script })));
+        return await ShellAsync("trap '' HUP; CLASSPATH=" + Q(helper) + " setsid -w app_process / dev.rgvm.catalog.Main supervise " + Q(encoded), root, ct);
+    }
     private async Task<GuestToolRecord> CleanupGuestToolRecordAsync(GuestToolRecord record, bool allowEndedSession)
     {
         if (record.Status is "cleaned" or "session_ended") return record;
@@ -124,24 +133,47 @@ public sealed partial class AndroidDebugService
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(12));
             if (record.InstanceId != ReadInstanceId()) throw new DebugException("instance_mismatch", "清理记录属于其他实例。");
             var session = CatalogSession();
-            if (session != record.Session)
+            var endedSession = session != record.Session;
+            JsonElement cleanup;
+            if (endedSession)
             {
                 if (!allowEndedSession) throw new DebugException("instance_mismatch", "VM会话已变化，未向新会话发送清理信号。");
-                record = record with { Status = "session_ended", UpdatedAt = DateTimeOffset.UtcNow, Error = "原VM会话已结束；未向新会话发送kill，文件暂存仍保留。" };
+                cleanup = JsonSerializer.SerializeToElement(new { clean = true, previousSessionEnded = true, killSent = false }, DebugJson.Options);
             }
-            else
+            else cleanup = await GuestToolControlAsync(record.Token, "cleanup", session, deadline.Token,
+                record.Resources?.Any(resource => resource.Kind == "record") == true ? 2000 : 200);
+            var clean = cleanup.GetProperty("clean").GetBoolean();
+            record = record with { Cleanup = cleanup, UpdatedAt = DateTimeOffset.UtcNow };
+            if (clean && record.Resources is { Length: > 0 })
             {
-                var cleanup = await GuestToolControlAsync(record.Token, "cleanup", session, deadline.Token);
-                record = record with
-                {
-                    Status = cleanup.GetProperty("clean").GetBoolean() ? "cleaned" : "pending",
-                    Cleanup = cleanup,
-                    UpdatedAt = DateTimeOffset.UtcNow,
-                    Error = cleanup.GetProperty("clean").GetBoolean() ? null : "仍有进程或无法读取的进程元数据。"
-                };
+                var resources = await CleanupDiagnosticResourcesAsync(record, session, endedSession, deadline.Token);
+                var data = cleanup.Deserialize<Dictionary<string, object?>>(DebugJson.Options)!; data["resources"] = resources;
+                cleanup = JsonSerializer.SerializeToElement(data, DebugJson.Options);
             }
+            record = record with
+            {
+                Status = clean ? endedSession ? "session_ended" : "cleaned" : "pending",
+                Cleanup = cleanup,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                Error = clean ? null : "仍有进程或无法读取的进程元数据。"
+            };
         }
-        catch (Exception error) { record = record with { Status = "pending", UpdatedAt = DateTimeOffset.UtcNow, Error = error.Message }; }
+        catch (Exception error)
+        {
+            var details = record.Cleanup?.Deserialize<Dictionary<string, object?>>(DebugJson.Options);
+            if (details is not null)
+            {
+                details["processesClean"] = record.Cleanup!.Value.TryGetProperty("clean", out var clean) && clean.GetBoolean();
+                details["clean"] = false; details["resourceError"] = error.Message;
+            }
+            record = record with
+            {
+                Status = "pending",
+                UpdatedAt = DateTimeOffset.UtcNow,
+                Error = error.Message,
+                Cleanup = details is null ? record.Cleanup : JsonSerializer.SerializeToElement(details, DebugJson.Options)
+            };
+        }
         await SaveGuestToolRecordAsync(record); return record;
     }
     private async Task CompleteGuestToolsAsync(bool requireClean = true)
@@ -174,7 +206,7 @@ public sealed partial class AndroidDebugService
         {
             try { await CompleteGuestToolsAsync(requireClean: false); }
             catch (Exception cleanup) { error.Data["guestCleanupError"] = cleanup.Message; }
-            if (scope.Record is not null) error.Data["guestCleanupPath"] = GuestToolRecordPath(scope.Token);
+            if (scope.Record is not null && !error.Data.Contains("guestCleanupPath")) error.Data["guestCleanupPath"] = GuestToolRecordPath(scope.Token);
             throw;
         }
         finally { _activeGuestTools.TryRemove(scope.Token, out _); _guestToolScope.Value = null; scope.Opening.Dispose(); }
@@ -185,7 +217,11 @@ public sealed partial class AndroidDebugService
         if (_activeGuestTools.ContainsKey(token) || record.OwnerPid != Environment.ProcessId && GuestToolPolicy.OwnerAlive(record))
             throw new DebugException("guest_tool_active", "工具仍归属活跃任务，请先取消该任务。", "cleaning_guest_tools");
         record = await CleanupGuestToolRecordAsync(record, allowEndedSession: true);
-        if (record.Status == "pending") throw new DebugException("guest_cleanup_required", record.Error!, "cleaning_guest_tools", GuestToolRecordPath(token));
+        if (record.Status == "pending")
+        {
+            var pending = new DebugException("guest_cleanup_required", record.Error!, "cleaning_guest_tools", GuestToolRecordPath(token));
+            pending.Data["guestCleanupPath"] = GuestToolRecordPath(token); throw pending;
+        }
         return new { record, cleanupPath = GuestToolRecordPath(token) };
     }
     public async Task<object> ListGuestToolsAsync(CancellationToken ct)
@@ -202,9 +238,22 @@ public sealed partial class AndroidDebugService
                 record,
                 cleanupPath = file.FullName,
                 active = _activeGuestTools.ContainsKey(record.Token),
-                cleanupRequest = record.Status is "cleaned" or "session_ended" ? null : DebugRequest.Create("files.tools.cleanup", new { record.Token })
+                cleanupRequest = record.Status is "cleaned" or "session_ended" ? null : DebugRequest.Create("tools.cleanup", new { record.Token })
             });
         }
         return new { tools = records };
+    }
+    public async Task<GuestToolRecord[]> PendingGuestToolsAsync(CancellationToken ct)
+    {
+        var directory = Path.GetDirectoryName(GuestToolRecordPath(new string('0', 32)))!;
+        if (!Directory.Exists(directory)) return [];
+        var instance = ReadInstanceId(); var result = new List<GuestToolRecord>();
+        foreach (var file in new DirectoryInfo(directory).EnumerateFiles("*.json").OrderByDescending(file => file.LastWriteTimeUtc).Take(100))
+        {
+            var record = await ReadGuestToolRecordAsync(Path.GetFileNameWithoutExtension(file.Name), ct, requireCurrentInstance: false);
+            if (record.InstanceId == instance && record.Status is not ("cleaned" or "session_ended") && !_activeGuestTools.ContainsKey(record.Token) &&
+                (record.OwnerPid == Environment.ProcessId || !GuestToolPolicy.OwnerAlive(record))) result.Add(record);
+        }
+        return result.ToArray();
     }
 }

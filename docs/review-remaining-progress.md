@@ -131,6 +131,24 @@ B整项仍缺第二无关应用等验收，A多用户/无特定游戏环境、D�
 
 D整体仍缺显式shell/诊断命令guest生命周期、远端提交回执丢失后的完整字段对账及剩余组合；A/B的第二无关应用/多用户、C真实GUI、E新版本备份覆盖/装后/发布继续未完成。未改内存配置、镜像或驱动，未操作Windows GUI，未覆盖生产程序或公开发布。
 
+### D3/D4：诊断与前台Shell生命周期、丢失提交回执对账（2026-09-20）
+
+从e694675接续。logs区分时长到期、显式取消和工具提前退出，保存受限原始stdout、过滤事件和stderr/退出依据。record/trace接入同一工具租约；录屏先保存并核验本机副本才删除guest文件，冲突/未清理资源保持pending并阻止同类采集接管。trace核验内核tracing_on，已有追踪拒绝接管。tools.list/cleanup是通用入口，旧files.tools别名保留，session.summary提供精确恢复请求。部分二进制诊断输出在取消时保留，不伪装完整产物。
+
+shell/root-shell作为有界前台请求，UID2000/UID0保持。独立会话中的监督进程保留token和组身份，清理先核验监督者PID/启动时间，再处理所属组中清空环境变量的子进程；未核实的残留保持pending。HUP忽略保证ADB客户端结束不会先移除该监督者。公开的桥接DEX只允许Root写，普通shell可读，未放宽应用数据权限。此契约不是任意恶意Root代码或主动脱离会话并抹去归属程序的沙箱，也不回滚脚本刻意改变的系统服务状态。
+
+提交回执恢复按真实备份状态对账：新建不再返回虚构BackupPath，TemporaryPath清空，remote Permissions来自实际目标；缺失/变化/未知备份不标完整恢复。目录备份核对类型与根元数据，不能外推为任意目录深层内容永久未变。
+
+- `diagnostics-live-acceptance.json`：日志时长结束succeeded、实际cancel为cancelled、真实logcat提前退出failed；正常录屏3.224秒及取消后1.353秒片段经ffprobe核对视频流/无音频，未输出图像。正常/取消trace都独立读到tracing_on=0，已有外部trace保持运行且新请求busy。
+- `diagnostic-resource-recovery-acceptance.json`：注入本机产物同名冲突，进程已清但资源保持pending且clean=false；本机原文件与guest视频都保留，新录屏被拒；摘要指向原token清理，保留冲突文件后明确tools.cleanup成功，视频经ffprobe核对。
+- `shell-supervisor-acceptance.json`：普通/root身份保持，env -i子进程真实存在于登记组；超时后核对整个组无活跃成员；重定向输出的普通后台子进程也在前台请求完成前回收。`diagnostics-final-acceptance.json`补原Shell退出7及双流原文保持、最终监督器后的logs/trace/record与文件根回归。
+- `commit-receipt-acceptance.json`：在隔离记录上保留原回执并模拟丢失提交终态；新建、覆盖、备份缺失/篡改、目录类型替换、本机新建/覆盖下载七类通过。已提交目标version/SHA未变化；缺失/坏备份拒绝，恢复原备份后可明确继续；原值实读和实际权限字段核对。
+- `diagnostics-delivery-full.trx`：378项非实机、完整构建零警告错误、format verify、源码DEX重建通过；DEX d9ad64dc96ef780bd8f72732887378468aac1d338e3947468ff2a6f70e1280bc。
+
+原失败保留：首次Shell监督在挂断后失去leader，正确pending且未猜测kill；工具号cb9b31b1877c4ead8dac06caa645c336在隔离sleep自然结束后已明确cleanup核实，后续忽略HUP的新案例通过。录屏验收脚本一度把尚未登记的resources:null当数组；原60秒任务048e7d8398ce4368b11efb9fa12c66ff已核实succeeded，不是待取消任务。回执首例最终只读检查请求715a36763ddf4e978d51fb6decab0d23出现自然255空流并进入只读重试分支，但ADB在线核验失败；请求如实失败，之后同会话只读重查版本/SHA一致，没有重放写入，未宣称自然故障根治。
+
+VM最后正常保存停机，未操作Windows GUI、未覆盖生产程序或公开发布。A/B第二无关应用、多用户及无特定游戏环境、剩余边界组合、C真实GUI、E新版本备份覆盖/装后/发布仍待完成；以上证据不等于A–E整体通过。
+
 本机完整台账：`tasks/20260916-211326-review-remaining/`，含四文档、脚本及evidence（原始实机证据仅保存在本机，不进入公开发布资产）。内存优化仍结项；唯一后续例外是用户明确要求启动物理余量门槛改成2.5GiB。d534f9d实现2560MiB下限；前后profile逐字段核对仅startAvailableMb改变，运行期保护未改。
 
 ## 第一批：导入、作用域权限和故障证据

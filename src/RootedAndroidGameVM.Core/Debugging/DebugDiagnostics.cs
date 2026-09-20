@@ -62,86 +62,81 @@ public sealed partial class AndroidDebugService
     {
         AndroidPackageName.Parse(package); Instance.Require();
         var directory = NewRecord("logs"); var path = Path.Combine(directory, "events.ndjson");
+        var script = await OwnedGuestScriptAsync("logcat -v epoch -T 1", ct);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct); timeout.CancelAfter(TimeSpan.FromSeconds(seconds));
-        using var process = Process.Start(ProcessStartInfoFactory.Create(AndroidCommandFactory.Adb(Layout, Options, "logcat", "-v", "epoch", "-T", "1")))!;
-        using var kill = timeout.Token.Register(() => { try { if (!process.HasExited) process.Kill(true); } catch (InvalidOperationException) { } });
-        var stderr = BinaryProcess.ReadBoundedAsync(process.StandardError.BaseStream, 1024 * 1024, timeout.Token);
         await using var writer = new StreamWriter(path); long bytes = 0; var lost = false; var pids = new HashSet<string>(); var nextPidCheck = DateTimeOffset.MinValue;
-        var count = 0;
+        var count = 0; var reason = "failed"; var rawPath = Path.Combine(directory, "stdout.log");
         try
         {
-            while (!timeout.IsCancellationRequested)
+            await BinaryProcess.RunLinesToFileAsync(AndroidCommandFactory.Adb(Layout, Options, "shell", script), rawPath, 64L * 1024 * 1024, async line =>
             {
+                if (timeout.IsCancellationRequested) return;
                 if (DateTimeOffset.UtcNow >= nextPidCheck)
                 {
                     var current = (await ShellAsync("pidof " + Q(package) + " || true", false, timeout.Token)).Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
                     if (!current.SetEquals(pids)) { await writer.WriteLineAsync(DebugJson.Write(new { type = "pid_change", previous = pids, current, at = DateTimeOffset.UtcNow })); pids = current; }
                     nextPidCheck = DateTimeOffset.UtcNow.AddSeconds(1);
                 }
-                var line = await process.StandardOutput.ReadLineAsync(timeout.Token); if (line is null) break;
                 var match = Regex.Match(line, @"^\s*(\d+\.\d+)\s+(\d+)\s+(\d+)\s+([A-Z])\s+(.*)$");
                 var important = Regex.IsMatch(line, "ANR in |FATAL EXCEPTION|Fatal signal|am_crash|am_anr", RegexOptions.IgnoreCase) || LogClassification.IsLossMarker(line);
-                if (!important && (!match.Success || !pids.Contains(match.Groups[2].Value))) continue;
+                if (!important && (!match.Success || !pids.Contains(match.Groups[2].Value))) return;
                 lost |= LogClassification.IsLossMarker(line);
                 var item = DebugJson.Write(new { type = LogClassification.IsLossMarker(line) ? "loss" : LogClassification.Category(line), source = "logcat", at = DateTimeOffset.UtcNow, raw = line });
                 bytes += System.Text.Encoding.UTF8.GetByteCount(item);
-                if (bytes > 64L * 1024 * 1024) { lost = true; await writer.WriteLineAsync(DebugJson.Write(new { type = "truncated", reason = "64MiB_limit" })); break; }
+                if (bytes > 64L * 1024 * 1024) throw new DebugException("output_limit", "日志达到64MiB上限。", "collecting_logs");
                 await writer.WriteLineAsync(item); await writer.FlushAsync(timeout.Token); count++;
-            }
+            }, timeout.Token);
+            throw new DebugException("tool_exited_early", "logcat在采集时长结束前退出，日志可能不完整。", "collecting_logs", directory);
         }
-        catch (OperationCanceledException) when (timeout.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested && !ct.IsCancellationRequested) { reason = "duration_elapsed"; }
+        catch (DebugException error) when (error.Code == "output_limit" && !ct.IsCancellationRequested)
+        { lost = true; reason = "output_limit"; await writer.WriteLineAsync(DebugJson.Write(new { type = "truncated", reason = "64MiB_limit" })); }
         finally
         {
-            if (!process.HasExited) process.Kill(true);
-            try { await stderr; } catch (OperationCanceledException) { }
-            await writer.WriteLineAsync(DebugJson.Write(new { type = "end", cancelled = ct.IsCancellationRequested, lostOrTruncated = lost, lossDetection = "logcat_reported_only", count }));
+            await writer.WriteLineAsync(DebugJson.Write(new
+            {
+                type = "end",
+                reason = ct.IsCancellationRequested ? "cancelled" : reason,
+                cancelled = ct.IsCancellationRequested,
+                lostOrTruncated = lost,
+                lossDetection = "logcat_reported_only",
+                count
+            }));
         }
-        return new { directory, path, count, lostOrTruncated = lost, cancelled = ct.IsCancellationRequested };
+        ct.ThrowIfCancellationRequested();
+        return new { directory, path, rawPath, count, lostOrTruncated = lost, cancelled = false, completionReason = reason };
     }
     public async Task<object> RecordAsync(string kind, int seconds, CancellationToken ct)
     {
         var gate = kind == "trace" ? _traceGate : _recordGate;
         if (!await gate.WaitAsync(0, ct)) throw new DebugException("busy", "同类采集任务正在运行。");
         try { return await RecordCoreAsync(kind, seconds, ct); }
-        finally { gate.Release(); }
+        finally { try { await CompleteGuestToolsAsync(requireClean: false); } finally { gate.Release(); } }
     }
     private async Task<object> RecordCoreAsync(string kind, int seconds, CancellationToken ct)
     {
-        var dir = NewRecord(kind); var remote = "/data/local/tmp/rgvm-" + Guid.NewGuid().ToString("N") + ".mp4";
-        var pidFile = remote + ".pid";
+        var dir = NewRecord(kind); var session = CatalogSession();
         if (kind == "trace")
         {
-            await ShellAsync("atrace --async_start -b 8192 gfx view wm am sched", false, ct);
-            try
-            {
-                await Task.Delay(TimeSpan.FromSeconds(seconds), ct);
-                var trace = Path.Combine(dir, "system.atrace");
-                var bytes = await BinaryProcess.RunToFileAsync(AndroidCommandFactory.Adb(Layout, Options, "exec-out", "atrace", "--async_stop", "-z"), trace, 64 * 1024 * 1024, ct);
-                return new { directory = dir, trace, bytes };
-            }
-            finally
-            {
-                using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                try { await ShellAsync("atrace --async_stop >/dev/null", false, cleanup.Token); }
-                catch { await File.WriteAllTextAsync(Path.Combine(dir, "cleanup-required.txt"), "atrace --async_stop"); }
-            }
+            var state = (await ShellAsync("for p in /sys/kernel/tracing/tracing_on /sys/kernel/debug/tracing/tracing_on; do if test -f \"$p\"; then printf '%s ' \"$p\"; cat \"$p\"; break; fi; done", true, ct)).Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (state.Length != 2 || state[1] is not ("0" or "1")) throw new DebugException("trace_state_unknown", "未能读取内核追踪状态。", "starting_trace");
+            if (state[1] == "1") throw new DebugException("busy", "已有内核追踪正在运行，未接管或停止它。", "starting_trace");
+            await RegisterDiagnosticResourceAsync(new("trace", state[0]), ct);
+            var trace = Path.Combine(dir, "system.atrace");
+            var script = await OwnedGuestScriptAsync("atrace -t " + seconds + " -b 8192 -z gfx view wm am sched", ct);
+            var bytes = await BinaryProcess.RunToArtifactAsync(AndroidCommandFactory.Adb(Layout, Options, "exec-out", script), trace, 64 * 1024 * 1024, ct);
+            if (bytes == 0) throw new DebugException("trace_empty", "追踪工具没有生成数据。", "collecting_trace", trace);
+            RequireCatalogSession(session); await CompleteGuestToolsAsync();
+            return new { directory = dir, trace, bytes, kernelTracingStopped = true };
         }
-        try
-        {
-            await ShellAsync("screenrecord --time-limit " + seconds + " " + Q(remote) + " & p=$!; echo $p > " + Q(pidFile) + "; wait $p", false, ct);
-            var path = Path.Combine(dir, "screen-no-audio.mp4"); await AdbAsync(["pull", remote, path], ct);
-            return new { directory = dir, path, includesAudio = false, requestedSeconds = seconds };
-        }
-        finally
-        {
-            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            try
-            {
-                await ShellAsync("p=$(cat " + Q(pidFile) + " 2>/dev/null); case \"$p\" in ''|*[!0-9]*) ;; *) " +
-                    "if test -r /proc/$p/cmdline && tr '\\000' ' ' < /proc/$p/cmdline | grep -F " + Q(remote) + " >/dev/null; then kill -INT $p; fi;; esac; rm -f " + Q(remote) + " " + Q(pidFile), false, cleanup.Token);
-            }
-            catch { await File.WriteAllTextAsync(Path.Combine(dir, "cleanup-required.txt"), remote); }
-        }
+        await OwnedGuestScriptAsync("true", ct);
+        var remote = "/data/local/tmp/rgvm-record-" + _guestToolScope.Value!.Token + ".mp4";
+        var path = Path.Combine(dir, "screen-no-audio.mp4");
+        await RegisterDiagnosticResourceAsync(new("record", remote, path), ct);
+        await ShellAsync("screenrecord --time-limit " + seconds + " " + Q(remote), false, ct);
+        RequireCatalogSession(session); await CompleteGuestToolsAsync();
+        if (!File.Exists(path) || new FileInfo(path).Length == 0) throw new DebugException("recording_empty", "录屏工具未生成非空文件。", "verifying_record", dir);
+        return new { directory = dir, path, includesAudio = false, requestedSeconds = seconds, fileVerified = true, mediaPlaybackVerified = false };
     }
     public async Task<object> TestAsync(DebugRequest request, CancellationToken ct)
     {

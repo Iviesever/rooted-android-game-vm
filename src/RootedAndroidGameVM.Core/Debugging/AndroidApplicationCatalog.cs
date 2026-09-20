@@ -183,7 +183,7 @@ public sealed partial class AndroidDebugService
             await AdbAsync(["push", local, transit], ct);
             RequireCatalogSession(session);
             await ShellAsync("set -e; umask 077; test ! -L " + Q(remoteRoot) + "; mkdir -p " + Q(remoteRoot) +
-                "; chown 0:0 " + Q(remoteRoot) + "; chmod 700 " + Q(remoteRoot) + "; test ! -L " + Q(remote) +
+                "; chown 0:0 " + Q(remoteRoot) + "; chmod 711 " + Q(remoteRoot) + "; test ! -L " + Q(remote) +
                 "; test \"$(sha256sum " + Q(transit) + " | cut -d' ' -f1)\" = " + Q(digest) +
                 "; cp " + Q(transit) + " " + Q(remote) + "; chmod 444 " + Q(remote), true, ct);
             return remote;

@@ -48,6 +48,7 @@
 | B3旧命令统一 | `compat-live-acceptance.json`、`compat-list-pages-acceptance.json`、`compat-cancel-acceptance.json`：六命令共享服务、4107项完整列表、三作用域往返、精确目标名、计划父目录、空目录、备份、取消后明确续作 | 仍为同一测试App，第二无关应用和guest工具清理等D矩阵未完成；未安装新候选 |
 | D1文件工具清理与恢复 | `guest-tools-fault-acceptance.json`、`guest-transport-recovery-acceptance.json`、`guest-session-acceptance.json`：真实guest进程取消/超时、客户端断连后明确取消、ADB通道暂停后的pending/清理/续作、跨会话/实例防护；`guest-transfer-rollback-acceptance.json`、`active-export-acceptance.json`证明实际回退与活跃App边界 | 显式shell及其他诊断命令尚不在租约内；D2空间检查已发现缺陷，远端丢失提交回执后的字段对账仍待补验；不等于D整体通过 |
 | D2空间检查 | `space-live-acceptance.json`、`space-prefix-acceptance.json`：8MiB真实目标的无写入拒绝、skip/空目录、嵌套挂载、换卷拒旧计划、分卷tar及缓存恢复、实际前缀抵扣；371非实机及DEX源码重建通过 | 容量按观察时点估算，不是磁盘预留；原st_dev复用失败记录保留；其余D/A/C/E未完成 |
+| D3/D4诊断及回执 | diagnostics-live、diagnostic-resource-recovery、shell-supervisor、commit-receipt四份acceptance：正确取消/提前退出终态、视频保存后清理、内核trace关闭、前台Shell组回收、备份/暂存/权限真实对账；378非实机及源码重建通过 | 前台Shell不是恶意Root脚本沙箱；目录备份不是任意深层内容永久完整保证；A/B/C/E及剩余边界仍未整体验收 |
 
 600MiB源、安卓目标及回传 SHA-256：`987523e7780392e283b404990c4e84e580bc75c451138b0c86c4f81c296eeebe`。
 
@@ -65,7 +66,7 @@
 | D 一致性与恢复 | 活跃应用导出边界、覆盖回退、空间不足、取消/断连/超时后的guest工具清理和恢复；补齐未覆盖的名称/类型/链接/并发组合 | 明确哪些已提交、哪些仍暂存及如何回退；新建/替换后合理UID/mode/SELinux，按需由App实读；受控故障不破坏唯一数据，不自动重放、不串实例、不虚报全批成功。宿主ADB退出不能代替guest工具已清理的证据 |
 | E 交付 | 新版本精确资产、生产程序备份、正常停机覆盖、安装后A–D关键回归、受影响通用输入/任务/恢复回归、发布 | 核对安装EXE/包散列、Root/冷启动/配置和正式数据保持；使用实际安装目录CLI与GUI，不能用源码测试冒充；保留回退备份；新tag/资产身份清晰，全部验收后才公开release |
 
-下一批继续显式shell和其他诊断命令的guest生命周期、远端提交回执丢失对账，再补A第二无关应用/多用户。D2已修真实目标卷及目录/skip/resume/tar空间计算，见最新执行证据；保留原space-volume-baseline失败，勿重复当作现有未修状态。B3、D1、D2局部实测不从头重做，600MiB与三作用域实读按影响范围复用。B整体验收仍须两个无关应用，C与E等待用户恢复GUI操作后完成。
+下一批推进A/B第二无关应用、多用户及无特定游戏环境，并依据剩余矩阵补未覆盖边界。D3/D4诊断/前台Shell生命周期与丢失回执对账已完成上述局部验收，见最新执行证据，不再按旧待办重写。B3、D1–D4及600MiB/三作用域实读按影响范围复用。C与E仍须用户明确恢复GUI操作后完成，不能提前安装发布或把整体缩减为CLI。
 
 ## 既有 review 要求与保留边界
 

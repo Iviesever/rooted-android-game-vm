@@ -474,7 +474,7 @@ public sealed partial class AndroidDebugService : IDisposable
             case "wake": await ShellAsync("input keyevent KEYCODE_WAKEUP; wm dismiss-keyguard", false, ct); var state = await StateAsync(ct); return new { awake = state.Awake, locked = state.Locked, bootCompleted = state.Boot, foreground = state.Foreground };
             case "key": var key = request.Text("key"); if (!Regex.IsMatch(key, "^KEYCODE_[A-Z0-9_]+$")) throw new ArgumentException("请使用 Android KEYCODE 名称。"); return await ShellAsync("input keyevent " + key, false, ct);
             case "clipboard": return new { text = await Transport.ClipboardAsync(request.Arguments?.ContainsKey("text") == true ? request.Text("text") : null, ct) };
-            case "shell": case "root-shell": return new { stdout = await ShellAsync(request.Text("script"), request.Command == "root-shell", ct) };
+            case "shell": case "root-shell": return new { stdout = await ForegroundShellAsync(request.Text("script"), request.Command == "root-shell", ct) };
             case "apps": return await _controller.ListThirdPartyPackagesAsync(ct);
             case "apps.list": return await ListApplicationsAsync(request, ct);
             case "apps.resolve": return await ResolveApplicationAsync(request, ct);
@@ -485,8 +485,8 @@ public sealed partial class AndroidDebugService : IDisposable
             case "files.transfer.plan": return await PlanFileTransferAsync(request, ct);
             case "files.transfer.inspect": return await ReadTransferPlanAsync(request, ct);
             case "files.transfer.list": return await ListTransferPlansAsync(ct);
-            case "files.tools.list": return await ListGuestToolsAsync(ct);
-            case "files.tools.cleanup": return await CleanupGuestToolsAsync(request, ct);
+            case "tools.list": case "files.tools.list": return await ListGuestToolsAsync(ct);
+            case "tools.cleanup": case "files.tools.cleanup": return await CleanupGuestToolsAsync(request, ct);
             case "files.transfer.start": case "files.transfer.resume": return await ExecuteFileTransferAsync(request, ct);
             case "launch": return await LaunchAsync(request, ct);
             case "app.observe": return await ObserveApplicationAsync(package, NewRecord("app-observation"), ct);

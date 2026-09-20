@@ -26,7 +26,12 @@ public sealed partial class AndroidDebugService
     {
         StoragePathPolicy.RejectReparsePoints(target); StoragePathPolicy.RejectReparsePoints(backup);
         var current = await FileTransferPolicy.LocalFingerprintAsync(target, ct);
-        if (recovering && SameContent(current, item.Source)) return File.Exists(backup) || Directory.Exists(backup) ? backup : null;
+        if (recovering && SameContent(current, item.Source))
+        {
+            var saved = await FileTransferPolicy.LocalFingerprintAsync(backup, ct);
+            ValidateRecoveredBackup(saved, item.Source.Kind == "directory" && expected?.Kind == "directory" ? null : expected);
+            return saved is null ? null : backup;
+        }
         if (Directory.Exists(target) && item.Source.Kind == "directory" && expected?.Kind == "directory") return null;
         var priorBackup = await FileTransferPolicy.LocalFingerprintAsync(backup, ct);
         if (priorBackup is not null)
@@ -65,10 +70,13 @@ public sealed partial class AndroidDebugService
             if (archive) return state with { Status = "staged" };
             state = state with { Status = "committing", BackupPath = backup }; await journal.SaveItemAsync(state, ct);
             var saved = await CommitLocalTransferAsync(target, null, backup, item, expected, resume, ct);
-            return state with { Status = "completed", BackupPath = saved };
+            return state with { Status = "completed", BackupPath = saved, TemporaryPath = null };
         }
         if (state.Status == "committing" && !archive && SameContent(await FileTransferPolicy.LocalFingerprintAsync(target, ct), item.Source))
-            return state with { Status = "completed", Sha256 = item.Source.Sha256, Offset = item.Source.Bytes };
+        {
+            var saved = await CommitLocalTransferAsync(target, null, backup, item, expected, true, ct);
+            return state with { Status = "completed", Sha256 = item.Source.Sha256, Offset = item.Source.Bytes, TemporaryPath = null, BackupPath = saved };
+        }
         StoragePathPolicy.RejectReparsePoints(temporary);
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         if (!File.Exists(temporary)) { using (File.Create(temporary)) { } ColdCheckpoint.RestrictFile(temporary); }
@@ -147,7 +155,17 @@ public sealed partial class AndroidDebugService
                 // A lost mkdir receipt can be completed by merging the directory. Child
                 // targets still retain their own planned identity checks; never replace it.
                 if (recovered.TryGetProperty("target", out var existingDirectory) && existingDirectory.GetProperty("kind").GetString() == "directory")
-                    return state with { Status = "completed", BackupPath = recovered.GetProperty("backupExists").GetBoolean() ? CatalogText(recovered, "backupPath") : null };
+                {
+                    var directoryTarget = existingDirectory.Deserialize<RemoteFileEntry>(DebugJson.Options)!;
+                    var saved = await ReconcileRemoteBackupAsync(plan, item, state, root, recovered, expected?.Kind == "directory" ? null : expected, ct);
+                    return state with
+                    {
+                        Status = "completed",
+                        BackupPath = saved,
+                        TemporaryPath = null,
+                        Permissions = directoryTarget.Uid + ":" + directoryTarget.Gid + ":" + directoryTarget.Mode
+                    };
+                }
             }
             state = state with { Status = "committing" }; await journal.SaveItemAsync(state, ct);
             var directory = await FileBridgeAsync(Commit("transfer-mkdir"), root.Identity.Session, ct);
@@ -155,7 +173,19 @@ public sealed partial class AndroidDebugService
         }
         var observed = await FileBridgeAsync(new { op = "transfer-state", root = root.Path, relativePath = relative, planId = plan.PlanId, index = item.Index }, root.Identity.Session, ct);
         if (state.Status == "committing" && observed.TryGetProperty("target", out var committed) && SameContent(Fingerprint(committed.Deserialize<RemoteFileEntry>(DebugJson.Options)!), item.Source))
-            return state with { Status = "completed", Offset = item.Source.Bytes, Sha256 = item.Source.Sha256 };
+        {
+            var actual = committed.Deserialize<RemoteFileEntry>(DebugJson.Options)!;
+            var saved = await ReconcileRemoteBackupAsync(plan, item, state, root, observed, expected, ct);
+            return state with
+            {
+                Status = "completed",
+                Offset = item.Source.Bytes,
+                Sha256 = actual.Sha256,
+                TemporaryPath = null,
+                BackupPath = saved,
+                Permissions = actual.Uid + ":" + actual.Gid + ":" + actual.Mode
+            };
+        }
         var sourcePath = item.RelativePath.Length == 0 ? selection!.SourcePath : Path.Combine(selection!.SourcePath, item.RelativePath.Replace('/', Path.DirectorySeparatorChar));
         var offset = observed.GetProperty("bytes").GetInt64();
         if (offset > item.Source.Bytes || offset > 0 && await PrefixHashAsync(sourcePath, offset, ct) != CatalogText(observed, "sha256"))
@@ -211,6 +241,32 @@ public sealed partial class AndroidDebugService
             Sha256 = target.Sha256,
             Permissions = target.Uid + ":" + target.Gid + ":" + target.Mode
         };
+    }
+    private async Task<string?> ReconcileRemoteBackupAsync(TransferPlan plan, TransferPlanEntry item, TransferItemState state,
+        ResolvedFileRoot root, JsonElement observed, TransferFingerprint? expected, CancellationToken ct)
+    {
+        var exists = observed.GetProperty("backupExists").GetBoolean();
+        if (!exists) { ValidateRecoveredBackup(null, expected); return null; }
+        if (expected is null) { ValidateRecoveredBackup(new("unknown", 0, "", null), null); }
+        var relative = FileTransferPolicy.JoinRemote(plan.DestinationPath, state.TargetRelativePath);
+        var slash = relative.LastIndexOf('/');
+        var backupRelative = (slash < 0 ? "" : relative[..(slash + 1)]) + ".rgvm-backup-" + plan.PlanId + "-" + item.Index;
+        var backup = Fingerprint((await FileBridgeAsync(new { op = "stat", root = root.Path, relativePath = backupRelative, hash = expected!.Kind == "file" }, root.Identity.Session, ct))
+            .Deserialize<RemoteFileEntry>(DebugJson.Options)!);
+        ValidateRecoveredBackup(backup, expected);
+        return CatalogText(observed, "backupPath");
+    }
+    private static void ValidateRecoveredBackup(TransferFingerprint? backup, TransferFingerprint? expected)
+    {
+        if (backup is null)
+        {
+            if (expected is not null) throw new DebugException("backup_missing", "原计划覆盖前的备份已不在，未将回执标为完整恢复。", "reconciling_commit");
+            return;
+        }
+        if (expected is null) throw new DebugException("backup_unexpected", "新建或合并条目出现未知备份，未猜测其归属。", "reconciling_commit");
+        if (!SameContent(backup, expected) || backup.Uid != expected.Uid || backup.Gid != expected.Gid || backup.Mode != expected.Mode ||
+            backup.Kind == "directory" && (backup.Bytes != expected.Bytes || backup.ModifiedUnixMs != expected.ModifiedUnixMs))
+            throw new DebugException("backup_changed", "覆盖备份与原计划的内容或元数据不同，未重新覆盖。", "reconciling_commit");
     }
     private async Task<TransferExecutionHeader> CommitTransferArchiveAsync(TransferPlan plan, TransferExecutionHeader header,
         Dictionary<int, TransferItemState> states, TransferExecutionStore journal, CancellationToken ct)

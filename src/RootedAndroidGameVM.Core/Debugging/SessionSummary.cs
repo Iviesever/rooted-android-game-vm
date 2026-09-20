@@ -178,6 +178,10 @@ public sealed partial class DebugBroker
                     planId = resumable.PlanId,
                     idempotencyKey = "summary-resume-" + resumable.PlanId + "-" + resumable.UpdatedAt.UtcTicks
                 });
+            var pendingTools = await _service.PendingGuestToolsAsync(ct);
+            foreach (var pending in pendingTools.Take(5)) recovery.Add("工具/诊断资源 " + pending.Token + "：清理尚未核实，恢复连接后明确清理");
+            if (pendingTools.FirstOrDefault() is { } pendingTool && observed.Status == "Running")
+                resume = DebugRequest.Create("tools.cleanup", new { pendingTool.Token });
         }
         var release = observed.Input;
         var next = observed.Status == "OperationInProgress" ? "等待当前独占任务完成，或取消相应任务；安卓状态暂未核验" :
