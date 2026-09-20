@@ -17,7 +17,6 @@ namespace RootedAndroidGameVM.Core.Debugging;
 public sealed partial class AndroidDebugService : IDisposable
 {
     public static readonly AsyncLocal<Action<object>?> Progress = new();
-    public const string MalodyPackage = "me.mugzone.emiria";
     public readonly InstallPaths Paths;
     public readonly AndroidSdkLayout Layout;
     public readonly AndroidVmOptions Options;
@@ -325,13 +324,15 @@ public sealed partial class AndroidDebugService : IDisposable
     public async Task<object> ExecuteAsync(DebugRequest request, CancellationToken ct)
     {
         if (request.SchemaVersion != 1) throw new ArgumentException("未知协议版本。");
-        var package = request.Text("package", MalodyPackage);
-        if (request.Command is "input" or "key" or "launch" or "force-stop" or "install" or "malody.import" or "malody.reload" or "stop" or "root-shell" or "shell")
+        var package = request.Text("package");
+        if (request.Command is "launch" or "force-stop" or "uninstall" or "app.observe" or "app.page.annotate" or "logs" or "metrics" or "frames.sample")
+            package = RequirePackage(request);
+        if (request.Command is "input" or "key" or "launch" or "force-stop" or "install" or "stop" or "root-shell" or "shell")
             Interlocked.Increment(ref _pageRevision);
         switch (request.Command)
         {
             case "session.observe": return await SessionObservationAsync(package, request.Flag("refresh"), ct);
-            case "malody.page.observe": return await ObservePageAsync(request, ct);
+            case "app.page.annotate": return await ObservePageAsync(request, ct);
             case "licenses":
                 var assembly = typeof(AndroidDebugService).Assembly;
                 return assembly.GetManifestResourceNames().Where(n => n.Contains("Licenses.")).ToDictionary(n => n,
@@ -445,7 +446,6 @@ public sealed partial class AndroidDebugService : IDisposable
                 }
             case "checkpoint.recover": await StopAsync(ct); return await Checkpoints.RecoverPendingAsync(ct);
             case "files.list": case "files.pull": case "files.push": case "files.diff": case "files.sync": case "files.export": return await FilesAsync(request, ct);
-            case "malody.import": case "malody.reload": return await ImportAsync(request, ct);
             case "logs": return await LogsAsync(package, Math.Clamp(request.Number("seconds", 30), 1, 3600), ct);
             case "metrics": return await MetricsAsync(package, ct);
             case "record": case "trace": return await RecordAsync(request.Command, Math.Clamp(request.Number("seconds", 30), 1, 180), ct);

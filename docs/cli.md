@@ -34,8 +34,8 @@ $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.ex
 ```json
 {
   "schemaVersion": 1,
-  "command": "malody.reload",
-  "arguments": { "path": "D:\\my-files\\my-skin.msp" }
+  "command": "launch",
+  "arguments": { "package": "test.app", "waitForActivity": true }
 }
 ```
 
@@ -45,13 +45,13 @@ $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.ex
 
 ## 常用请求
 
-下面展示 `command` 和 `arguments`。省略包名时，Malody 模板使用 `me.mugzone.emiria`；通用应用操作可以指定其他合法包名。
+下面展示 `command` 和 `arguments`。应用操作必须显式指定 package；缺少目标返回 app_required，不选择默认应用。先用 apps 发现已安装包。session.summary 不指定应用时只显示实例摘要；共享文件操作无需提供包名。
 
 | command | arguments 示例 | 用途 |
 |---|---|---|
 | `status` / `capabilities` | `{}` | 状态、协议能力 |
-| `session.summary` | `{"package":"me.mugzone.emiria","refresh":true}` | GUI/CLI共用的会话、任务、核验、触点与恢复摘要 |
-| `malody.page.observe` | `{"observation":"截图id","page":"home"}` | 将调用者观察到的页面关联到新截图 |
+| `session.summary` | `{"package":"test.app","refresh":true}` | GUI/CLI共用的会话、任务、核验、触点与恢复摘要 |
+| `app.page.annotate` | `{"package":"test.app","observation":"截图id","page":"文档列表"}` | 将调用者观察到的页面关联到新截图 |
 | `memory.snapshot` | `{}` | 宿主余量与经过路径/PID/启动时间核验的进程 WS、私有提交、历史峰值 |
 | `start` / `stop` | `{}` | 启动或 sync 后停止 |
 | `apps` | `{}` | 第三方应用列表 |
@@ -67,7 +67,6 @@ $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.ex
 | `files.list` | `{"scope":"external","package":"test.app","remote":"files"}` | 列目录 |
 | `files.pull` / `files.push` | `{"scope":"external","package":"test.app","remote":"files/a.bin","local":"D:\\a.bin"}` | 双向文件传输 |
 | `files.diff` / `files.sync` | `{"scope":"external","package":"test.app","remote":"files/qa","local":"D:\\qa"}` | 比较/不删除式同步 |
-| `malody.import` / `malody.reload` | `{"path":"D:\\chart.mcz"}` | 导入 / 重启后导入并验证解包 |
 | `checkpoint.list` / `checkpoint.create` | `{}` | 列表 / 停机保存 |
 | `checkpoint.restore` | `{"id":"检查点编号"}` | 校验、恢复与冷启动 |
 | `checkpoint.recover` | `{}` | 恢复中断的磁盘切换 |
@@ -78,17 +77,13 @@ $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.ex
 
 所有 ADB 操作都固定到经过检查的产品实例。没有“自动选第一个设备”的逻辑，也不调用全局 `adb kill-server`。
 
-`session.summary`返回runtime与summary，`summary.text`就是GUI展开“会话摘要”显示的同一份文字。它列出实例、App/PID、近期任务阶段、最近导入/传输核验、触点释放依据、产物目录、可恢复点与下一步。启动/停机/恢复期间仍可返回任务进度，安卓状态标为OperationInProgress，不等独占操作结束才显示。ADB不可用但产品进程仍在时为Unreachable，不能误当已停机。
+`session.summary`返回runtime与summary，`summary.text`就是GUI展开“会话摘要”显示的同一份文字。它列出实例、App/PID、近期任务阶段、最近传输核验、触点释放依据、产物目录、可恢复点与下一步。启动/停机/恢复期间仍可返回任务进度，安卓状态标为OperationInProgress，不等独占操作结束才显示。ADB不可用但产品进程仍在时为Unreachable，不能误当已停机。
 
-App结构化观察最多缓存10秒，返回原observedAt；refresh:true强制更新该观察，不自动截图或识别Unity页面。Malody无障碍树只有Game view时，先screen查看真实页面，再用malody.page.observe记录home/song_select/loading/playing/paused/results/dialog/unknown。该记录明确是调用者截图标注，附截图路径、采集时间、App PID及会话；只接受30秒内且未执行后续操作的观察。摘要对过期、后续操作、进程/会话或前台变化标superseded，不把旧页面当作当前事实。
+App结构化观察最多缓存10秒，返回原observedAt；refresh:true强制更新该观察，不自动截图或推断应用页面。先用screen观察，再用app.page.annotate记录1–120个可显示字符的页面说明，同时指定目标package。记录标明是调用者截图标注，附截图路径、采集时间、App PID及会话；只接受30秒内、相同目标且未执行后续操作的观察。摘要对过期、后续操作、进程/会话或前台变化标superseded；其他应用的标注不会混入当前应用摘要。
 
 触点计数是本工具账本；acknowledged仅表示释放RPC已确认，游戏实际状态需要独立验收。释放未确认会保留unverified及错误依据；输入结束不能在清理未确认时报告成功。每次发送和释放均绑定原VM会话，不能把旧序列续发给重启后的实例；新协调进程在确认资源归属后先清理可能遗留的输入，失败时保持未验证。
 
-导入进度区分 `transferring`、`transferred`、`waiting_for_app`、`activity_ready`、`triggering_import`、`import_triggered`、`waiting_for_unpack`、`verifying_content`、`content_verified` 和 `waiting_for_activation`。前台 resumed Activity 只证明 Activity 就绪；`interactiveReady:false`、`activationVerified:false` 和 `runningVerified:false` 不代表页面可操作、已启用或已进入游戏。进度、原始 Activity/Intent 依据及逐文件核验保存在 `debug-runs/imports/<importId>/`。
-
-冷启动漏接时自动重触发同一已传文件，最多三次；`transferCount` 和 `triggerCount` 分开计数。失败或取消后，以 `{"command":"malody.import","arguments":{"importId":"原编号"}}` 续作已核验传输，不再次上传或换目录。若传输未完成、远端包丢失或现有解包内容异常，会明确失败并保留恢复记录。核验失败通过 `ok:false`、`error.stage` 和 `error.evidencePath` 报告，不再与等待启用混淆。
-
-`imported.verifiedFiles` 只数 SHA-256 完全相同的文件；`metadataRewrites` 单列已知 `info.json` JSON重排、已知有界目录字段补充，以及已实测的版本字段 `393216 → 394764`。其余原有字段必须相同，脚本、资源、布局、签名、缺失和额外文件均严格检查；未知差异拒绝通过。App启用后自己创建文件可能导致后续重新核验失败，该结果不能当作源包未经修改。
+通用核心已移除旧Malody专属命令、默认包名和导入恢复按钮。旧任务与本地证据保留可查，但不会自动重放或声明可续作；旧malody.*请求不再出现在capabilities/schema中。需要专属业务导入时由应用自身操作；未来如提供自动化扩展，必须通过独立插件契约。文件传输成功不等于应用完成导入或可以运行。
 
 `files.push` 的私有文件归属目标App，默认600；应用外部目录文件660；共享下载默认644。替换私有/共享文件保留合理读写位，去除执行和全局写入位。结果列出实际 `permissions`；`applicationReadVerified:false` 表示传输本身没有代替目标App执行读取验收。
 
@@ -98,7 +93,7 @@ App结构化观察最多缓存10秒，返回原observedAt；refresh:true强制�
 |---|---|---|
 | `runtime.inspect` | `{}` | 请求配置、实际显示、宿主内存；停机时附启动余量检查 |
 | `runtime.configure` | `{"profile":{"renderer":"host","width":1920,"height":1080,"density":240,"refreshRate":120,"memoryMb":3072,"cpuCores":4,"desktopDisplay":true}}` | 停机后保存；下次启动生效 |
-| `frames.sample` | `{"package":"me.mugzone.emiria","seconds":30}` | 实际呈现帧率、间隔分布和采样覆盖 |
+| `frames.sample` | `{"package":"test.app","seconds":30}` | 实际呈现帧率、间隔分布和采样覆盖 |
 | `files.export` | `{"package":"test.app","scope":"private","remote":"files/qa","local":"D:\\exports"}` | 导出指定目录，核验并受控解包 |
 | `uninstall` | `{"package":"test.app","confirm":true}` | 卸载普通第三方应用；删除该应用数据 |
 | `window.focus` | `{}` | 打开已经验证的产品安卓窗口 |
@@ -153,9 +148,9 @@ App结构化观察最多缓存10秒，返回原observedAt；refresh:true强制�
 
 ```json
 {"command":"test","arguments":{"steps":[
-  {"command":"launch","arguments":{"package":"me.mugzone.emiria"}},
+  {"command":"launch","arguments":{"package":"test.app"}},
   {"command":"screen"},
-  {"command":"metrics","arguments":{"package":"me.mugzone.emiria"}}
+  {"command":"metrics","arguments":{"package":"test.app"}}
 ]}}
 ```
 

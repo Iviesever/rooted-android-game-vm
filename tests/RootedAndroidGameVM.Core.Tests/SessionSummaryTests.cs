@@ -23,15 +23,13 @@ public sealed class SessionSummaryTests
         InputSessionPolicy.RequireSame(expected, expected);
     }
 
-    [Theory]
-    [InlineData("app_not_ready", true)] [InlineData("cancelled", true)] [InlineData("timeout", true)]
-    [InlineData("import_content_mismatch", false)] [InlineData("transfer_not_verified", false)]
-    [InlineData("import_source_unavailable", false)]
-    public void Resume_only_offers_recoverable_imports_not_overwriting_bad_or_missing_content(string error, bool canResume)
+    [Fact]
+    public void No_application_selection_is_visible_in_the_shared_summary()
     {
-        var import = new SessionImportSummary("id", "failed", false, 0, 2, 0, error, DateTimeOffset.UtcNow, "session", "artifacts", "evidence");
-        Assert.Equal(canResume, SessionSummaryText.CanResume(import));
-        Assert.False(SessionSummaryText.CanResume(import with { ContentVerified = true }));
+        var summary = new SessionSummary(DateTimeOffset.UtcNow, "emulator-5554", "Running", "session", "",
+            null, null, [], null, null, [], "artifacts", [], "选择应用", null, "");
+        Assert.Contains("App：未选择应用", SessionSummaryText.Render(summary));
+        Assert.Null(summary.ResumeRequest);
     }
 
     [Fact]

@@ -64,7 +64,7 @@ public sealed class DebugProtocolRecoveryTests
     public void Persisted_unfinished_work_is_interrupted_with_original_identity_and_recovery_evidence()
     {
         var directory = Path.Combine(Path.GetTempPath(), "rgvm-journal-test-" + Guid.NewGuid().ToString("N"));
-        var record = new DebugJobJournal(Guid.NewGuid().ToString("N"), "original-request", "malody.import", DateTimeOffset.UtcNow,
+        var record = new DebugJobJournal(Guid.NewGuid().ToString("N"), "original-request", "files.push", DateTimeOffset.UtcNow,
             false, "waiting_for_unpack", "vm-session", "1234", directory, null, null, null, null,
             JsonSerializer.SerializeToElement(new { importId = "recover-this-import", remote = "/same-transferred-file" }), 42, 100);
         try

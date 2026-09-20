@@ -47,6 +47,7 @@ internal static class Program
         {
             model.RefreshRuntimeAsync().GetAwaiter().GetResult();
             model.RefreshApplicationsAsync().GetAwaiter().GetResult();
+            model.SelectedApplication = model.Applications.FirstOrDefault(); // Explicit fixture selection, not a product default.
             model.BrowseFilesAsync().GetAwaiter().GetResult();
             model.RefreshCheckpointsAsync().GetAwaiter().GetResult();
         }
@@ -94,10 +95,10 @@ internal static class Program
             object result = request.Command switch
             {
                 "session.summary" => SampleSession(),
-                "status" => new { status = "Running", serial = "emulator-5554", dataRoot = @"D:\Android-Data", root = true, state = new { awake = true, locked = false, foreground = "me.mugzone.emiria" } },
+                "status" => new { status = "Running", serial = "emulator-5554", dataRoot = @"D:\Android-Data", root = true, state = new { awake = true, locked = false, foreground = "com.example.notes" } },
                 "runtime.inspect" => new { requested = RuntimeProfile.Recommended, observed = new { activeRefreshRate = 120.0, renderer = "GLES: NVIDIA · 硬件渲染" }, host = new { totalMb = 16384, availableMb = 4800 } },
-                "apps" => new[] { "me.mugzone.emiria", "com.example.toolbox", "com.example.test" },
-                "files.list" => new { entries = new[] { new { name = "skin", details = "directory|4096|10212|10212|700" }, new { name = "chart", details = "directory|4096|10212|10212|700" }, new { name = "readme.txt", details = "regular file|1234|10212|10212|600" }, new { name = "中文文件名与较长的内容说明.json", details = "regular file|65536|10212|10212|600" } } },
+                "apps" => new[] { "com.example.notes", "com.example.toolbox", "com.example.test" },
+                "files.list" => new { entries = new[] { new { name = "documents", details = "directory|4096|10212|10212|700" }, new { name = "images", details = "directory|4096|10212|10212|700" }, new { name = "readme.txt", details = "regular file|1234|10212|10212|600" }, new { name = "中文文件名与较长的内容说明.json", details = "regular file|65536|10212|10212|600" } } },
                 "checkpoint.list" => new[] { new { id = "20260913-120000-example", path = @"D:\Android-Data\checkpoints\20260913-120000-example" } },
                 _ => new { success = true }
             };
@@ -106,15 +107,15 @@ internal static class Program
         private static object SampleSession()
         {
             var at = DateTimeOffset.UtcNow;
-            var summary = new SessionSummary(at, "emulator-5554", "Running", "1234:5678", "me.mugzone.emiria",
-                new("me.mugzone.emiria", "4321", "me.mugzone.emiria", true, false, "activity_ready", at, @"D:\Android-Data\debug-runs\activity.txt"),
-                null, [new("job-example", "request-example", "malody.import", "waiting_for_app", "failed", "1234:5678", "4321", @"D:\Android-Data\debug-runs\import", null, "app_not_ready")],
-                new("import-example", "failed", false, 0, 5, 0, "app_not_ready", at, "1234:5678", @"D:\Android-Data\debug-runs\import", @"D:\Android-Data\debug-runs\import\import.json"),
+            var summary = new SessionSummary(at, "emulator-5554", "Running", "1234:5678", "com.example.notes",
+                new("com.example.notes", "4321", "com.example.notes", true, false, "activity_ready", at, @"D:\Android-Data\debug-runs\activity.txt"),
+                null, [new("job-example", "request-example", "files.push", "transferring", "failed", "1234:5678", "4321", @"D:\Android-Data\debug-runs\import", null, "app_not_ready")],
+                null,
                 new("acknowledged", true, "1234:5678", at, [], null, @"D:\Android-Data\debug-runs\release.json"), [],
-                @"D:\Android-Data\debug-runs\import", ["原importId可继续，不重复上传"], "继续原导入并核验", DebugRequest.Create("malody.import", new { importId = "import-example" }), "");
+                @"D:\Android-Data\debug-runs\import", ["查看失败任务原始记录"], "核查传输结果", null, "");
             summary = summary with { Text = SessionSummaryText.Render(summary) };
             return new { runtime = new { status = "Running", serial = "emulator-5554", dataRoot = @"D:\Android-Data", root = true,
-                state = new { awake = true, locked = false, foreground = "me.mugzone.emiria" } }, summary };
+                state = new { awake = true, locked = false, foreground = "com.example.notes" } }, summary };
         }
     }
 }

@@ -100,7 +100,8 @@ public partial class WorkstationWindow : Window
             switch (ViewModel.Section)
             {
                 case WorkstationSection.Applications when ViewModel.IsRunning: await ViewModel.RefreshApplicationsAsync(); break;
-                case WorkstationSection.Files when ViewModel.IsRunning: await ViewModel.BrowseFilesAsync(); break;
+                case WorkstationSection.Files when ViewModel.IsRunning: await ViewModel.RefreshApplicationsAsync(); await ViewModel.BrowseFilesAsync(); break;
+                case WorkstationSection.Diagnostics when ViewModel.IsRunning: await ViewModel.RefreshApplicationsAsync(); break;
                 case WorkstationSection.Checkpoints: await ViewModel.RefreshCheckpointsAsync(); break;
                 case WorkstationSection.Settings: await ViewModel.RefreshRuntimeAsync(); break;
             }
@@ -153,11 +154,6 @@ public partial class WorkstationWindow : Window
     {
         var dialog = new OpenFileDialog { Filter = "Android 应用|*.apk", Title = "选择要安装的 APK" };
         if (dialog.ShowDialog(this) == true) { ViewModel.ApkPath = dialog.FileName; await ViewModel.InspectApkAsync(); }
-    }
-    private void BrowseContent_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new OpenFileDialog { Filter = "Malody 内容|*.msp;*.mcz" };
-        if (dialog.ShowDialog(this) == true) ViewModel.ContentPath = dialog.FileName;
     }
     private async void Upload_Click(object sender, RoutedEventArgs e)
     {
@@ -259,12 +255,12 @@ public partial class WorkstationWindow : Window
         RootedAndroidGameVM.Cli.exe --request request.json --wait
 
         请求文件：
-        {"schemaVersion":1,"command":"logs","arguments":{"package":"me.mugzone.emiria","seconds":30}}
+        {"schemaVersion":1,"command":"logs","arguments":{"package":"test.app","seconds":30}}
 
         长任务先返回 jobId，--wait 输出 NDJSON 并等待结果。input 必须保持查询，
         超过 5 秒不查询会取消并释放触点。窗口与 CLI 共用任务和实例校验。
         输入坐标以保存的原始 PNG 为准；分辨率、方向、应用或会话变化后请重新观察。
-        APK、MSP、MCZ 从本机选择，不随产品分发。私钥、账号数据不应加入诊断材料。
+        APK 与应用文件从本机选择，不随产品分发。私钥、账号数据不应加入诊断材料。
 
         完整说明：仓库 docs/cli.md 与 docs/debug-workbench.md。
         """);
@@ -280,7 +276,7 @@ public partial class WorkstationWindow : Window
         var frames = new List<InputFrame> { new(0, points) };
         for (var i = 0; i < points.Length; i++) frames.Add(new(1000 + i * 150, [points[i] with { Pressure = 0 }]));
         ViewModel.TestJson = JsonSerializer.Serialize(DebugRequest.Create("input", new { observation = screen.Id, frames }), new JsonSerializerOptions(DebugJson.Options) { WriteIndented = true });
-        ViewModel.Message = "模板已生成，请按实际轨道调整坐标后运行";
+        ViewModel.Message = "模板已生成，请按实际目标位置调整坐标后运行";
     }
     private async void OpenTest_Click(object sender, RoutedEventArgs e)
     {
@@ -295,15 +291,14 @@ public partial class WorkstationWindow : Window
     private void Window_DragOver(object sender, DragEventArgs e)
     {
         e.Effects = e.Data.GetData(DataFormats.FileDrop) is string[] { Length: 1 } files &&
-            Path.GetExtension(files[0]).ToLowerInvariant() is ".apk" or ".msp" or ".mcz" ? DragDropEffects.Copy : DragDropEffects.None;
+            ViewModel.Section == WorkstationSection.Applications && Path.GetExtension(files[0]).Equals(".apk", StringComparison.OrdinalIgnoreCase) ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
     }
     private async void Window_Drop(object sender, DragEventArgs e)
     {
-        if (e.Data.GetData(DataFormats.FileDrop) is not string[] { Length: 1 } files) return;
+        if (ViewModel.Section != WorkstationSection.Applications || e.Data.GetData(DataFormats.FileDrop) is not string[] { Length: 1 } files) return;
         ViewModel.SelectedNavigation = ViewModel.Navigation.Single(item => item.Section == WorkstationSection.Applications);
         if (Path.GetExtension(files[0]).Equals(".apk", StringComparison.OrdinalIgnoreCase))
         { ViewModel.ApkPath = files[0]; await ViewModel.InspectApkAsync(); }
-        else if (Path.GetExtension(files[0]).ToLowerInvariant() is ".msp" or ".mcz") ViewModel.ContentPath = files[0];
     }
 }

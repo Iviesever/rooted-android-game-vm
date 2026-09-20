@@ -15,8 +15,8 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
     private bool _running, _busy, _refreshing;
     private string _status = "正在连接", _statusDetail = "读取当前虚拟机状态", _message = "准备就绪", _error = "";
     private string _dataRoot = "", _serial = "", _rootStatus = "等待启动", _display = "等待检测", _renderer = "等待检测", _hostMemory = "等待检测";
-    private string _package = "me.mugzone.emiria", _apkPath = "", _apkSummary = "选择本机 APK 后会检查版本和架构", _contentPath = "";
-    private string _remoteFolder = "files", _localPath = "", _rawResult = "", _logText = "", _logFilter = "", _script = "getprop ro.product.cpu.abilist";
+    private string _package = "", _apkPath = "", _apkSummary = "选择本机 APK 后会检查版本和架构";
+    private string _remoteFolder = "", _localPath = "", _rawResult = "", _logText = "", _logFilter = "", _script = "getprop ro.product.cpu.abilist";
     private string _testJson = "{\n  \"command\": \"screen\"\n}", _recordDirectory = "", _clipboard = "";
     private int _seconds = 30, _width = 1920, _height = 1080, _density = 240, _refreshRate = 120, _memoryMb = 3072, _cores = 4;
     private string _selectedRenderer = "host";
@@ -36,7 +36,7 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
         _api = api;
         Navigation = [
             new(WorkstationSection.Android, "使用安卓", "\uE7F8", "打开安卓窗口，或在这里观察与定位操作"),
-            new(WorkstationSection.Applications, "应用与内容", "\uE71D", "安装应用、打开应用、导入皮肤与内容"),
+            new(WorkstationSection.Applications, "应用管理", "\uE71D", "安装、打开和管理安卓应用"),
             new(WorkstationSection.Files, "文件管理", "\uE8B7", "浏览、上传、导出和比较应用数据"),
             new(WorkstationSection.Diagnostics, "诊断与记录", "\uE9D9", "持续日志、异常、录像和性能依据"),
             new(WorkstationSection.Automation, "AI 与自动化", "\uE943", "可复现的输入、测试步骤和 Shell 调试"),
@@ -47,12 +47,6 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
         _scope = Scopes[0];
         RefreshCommand = Action(RefreshAsync);
         RefreshSessionCommand = Action(async () => await RefreshSessionAsync(true));
-        ResumeImportCommand = Action(async () =>
-        {
-            var request = _session?.ResumeRequest; if (request is null) return;
-            if (!IsRunning && await RunAsync("启动安卓", new("start"), true) is null) return;
-            await RunAsync("继续原导入", request, true); await RefreshSessionAsync(true);
-        }, () => !IsBusy && _session?.ResumeRequest is not null);
         CancelSessionTaskCommand = Action(async () =>
         {
             var task = _session?.Tasks.FirstOrDefault(task => task.Status is "queued" or "running" or "cancelling");
@@ -68,15 +62,15 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
         RefreshApplicationsCommand = Action(RefreshApplicationsAsync, () => IsRunning);
         InspectApkCommand = Action(InspectApkAsync, () => File.Exists(ApkPath));
         InstallCommand = Action(async () => { if (await RunAsync("安装应用", DebugRequest.Create("install", new { path = ApkPath }), true) is not null) await RefreshApplicationsAsync(); }, () => IsRunning && !IsBusy && File.Exists(ApkPath));
-        LaunchCommand = Action(async () => await RunAsync("打开应用", DebugRequest.Create("launch", new { package = Package })), () => IsRunning && !IsBusy);
-        StopApplicationCommand = Action(async () => await RunAsync("停止应用", DebugRequest.Create("force-stop", new { package = Package })), () => IsRunning && !IsBusy);
-        ImportCommand = Action(async () => await RunAsync("部署并重新加载", DebugRequest.Create("malody.reload", new { path = ContentPath }), true), () => IsRunning && !IsBusy && File.Exists(ContentPath));
-        BrowseFilesCommand = Action(BrowseFilesAsync, () => IsRunning);
-        ParentFolderCommand = Action(async () => { RemoteFolder = RemoteFolder.Contains('/') ? RemoteFolder[..RemoteFolder.LastIndexOf('/')] : ""; await BrowseFilesAsync(); }, () => IsRunning && RemoteFolder.Length > 0);
-        UploadCommand = Action(async () => { if (await RunAsync("上传文件", FileRequest("files.push", JoinRemote(Path.GetFileName(LocalPath)), LocalPath), true) is not null) await BrowseFilesAsync(); }, () => IsRunning && !IsBusy && File.Exists(LocalPath));
-        CompareCommand = Action(async () => await RunAsync("比较目录", FileRequest("files.diff", RemoteFolder, LocalPath)), () => IsRunning && Directory.Exists(LocalPath));
-        SyncCommand = Action(async () => { if (await RunAsync("同步目录", FileRequest("files.sync", RemoteFolder, LocalPath), true) is not null) await BrowseFilesAsync(); }, () => IsRunning && !IsBusy && Directory.Exists(LocalPath));
-        LogsCommand = Action(async () => await RunAsync("应用日志", DebugRequest.Create("logs", new { package = Package, seconds = Seconds })), () => IsRunning);
+        LaunchCommand = Action(async () => await RunAsync("打开应用", DebugRequest.Create("launch", new { package = Package })), () => IsRunning && HasApplication && !IsBusy);
+        StopApplicationCommand = Action(async () => await RunAsync("停止应用", DebugRequest.Create("force-stop", new { package = Package })), () => IsRunning && HasApplication && !IsBusy);
+        ManageFilesCommand = Action(async () => { SelectedNavigation = Navigation.Single(item => item.Section == WorkstationSection.Files); await BrowseFilesAsync(); }, () => IsRunning && HasApplication);
+        BrowseFilesCommand = Action(BrowseFilesAsync, () => CanBrowseFiles);
+        ParentFolderCommand = Action(async () => { RemoteFolder = RemoteFolder.Contains('/') ? RemoteFolder[..RemoteFolder.LastIndexOf('/')] : ""; await BrowseFilesAsync(); }, () => CanBrowseFiles && RemoteFolder.Length > 0);
+        UploadCommand = Action(async () => { if (await RunAsync("上传文件", FileRequest("files.push", JoinRemote(Path.GetFileName(LocalPath)), LocalPath), true) is not null) await BrowseFilesAsync(); }, () => CanBrowseFiles && !IsBusy && File.Exists(LocalPath));
+        CompareCommand = Action(async () => await RunAsync("比较目录", FileRequest("files.diff", RemoteFolder, LocalPath)), () => CanBrowseFiles && Directory.Exists(LocalPath));
+        SyncCommand = Action(async () => { if (await RunAsync("同步目录", FileRequest("files.sync", RemoteFolder, LocalPath), true) is not null) await BrowseFilesAsync(); }, () => CanBrowseFiles && !IsBusy && Directory.Exists(LocalPath));
+        LogsCommand = Action(async () => await RunAsync("应用日志", DebugRequest.Create("logs", new { package = Package, seconds = Seconds })), () => IsRunning && HasApplication);
         MetricsCommand = Action(async () =>
         {
             var result = await RunAsync("性能采样", DebugRequest.Create("metrics", new { package = Package }));
@@ -84,7 +78,7 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
             var memory = value.TryGetProperty("totalPssKb", out var pss) && pss.ValueKind == JsonValueKind.Number ? $"{pss.GetInt64() / 1024d:0.0} MiB" : "不可用";
             var frameTiming = value.TryGetProperty("frameTimingAvailable", out var available) && available.GetBoolean() ? "可用（详见完整结果）" : "不可用，不能按零耗时计算";
             LogText = $"应用：{Package}\n进程：{Text(value, "pid", "不可用")}\n应用 PSS：{memory}\nCPU：{Text(value, "cpu", "不可用")}\n帧时序：{frameTiming}\n\n完整原始依据可从“任务与结果”查看。";
-        }, () => IsRunning);
+        }, () => IsRunning && HasApplication);
         RecordCommand = Action(async () => await RunAsync("录像 · 无音频", DebugRequest.Create("record", new { seconds = Seconds })), () => IsRunning);
         FrameSampleCommand = Action(async () =>
         {
@@ -93,7 +87,7 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
             { LogText = "当前应用没有可获取的 SurfaceView 呈现数据。"; return; }
             var summary = measurement.GetProperty("summary");
             LogText = $"应用实际呈现：{summary.GetProperty("observedFps").GetDouble():0.0} FPS\n帧间隔 P50：{summary.GetProperty("p50Ms").GetDouble():0.00} ms\nP95：{summary.GetProperty("p95Ms").GetDouble():0.00} ms\nP99：{summary.GetProperty("p99Ms").GetDouble():0.00} ms\n最长间隔：{summary.GetProperty("maxMs").GetDouble():0.00} ms\n样本帧数：{summary.GetProperty("frames").GetInt32()}\n\n来源为 SurfaceFlinger 呈现时间；有限缓冲可能缺样，不能用显示模式刷新率替代此数值。";
-        }, () => IsRunning);
+        }, () => IsRunning && HasApplication);
         TraceCommand = Action(async () => await RunAsync("系统追踪", DebugRequest.Create("trace", new { seconds = Seconds })), () => IsRunning);
         CancelCommand = Action(async () => { if (SelectedWork?.Id is { } id) await RunAsync("取消任务", DebugRequest.Create("cancel", new { id })); }, () => SelectedWork?.Id is not null && !SelectedWork.Completed);
         RefreshCheckpointsCommand = Action(RefreshCheckpointsAsync);
@@ -136,12 +130,23 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
     public string Display { get => _display; private set => Set(ref _display, value); }
     public string Renderer { get => _renderer; private set => Set(ref _renderer, value); }
     public string HostMemory { get => _hostMemory; private set => Set(ref _hostMemory, value); }
-    public string Package { get => _package; set { Set(ref _package, value); RefreshCommands(); } }
-    public ApplicationRow? SelectedApplication { get => _selectedApplication; set { Set(ref _selectedApplication, value); if (value is not null) Package = value.Package; } }
+    public string Package { get => _package; set { Set(ref _package, value); Changed(nameof(HasApplication)); RefreshCommands(); } }
+    public bool HasApplication => !string.IsNullOrWhiteSpace(Package);
+    public bool CanBrowseFiles => IsRunning && (Scope.Value == "shared" || HasApplication);
+    public ApplicationRow? SelectedApplication
+    {
+        get => _selectedApplication;
+        set
+        {
+            var targetChanged = Package != (value?.Package ?? "");
+            Set(ref _selectedApplication, value);
+            Package = value?.Package ?? "";
+            if (targetChanged) { RemoteFolder = ""; Files.Clear(); SelectedFile = null; }
+        }
+    }
     public string ApkPath { get => _apkPath; set { Set(ref _apkPath, value); RefreshCommands(); } }
     public string ApkSummary { get => _apkSummary; private set => Set(ref _apkSummary, value); }
-    public string ContentPath { get => _contentPath; set { Set(ref _contentPath, value); RefreshCommands(); } }
-    public FileScope Scope { get => _scope; set { Set(ref _scope, value); Files.Clear(); SelectedFile = null; Changed(nameof(PrivateScope)); } }
+    public FileScope Scope { get => _scope; set { if (Set(ref _scope, value)) { RemoteFolder = ""; Files.Clear(); SelectedFile = null; Changed(nameof(PrivateScope)); RefreshCommands(); } } }
     public bool PrivateScope => Scope.Value == "private";
     public string RemoteFolder { get => _remoteFolder; set { Set(ref _remoteFolder, value); RefreshCommands(); } }
     public string LocalPath { get => _localPath; set { Set(ref _localPath, value); RefreshCommands(); } }
@@ -177,7 +182,6 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
 
     public AsyncAction RefreshCommand { get; }
     public AsyncAction RefreshSessionCommand { get; }
-    public AsyncAction ResumeImportCommand { get; }
     public AsyncAction CancelSessionTaskCommand { get; }
     public AsyncAction StartCommand { get; }
     public AsyncAction StopCommand { get; }
@@ -190,7 +194,7 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
     public AsyncAction InstallCommand { get; }
     public AsyncAction LaunchCommand { get; }
     public AsyncAction StopApplicationCommand { get; }
-    public AsyncAction ImportCommand { get; }
+    public AsyncAction ManageFilesCommand { get; }
     public AsyncAction BrowseFilesCommand { get; }
     public AsyncAction ParentFolderCommand { get; }
     public AsyncAction UploadCommand { get; }
@@ -242,9 +246,8 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
             });
             item.Details = Pretty(result); RawResult = item.Details; item.Status = "已完成"; Message = title + "已完成";
             var completedStage = result.ValueKind == JsonValueKind.Object ? Text(result, "stage") : "";
-            if (completedStage == "waiting_for_activation") { item.Status = "内容已核验 · 待启用"; Message = "内容核验通过；请在App内确认启用，实际运行仍待验证。"; }
-            else if (completedStage is "process_observed" or "activity_ready") { item.Status = completedStage == "activity_ready" ? "Activity就绪" : "进程已出现"; Message = item.Status + "；页面可操作性仍待核验。"; }
-            else if (request.Command == "release") { item.Status = "释放指令已确认"; Message = "释放指令已确认；游戏内状态请结合观察核验。"; }
+            if (completedStage is "process_observed" or "activity_ready") { item.Status = completedStage == "activity_ready" ? "Activity就绪" : "进程已出现"; Message = item.Status + "；页面可操作性仍待核验。"; }
+            else if (request.Command == "release") { item.Status = "释放指令已确认"; Message = "释放指令已确认；应用内状态请结合观察核验。"; }
             if (result.ValueKind == JsonValueKind.Object && result.TryGetProperty("directory", out var directory)) { item.Directory = directory.GetString(); RecordDirectory = item.Directory ?? ""; }
             return result;
         }
@@ -264,7 +267,10 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
         {
             var result = await _api.ExecuteAsync(DebugRequest.Create("session.summary", new { package = Package, refresh = force }), _lifetime.Token);
             var status = result.GetProperty("runtime");
-            _session = result.GetProperty("summary").Deserialize<SessionSummary>(DebugJson.Options)!;
+            var refreshedSession = result.GetProperty("summary").Deserialize<SessionSummary>(DebugJson.Options)!;
+            if (_session is not null && (_session.Instance != refreshedSession.Instance || _session.Session != refreshedSession.Session || DataRoot != Text(status, "dataRoot")))
+            { SelectedApplication = null; Applications.Clear(); }
+            _session = refreshedSession;
             SessionText = _session.Text;
             SessionArtifactDirectory = _session.ArtifactDirectory;
             SessionHeadline = "会话摘要 · " + _session.Status + " · PID " + (_session.App?.Pid ?? "未观察") + " · " + (_session.Tasks.FirstOrDefault()?.Stage ?? "无近期任务");
@@ -301,9 +307,16 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
     }
     public async Task RefreshApplicationsAsync()
     {
+        var session = _session?.Session;
+        var dataRoot = DataRoot;
         var result = await RunAsync("刷新应用", new("apps")); if (result is not { } data) return;
-        Applications.Clear(); foreach (var app in data.EnumerateArray()) { var package = app.GetString()!; Applications.Add(new(package, package == "me.mugzone.emiria" ? "Malody V" : package)); }
-        SelectedApplication = Applications.FirstOrDefault(app => app.Package == Package) ?? Applications.FirstOrDefault();
+        if (session != _session?.Session || dataRoot != DataRoot) return;
+        var selectedPackage = Package;
+        var packages = data.EnumerateArray().Select(app => app.GetString()!).ToHashSet(StringComparer.Ordinal);
+        foreach (var old in Applications.Where(app => !packages.Contains(app.Package)).ToArray()) Applications.Remove(old);
+        foreach (var package in packages.Where(package => Applications.All(app => app.Package != package))) Applications.Add(new(package, package));
+        SelectedApplication = Applications.FirstOrDefault(app => app.Package == selectedPackage);
+        if (SelectedApplication is null) Package = "";
     }
     public async Task InspectApkAsync()
     {
@@ -312,7 +325,11 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
     }
     public async Task BrowseFilesAsync()
     {
+        if (!CanBrowseFiles) { Message = "请先启动安卓并选择应用，或选择共享目录。"; return; }
+        var target = (Package, Scope.Value, RemoteFolder, _session?.Session, DataRoot);
+        Files.Clear(); SelectedFile = null;
         var result = await RunAsync("读取目录", FileRequest("files.list", RemoteFolder, "")); if (result is not { } data) return;
+        if (target != (Package, Scope.Value, RemoteFolder, _session?.Session, DataRoot)) return;
         Files.Clear(); foreach (var row in data.GetProperty("entries").EnumerateArray().Select(FileRow.Parse).OrderByDescending(row => row.IsDirectory).ThenBy(row => row.Name)) Files.Add(row);
     }
     public async Task EnterSelectedFolderAsync() { if (SelectedFile is { IsDirectory: true } file) { RemoteFolder = JoinRemote(file.Name); await BrowseFilesAsync(); } }

@@ -10,7 +10,7 @@ public sealed partial class AndroidDebugService
 {
     public static string RemotePath(string scope, string package, string relative)
     {
-        AndroidPackageName.Parse(package);
+        if (scope != "shared" || !string.IsNullOrEmpty(package)) AndroidPackageName.Parse(package);
         if (relative.Contains('\\') || relative.Contains('\0') || relative.Contains('\n') || relative.Contains('\r') ||
             relative.StartsWith('/') || relative.Split('/').Any(p => p is ".." or ".")) throw new ArgumentException("安卓路径必须是范围内的相对路径。");
         var root = scope switch
@@ -27,7 +27,8 @@ public sealed partial class AndroidDebugService
         "case \"$dest\" in \"$base\"|\"$base\"/*) ;; *) echo 'symlink escape' >&2; exit 43;; esac; ";
     public async Task<object> FilesAsync(DebugRequest request, CancellationToken ct)
     {
-        var package = request.Text("package", MalodyPackage); var scope = request.Text("scope", "external");
+        var scope = request.Text("scope", "external");
+        var package = scope == "shared" ? request.Text("package") : RequirePackage(request);
         var relative = request.Text("remote"); var remote = RemotePath(scope, package, relative); var root = RemotePath(scope, package, "");
         var local = request.Text("local"); var rootAccess = scope == "private";
         if (request.Command == "files.export") return await ExportFolderAsync(package, root, remote, local, rootAccess, ct);
@@ -108,7 +109,7 @@ public sealed partial class AndroidDebugService
         StoragePathPolicy.RejectReparsePoints(local);
         if (!File.Exists(local)) throw new FileNotFoundException("上传文件不存在。", local);
         if (new FileInfo(local).Length > 512L * 1024 * 1024) throw new IOException("单文件上传限制为 512 MiB。");
-        // An explicit private file write is permitted, but active encrypted resources must first be unloaded.
+        // Stop the application before modifying its private data to avoid live cache/database conflicts.
         if (scope == "private" && !string.IsNullOrWhiteSpace(await ShellAsync("pidof " + Q(package) + " || true", false, ct)))
             throw new DebugException("app_running", "私有数据写入前请停止应用，避免缓存和运行中的包损坏。");
         var parent = remote[..remote.LastIndexOf('/')];
@@ -158,7 +159,7 @@ public sealed partial class AndroidDebugService
         destination = Path.GetFullPath(destination); StoragePathPolicy.RejectReparsePoints(destination);
         Directory.CreateDirectory(destination);
         var id = Guid.NewGuid().ToString("N");
-        var output = Path.Combine(destination, package + "-" + DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss") + "-" + id[..8]);
+        var output = Path.Combine(destination, (package.Length == 0 ? "shared" : package) + "-" + DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss") + "-" + id[..8]);
         var temporary = "/data/local/tmp/rgvm-export-" + id + ".tar";
         var localArchive = Path.Combine(output, "transfer.tar");
         ColdCheckpoint.Restrict(output);

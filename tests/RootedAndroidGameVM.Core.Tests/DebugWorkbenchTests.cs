@@ -13,9 +13,9 @@ public sealed class DebugWorkbenchTests
     [InlineData("../escaped.lua")]
     [InlineData("/absolute.lua")]
     [InlineData("C:/outside.lua")]
-    public void Malody_archives_are_rejected_before_transfer_for_path_escape(string entryName)
+    public void Archives_are_rejected_before_transfer_for_path_escape(string entryName)
     {
-        var file = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".msp");
+        var file = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".zip");
         try
         {
             using (var zip = System.IO.Compression.ZipFile.Open(file, System.IO.Compression.ZipArchiveMode.Create))

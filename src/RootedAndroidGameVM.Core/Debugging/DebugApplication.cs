@@ -4,6 +4,15 @@ namespace RootedAndroidGameVM.Core.Debugging;
 
 public sealed partial class AndroidDebugService
 {
+    public static string RequirePackage(DebugRequest request)
+    {
+        var package = request.Text("package");
+        if (string.IsNullOrWhiteSpace(package))
+            throw new DebugException("app_required", "请选择应用，或在请求中明确提供 package。", "resolving_application");
+        AndroidPackageName.Parse(package);
+        return package;
+    }
+
     private async Task<(string Pid, DebugError? LaunchDiagnostic)> LaunchProcessAsync(string package, string directory, CancellationToken ct)
     {
         AndroidPackageName.Parse(package);
@@ -24,7 +33,7 @@ public sealed partial class AndroidDebugService
 
     public async Task<object> LaunchAsync(DebugRequest request, CancellationToken ct)
     {
-        var package = request.Text("package", MalodyPackage);
+        var package = RequirePackage(request);
         AndroidPackageName.Parse(package); Instance.Require();
         var directory = NewRecord("launch");
         var launch = await LaunchProcessAsync(package, directory, ct);
