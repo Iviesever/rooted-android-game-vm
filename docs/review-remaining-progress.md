@@ -2,6 +2,18 @@
 
 目标：[review-remaining-goal.md](review-remaining-goal.md)。开始于683c443；用户的目标变更另由a51dabd提交。本文保留历史批次证据；**它们不代表2026-09-20新增通用化与文件管理要求已经通过**。
 
+## 2026-09-20 A/B最新局部证据（未整体验收）
+
+源码基线9335afa及CI35510719019已通过；安装仍是旧0.5.0.0。Material Files 1.7.4（UID10211）的私有测试文件经核心计划上传，再通过该应用自己的FileProvider读取原值，证据material-provider-probe.json。没有操作Windows GUI；一次私有文件实读不等于三作用域双向流程通过。
+
+已创建一个QA用户10，名称RGVM QA 446f56bc。qa-user-apps.json证明仅安装Material Files与readfixture两个第三方应用，无Malody；UID分别为1010211与1010213。qa-locked-boundaries.json证明锁定私有数据返回data_locked，user10的appRef混用userId0被拒绝。后台start-user成功后users.list观察到用户10解锁，交互用户仍为0。主用户正式游戏未卸载。
+
+Material Files的external/obb/media根真实尚未生成，不能用手工mkdir替代产品能力验收。本机工作树补了显式createParents规划：以该用户已核实的卷为内部锚点，只允许所选应用前缀及计划列明的准备目录，保留应用安装身份；private/device-private不自行创建。新增7项边界测试，总385项非实机通过、完整构建零警告错误。该代码尚未完成实机验证、未提交或安装；GUI缺失根入口也仍待C批处理。
+
+用户10后台启动后，guest逐渐无法及时执行命令。qa-runtime-readonly.txt观察到MemAvailable为0、负载约82；这只是现场证据，未认定所有瞬时故障的根因，也未调整内存/镜像/显卡或关闭其他宿主程序。原apps.list任务a42e4e01785f403f9d1024c1dbe83099已明确cancelled，尚无本次完整传输写入。工具清理记录仍pending；停止测试用户未获确认，正常保存停止任务d6255586d0b74659b27bfc413d79d64e明确timed_out，随后一次正常Android重启请求观察超时。QEMU是否退出或guest是否重启须按本机continuation.md最新段和当前进程核实，不能从客户端超时推断。未强杀QEMU或猜测杀Android进程。
+
+同名/空名称两个无代码APK夹具已在本机签名构建，尚未安装。A/B完整双向、多用户隔离及元数据边界、D剩余组合、C真实GUI和E最终备份覆盖安装仍未完成。CLI文档同步了B3/D1–D4已有实现与验收边界，去掉600MiB与旧接口仍未通过等过时说明。
+
 ## 2026-09-20 当前状态与产品纠偏
 
 现场复核：HEAD 为30372db；已安装程序为0.5.0.0，原生产程序备份及CI安装包散列、安装后CLI回归记录已存在（本机 `evidence/installed-050-hashes.json`、`installed-050-acceptance.json`）。GitHub `v0.5.0` Release 仍为草稿，publishedAt为空。此前段落的“尚未安装”属于对应批次当时状态。

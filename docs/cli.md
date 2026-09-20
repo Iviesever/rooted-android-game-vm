@@ -15,7 +15,7 @@ $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.ex
 
 普通响应为一行 JSON，`schemaVersion` 为 1，`ok` 表示该层操作是否成功。长操作先返回 `jobId`；任务真正的结果在后续 `job` 响应的 `result` 内。`--wait` 持续输出 NDJSON 状态，直到任务结束。诊断文本写入 stderr。
 
-请求可附 `requestId`（1–128个字母、数字、下划线、点、冒号或连字符），省略时生成。响应回传该ID，长任务的最终结果、任务摘要和工具记录保持原请求ID与jobId；轮询请求有自己的ID。requestId用于关联，不是自动去重键；导入续作用importId。`schema`保留旧commands列表，另提供request/response JSON Schema及jobStates。
+请求可附 `requestId`（1–128个字母、数字、下划线、点、冒号或连字符），省略时生成。响应回传该ID，长任务的最终结果、任务摘要和工具记录保持原请求ID与jobId；轮询请求有自己的ID。requestId用于关联，不是自动去重键；文件传输通过planId和idempotencyKey关联执行与明确续作。`schema`保留旧commands列表，另提供request/response JSON Schema及jobStates。
 
 终态为 `succeeded`、`failed`、`cancelled`、`timed_out`、`interrupted`，接受任务时不提前给终态；查询请求自身成功与被查询任务成功是两层含义。`stage`、`session`、已观察的App `pid` 和 `artifactDirectory`描述实际证据；无法观察的字段省略。`error.stage`保留原失败阶段，`evidencePath`指阶段记录，`toolEvidencePath`指工具记录。长任务文本工具的stdout/stderr分别落盘，记录工具PID、退出码、完整性、取消与回收结果；大于64KiB的进度细节也改用文件引用。普通状态/预览成功轮询不持续复制工具输出，失败时仍留诊断。
 
@@ -66,6 +66,8 @@ $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.ex
 | `files.transfer.inspect` | `{"planId":"计划编号","offset":0,"pageSize":100}` | 分页查询持久计划，安卓停止时也可读取 |
 | `files.transfer.start` | `{"planId":"计划编号","idempotencyKey":"本次执行唯一键","conflictPolicy":"overwrite","stopApplications":true}` | 核对后执行，保留备份与逐项账本 |
 | `files.transfer.resume` | `{"planId":"计划编号","idempotencyKey":"本次续作唯一键"}` | 明确恢复旧计划，校验暂存前缀与已完成项 |
+| `tools.list` / `files.tools.list` | `{}` | 查看安卓工具归属、清理状态及恢复记录 |
+| `tools.cleanup` / `files.tools.cleanup` | `{"token":"清理记录中的token"}` | 明确核查并清理本实例所属工具与登记诊断资源 |
 | `apk.inspect` | `{"path":"D:\\app.apk"}` | 检查包名、版本、ABI |
 | `install` | `{"path":"D:\\app.apk"}` | 保留数据安装/升级 |
 | `launch` / `force-stop` | `{"package":"test.app"}` | 启动/停止指定应用 |
@@ -90,7 +92,7 @@ $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.ex
 
 `apps.list` 返回 `instanceId/session/userId/locale/observedAt/entries/total/snapshotId`，有后续页时返回 `nextCursor`；下一请求保持同一查询条件并传入 `cursor`。`pageSize`为1–200，缓存最多30秒，`refresh:true`重新读取并令旧分页游标失效。条目包含真实`name/nameSource`、`package`、`appRef`、UID、版本、安装修订、进程观察及数据根。`includeIcons:true`把48px PNG保存为本机`iconPath`，不在结果中返回大段图片编码；名称不可用时保留包名，进程不可观测时给出`runningStateError`。
 
-应用引用绑定持久实例、Android用户和安装修订；更新/重装后旧引用会在`apps.resolve`返回`stale_reference`，卸载返回`app_not_found`。它不是权限凭证。旧`apps`保持包名数组；目前旧`launch/files.*`仍接收显式package，新文件计划接口将继续接入应用引用，不能将本批引用解析误认为所有旧命令已经校验引用。GUI本批列出主用户0的应用，多用户文件映射仍属后续批次。
+应用引用绑定持久实例、Android用户和安装修订；更新/重装后旧引用会在`apps.resolve`返回`stale_reference`，卸载返回`app_not_found`。它不是权限凭证。旧`apps`保持包名数组；`launch`接收显式package，文件兼容命令则将package/userId解析为共享文件服务的应用身份和根。新文件接口直接使用appRef/rootRef/entryRef。文件页源码提供用户选择；多用户完整实机与真实GUI验收状态见[执行证据](review-remaining-progress.md)。
 
 `files.roots`分别给出private、device-private、external、obb、media和shared的实际位置、存在/访问/写入/锁定状态及原因，不把未生成的目录当作空目录。根引用由当前应用安装身份、Android用户和实际可见存储卷重新解析，不接受任意绝对路径作为根。
 
@@ -98,13 +100,19 @@ $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.ex
 
 `files.transfer.plan`支持多选文件/文件夹，下载来源可使用entryRef或rootRef+relativePath；上传来源使用绝对localPath，上传目标使用目录entryRef或rootRef+relativePath。默认保留所选顶层文件夹名称与空目录，contentsOnly:true仅复制其内容。计划保存到debug-runs/transfers/<planId>/plan.json；包含源SHA/版本/权限、目标观察、冲突、空间估算和需停止的应用。相同文件计为same，目录合并为merge，同名差异与类型冲突分别为different/type_conflict；源间目标重名也会阻止执行，不依赖选择顺序覆盖。
 
+source的`targetName`可指定单个目标名称；不能与该目录的contentsOnly同时使用。上传时以`createParents:true`配合destination.rootRef/relativePath，将根内缺失的父目录纳入同一计划和账本，规划阶段不创建目录。
+
+旧`files.list/push/pull/export/diff/sync`共用根、计划、执行器和逐项账本。list默认完整返回，可用pageSize/cursor分页；push的remote及pull的local保留精确文件名语义。旧`scope:shared`从所选用户的Download开始，新shared根则表示整个共享卷。diff只规划；sync合并内容、保留额外目标文件和空目录。兼容写入返回planId；失败或取消后查询inspect并明确resume，不用重发兼容写入命令代替续作。
+
 Windows无法原样落地的名称会在directory计划中列出问题。下载format:tar保留这些名称和链接元数据，不跟随链接读取。私有写入要求consistency:stopped-app；私有导出默认该模式，可显式选择live并保持一致性未验证。生成计划不停止应用、不创建目标目录、不复制任何目标内容；status:planned和transferVerified:false必须与传输成功区分。inspect的pageSize为1–500，nextOffset为空表示结束。
 
 执行策略：默认fail拒绝未解决冲突，skip跳过冲突，keep-both保留双方并固定新名字，overwrite在核对目标后保留原文件/目录备份再提交。目录默认合并，不删除额外文件。stopApplications:true只停止计划中列出的应用；不自动重新启动应用。文件使用8MiB块和最终SHA校验，暂存/备份位置记录在execution.ndjson中；中断不自动重放。跨VM会话只能明确resume后重新核验绑定，不能直接start旧会话计划。
 
 相同命令、planId和idempotencyKey返回原jobId；参数变化返回idempotency_conflict，不再次写入。resume沿用原执行策略并使用新幂等键。inspect同时返回execution与条目账本；原执行进程消失时显示interrupted。成功结果保留updatedAt，表示原完成记录，不声称重复请求时重新读取了所有目标。applicationReadVerified:false仍需目标App实际读取验证。
 
-当前已验证私有17MiB双向复制、备份、实际tar特殊名称/链接及一次跨会话续作。600MiB传输曾被运行期内存保护中断，提交/完整往返仍未验收；全部策略/故障、多作用域、GUI和旧命令适配仍待后续批次，不能据此认为完整文件管理已交付。
+已有CLI实测覆盖600MiB双向与取消续作、三作用域App实读、4107项完整列表、兼容命令、冲突备份和回退、真实小卷拒绝、guest工具清理及诊断资源恢复。容量按实际分配卷及传输阶段估算，不是磁盘预留；续作只抵扣已核验的暂存前缀。具体证据和限制见[执行证据](review-remaining-progress.md)。两个无关应用的完整流程、多用户、真实GUI和新候选覆盖安装仍未整体验收，不能将源码CLI结果当作已安装版本结果。
+
+文件、应用元数据、日志/录屏/追踪及前台shell请求的错误可提供guestCleanupPath；tools.list在停机时也可查看记录。pending表示清理未确认，应恢复同一实例后明确tools.cleanup，或由同计划resume先清理。不要用宿主ADB退出或cancel请求已接受代替guest已退出的证据。shell/root-shell是有界前台请求，分别保持shell/Root UID；普通子进程与登记进程组被回收，不作为后台服务启动器或恶意Root脚本沙箱。
 
 `session.summary`返回runtime与summary，`summary.text`就是GUI展开“会话摘要”显示的同一份文字。它列出实例、App/PID、近期任务阶段、最近传输核验、触点释放依据、产物目录、可恢复点与下一步。启动/停机/恢复期间仍可返回任务进度，安卓状态标为OperationInProgress，不等独占操作结束才显示。ADB不可用但产品进程仍在时为Unreachable，不能误当已停机。
 
