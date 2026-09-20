@@ -116,6 +116,8 @@ Windows无法原样落地的名称会在directory计划中列出问题。下载f
 
 `session.summary`返回runtime与summary，`summary.text`就是GUI展开“会话摘要”显示的同一份文字。它列出实例、App/PID、近期任务阶段、最近传输核验、触点释放依据、产物目录、可恢复点与下一步。启动/停机/恢复期间仍可返回任务进度，安卓状态标为OperationInProgress，不等独占操作结束才显示。ADB不可用但产品进程仍在时为Unreachable，不能误当已停机。
 
+独占操作开始等待后，新的状态等读取不再越过它；已有读取结束后才开始独占操作。等待阶段的session.summary同样返回OperationInProgress。status的安卓观察预算为10秒；超时且产品进程仍在时返回Unreachable、observationError:timeout及可用的toolEvidencePath，不补造boot/root/前台状态。调用者主动取消仍保留取消语义。
+
 App结构化观察最多缓存10秒，返回原observedAt；refresh:true强制更新该观察，不自动截图或推断应用页面。先用screen观察，再用app.page.annotate记录1–120个可显示字符的页面说明，同时指定目标package。记录标明是调用者截图标注，附截图路径、采集时间、App PID及会话；只接受30秒内、相同目标且未执行后续操作的观察。摘要对过期、后续操作、进程/会话或前台变化标superseded；其他应用的标注不会混入当前应用摘要。
 
 触点计数是本工具账本；acknowledged仅表示释放RPC已确认，游戏实际状态需要独立验收。释放未确认会保留unverified及错误依据；输入结束不能在清理未确认时报告成功。每次发送和释放均绑定原VM会话，不能把旧序列续发给重启后的实例；新协调进程在确认资源归属后先清理可能遗留的输入，失败时保持未验证。

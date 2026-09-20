@@ -18,8 +18,8 @@ public sealed partial class DebugBroker : IDisposable
     private readonly ConcurrentDictionary<string, DebugJob> _jobs = new();
     private readonly SemaphoreSlim _mutations = new(1, 1);
     private readonly object _leaseLock = new();
+    private readonly DebugOperationAdmission _admission = new();
     private int _active;
-    private bool _exclusive;
     private StorageOperationLease? _storageLease;
     private static readonly HashSet<string> Quick = ["status", "memory.snapshot", "capabilities", "schema", "runtime.inspect", "screen", "preview", "apps", "metrics", "checkpoint.list", "files.list", "clipboard", "release", "wake", "key"];
     private static readonly HashSet<string> Readers = ["status", "memory.snapshot", "capabilities", "schema", "runtime.inspect", "screen", "preview", "preview.benchmark", "frames.sample", "apps", "apps.list", "apps.resolve", "users.list", "files.roots", "files.browse", "files.stat", "files.transfer.plan", "files.transfer.inspect", "files.transfer.list", "files.tools.list", "tools.list", "app.observe", "metrics", "checkpoint.list", "files.list", "files.diff", "logs", "record", "trace", "licenses"];
@@ -216,35 +216,34 @@ public sealed partial class DebugBroker : IDisposable
             if (mutate) await _mutations.WaitAsync(ct);
             try
             {
-                while (!entered)
+                using var admission = await _admission.EnterAsync(exclusive, ct);
+                try
                 {
-                    ct.ThrowIfCancellationRequested();
                     lock (_leaseLock)
                     {
-                        if (!_exclusive && (!exclusive || _active == 0))
+                        if (_active == 0)
                         {
-                            if (_active == 0)
-                            {
-                                _storageLease = StorageOperationLease.Acquire();
-                                var current = Setup.InstallPaths.CreateDefault();
-                                if (current != _service.Paths || request.Command == "start") { _service.Dispose(); _service = new(current) { MemoryNotice = () => _memoryNotice }; }
-                            }
-                            _active++; _exclusive = exclusive; entered = true;
+                            _storageLease = StorageOperationLease.Acquire();
+                            var current = Setup.InstallPaths.CreateDefault();
+                            if (current != _service.Paths || request.Command == "start") { _service.Dispose(); _service = new(current) { MemoryNotice = () => _memoryNotice }; }
                         }
+                        _active++; entered = true;
                     }
-                    if (!entered) await Task.Delay(100, ct);
+                    if (request.Command == "start") _memoryNotice = null;
+                    if (DebugOperation.Current.Value is { } operation) operation.Stage = request.Command;
+                    return new(true, await _service.ExecuteAsync(request, ct));
                 }
-                if (request.Command == "start") _memoryNotice = null;
-                if (DebugOperation.Current.Value is { } operation) operation.Stage = request.Command;
-                return new(true, await _service.ExecuteAsync(request, ct));
+                finally
+                {
+                    if (entered) lock (_leaseLock)
+                    {
+                        _active--;
+                        if (_active == 0) { _storageLease?.Dispose(); _storageLease = null; }
+                    }
+                }
             }
             finally
             {
-                if (entered) lock (_leaseLock)
-                {
-                    _active--; if (exclusive) _exclusive = false;
-                    if (_active == 0) { _storageLease?.Dispose(); _storageLease = null; }
-                }
                 if (mutate) _mutations.Release();
             }
         }

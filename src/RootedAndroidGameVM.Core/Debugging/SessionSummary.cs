@@ -126,7 +126,7 @@ public sealed partial class DebugBroker
         SessionObservation? observed = null;
         lock (_leaseLock)
         {
-            if (_exclusive)
+            if (_admission.ExclusiveRequested)
             {
                 // Start/stop/restore must still have a non-blocking progress view. Do not
                 // read the guest or a directory being switched by an exclusive operation.
@@ -137,7 +137,7 @@ public sealed partial class DebugBroker
                     status = "OperationInProgress",
                     serial = _service.Options.Serial,
                     dataRoot = root,
-                    reason = "独占任务正在执行；当前安卓状态尚未重新核验。"
+                    reason = "独占任务正在等待或执行；当前安卓状态尚未重新核验。"
                 }, DebugJson.Options);
                 observed = new(runtime, null, cached?.Page is { } page && page.Package == package ? page with { Superseded = true } : null,
                     "OperationInProgress", null, _service.Options.Serial, root,

@@ -62,6 +62,31 @@ public sealed partial class AndroidDebugService : IDisposable
     public static string Q(string value) => "'" + value.Replace("'", "'\"'\"'") + "'";
     public async Task<object> StatusAsync(CancellationToken ct)
     {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(TimeSpan.FromSeconds(10));
+        try { return await ObserveStatusAsync(deadline.Token); }
+        catch (OperationCanceledException error) when (!ct.IsCancellationRequested)
+        {
+            var host = Instance.Require();
+            return new
+            {
+                version = "0.5.0",
+                status = "Unreachable",
+                dataRoot = Paths.ProductRoot,
+                serial = Options.Serial,
+                instanceActive = true,
+                session = $"{host.ProcessId}:{host.StartedAtUtcTicks}",
+                reason = "安卓状态观察超时；产品进程仍在运行，不能当作已停机。",
+                observationError = "timeout",
+                toolEvidencePath = error.Data["toolEvidencePath"] as string,
+                observedAt = DateTimeOffset.UtcNow,
+                hostMemory = HostMemory.Read(),
+                memoryProtection = MemoryNotice?.Invoke()
+            };
+        }
+    }
+    private async Task<object> ObserveStatusAsync(CancellationToken ct)
+    {
         var status = await _controller.GetStatusAsync(ct);
         if (status != VmStatus.Running)
         {

@@ -2,6 +2,18 @@
 
 目标：[review-remaining-goal.md](review-remaining-goal.md)。开始于683c443；用户的目标变更另由a51dabd提交。本文保留历史批次证据；**它们不代表2026-09-20新增通用化与文件管理要求已经通过**。
 
+## 2026-09-20 D5：独占调度与状态观察有界化
+
+真实停止任务c6ed142a36a34231a65e8c7b2b486c90在queued超时，请求目录只有request.json，同期状态ADB在读取getprop/dumpsys。原broker只在独占操作进入后拦截新读取，等待期间仍可被连续轮询越过。新增读/独占准入门：等待中的独占操作阻止后来的读取，已有操作退出后进入；取消等待会恢复准入，释放一次不会影响其他操作。session.summary在独占等待或运行期间都可返回OperationInProgress。
+
+status使用10秒安卓观察预算。超时且产品进程仍存在时返回Unreachable、实例/session、观察时间、timeout和可用的原工具证据，不补造boot/root/前台状态，也不把实例当成已停止。外部调用者取消保持cancelled。status-deadline-live.txt在原迟滞guest上通过源码Core API实测10.13秒返回Unreachable；status-caller-cancellation-live.txt在0.14秒保留cancelled。这两项是源码Core探针，不是安装CLI验收。
+
+qa-exec-normal-stop.json与qa-normal-stop-verified.json证明原guest真实sync成功后emu kill返回OK、QEMU退出，未强杀。随后核实新源码broker路径并冷启，Root正常，QA用户10保持锁定；三条旧pending明确清理为session_ended/killSent:false（qa-old-session-recovery.json）。新源码CLI在启动期间0.10秒返回OperationInProgress；两路status轮询期间stop任务fd2ecb06802943058c465e1cc090f424成功（broker-admission-live.json）。原超时/权限失败证据均保留。
+
+4项确定性并发回归覆盖20个后续读取不能越过stop、取消等待、读取消不解除独占、重复释放不解除其他读者。完整构建零警告错误、格式验证通过；本机389项非实机通过，其中7项属于仍未提交的应用根准备代码，当前调度批次按已提交基线计算为382项。首次使用不同深度输出目录导致测试定位源码失败并误包含需显式环境的CleanE2E，门禁拒绝后没有安装；修正运行位置和过滤器后通过，失败日志保留，未修改测试来掩盖失败。
+
+Material Files私有三层目录及特殊名称的新建/覆盖/App实读/原备份/下载SHA与空目录已通过。外部初始化plan7fe4f67431414f3d9a56675fa97e23fd虽成功提交，但Provider报Permission denied：新根0:1078:770丢失setgid，后续项0:0。缺失根与外部权限修复仍在工作树，未提交、未通过完整实机；A/B多用户、元数据、C/E及其余边界仍待完成。内存配置和正式游戏资源保持。
+
 ## 2026-09-20 A/B最新局部证据（未整体验收）
 
 源码基线9335afa及CI35510719019已通过；安装仍是旧0.5.0.0。Material Files 1.7.4（UID10211）的私有测试文件经核心计划上传，再通过该应用自己的FileProvider读取原值，证据material-provider-probe.json。没有操作Windows GUI；一次私有文件实读不等于三作用域双向流程通过。
