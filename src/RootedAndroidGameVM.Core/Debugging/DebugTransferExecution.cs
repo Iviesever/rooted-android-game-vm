@@ -88,13 +88,16 @@ public sealed partial class AndroidDebugService
         if (previous is not null && previous.Options != options) throw new DebugException("execution_options_changed", "续作不能改变原冲突/停应用策略，请重新规划。", "verifying_plan");
         if (previous is { Status: "succeeded" }) return await TransferExecutionSummaryAsync(plan, journal, ct);
         if (previous is not null && !resume) throw new DebugException("resume_required", "计划已有执行记录，请查询并明确续作。", "verifying_plan");
+        if (previous?.GuestToolToken is { } previousToken)
+            await CleanupGuestToolsAsync(DebugRequest.Create("files.tools.cleanup", new { token = previousToken }), ct);
         if (plan.Issues.Any(issue => !issue.StartsWith("parent_type_conflict:", StringComparison.Ordinal) && issue != "insufficient_space"))
             throw new DebugException("plan_has_issues", "计划包含不能执行的名称、链接或目标冲突，请重新规划。", "verifying_plan");
         if (options.ConflictPolicy == "fail" && plan.Entries.Any(entry => entry.Conflict is "different" or "type_conflict"))
             throw new DebugException("conflict", "计划有冲突，需要明确skip/keep-both/overwrite策略。", "verifying_plan");
         using var owner = System.Diagnostics.Process.GetCurrentProcess();
         var header = new TransferExecutionHeader(plan.PlanId, options, session, DebugOperation.Current.Value?.JobId ?? request.RequestId ?? "direct", "verifying", DateTimeOffset.UtcNow,
-            ArchivePath: previous?.ArchivePath, ArchiveSha256: previous?.ArchiveSha256, OwnerPid: owner.Id, OwnerStartedTicks: owner.StartTime.ToUniversalTime().Ticks);
+            ArchivePath: previous?.ArchivePath, ArchiveSha256: previous?.ArchiveSha256, OwnerPid: owner.Id, OwnerStartedTicks: owner.StartTime.ToUniversalTime().Ticks,
+            GuestToolToken: _guestToolScope.Value?.Token, GuestCleanupPath: _guestToolScope.Value is { } scope ? GuestToolRecordPath(scope.Token) : null);
         await journal.SaveHeaderAsync(header, ct);
         var states = journal.ReadEntries(repairTail: resume);
         var roots = new Dictionary<FileRootIdentity, ResolvedFileRoot>();
@@ -181,6 +184,7 @@ public sealed partial class AndroidDebugService
             }
             if (plan.Format == "tar") header = await CommitTransferArchiveAsync(plan, header, states, journal, ct);
             if (plan.Direction == "upload") await ShellAsync("sync", true, ct);
+            await CompleteGuestToolsAsync();
             header = header with { Status = "succeeded", UpdatedAt = DateTimeOffset.UtcNow }; await journal.SaveHeaderAsync(header, ct);
             await store.SaveAsync(plan with { Status = "succeeded", TransferVerified = true }, ct);
             return await TransferExecutionSummaryAsync(plan, journal, ct);
@@ -213,6 +217,8 @@ public sealed partial class AndroidDebugService
             header?.UpdatedAt,
             header?.ArchivePath,
             header?.ArchiveSha256,
+            header?.GuestToolToken,
+            header?.GuestCleanupPath,
             completed = entries.Values.Count(entry => entry.Status is "completed" or "staged"),
             skipped = entries.Values.Count(entry => entry.Status == "skipped"),
             totalEntries = plan.Entries.Length,

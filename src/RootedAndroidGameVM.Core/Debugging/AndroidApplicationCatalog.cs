@@ -146,9 +146,15 @@ public sealed partial class AndroidDebugService
 
     private async Task<string> EnsureCatalogHelperAsync(string session, CancellationToken ct)
     {
-        await _helperGate.WaitAsync(ct);
-        try { return await EnsureCatalogHelperCoreAsync(session, ct); }
-        finally { _helperGate.Release(); }
+        // Bootstrap cannot acquire a guest lease recursively while holding this gate.
+        var previous = _suppressGuestTools.Value; _suppressGuestTools.Value = true;
+        try
+        {
+            await _helperGate.WaitAsync(ct);
+            try { return await EnsureCatalogHelperCoreAsync(session, ct); }
+            finally { _helperGate.Release(); }
+        }
+        finally { _suppressGuestTools.Value = previous; }
     }
     private async Task<string> EnsureCatalogHelperCoreAsync(string session, CancellationToken ct)
     {

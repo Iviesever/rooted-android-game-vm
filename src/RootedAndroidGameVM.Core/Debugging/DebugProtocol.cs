@@ -12,7 +12,7 @@ public sealed record DebugRequest(string Command, Dictionary<string, JsonElement
     public static DebugRequest Create(string command, object? arguments = null) => new(command,
         arguments is null ? null : JsonSerializer.SerializeToElement(arguments, DebugJson.Options).Deserialize<Dictionary<string, JsonElement>>());
 }
-public sealed record DebugError(string Code, string Message, string? Stage = null, string? EvidencePath = null, string? ToolEvidencePath = null);
+public sealed record DebugError(string Code, string Message, string? Stage = null, string? EvidencePath = null, string? ToolEvidencePath = null, string? GuestCleanupPath = null);
 public sealed record DebugReply(bool Ok, object? Result = null, DebugError? Error = null, int SchemaVersion = 1,
     string? RequestId = null, string? JobId = null, string? Stage = null, string? Terminal = null,
     string? Session = null, string? Pid = null, string? ArtifactDirectory = null)
@@ -34,9 +34,11 @@ public sealed record DebugReply(bool Ok, object? Result = null, DebugError? Erro
         JsonException => "invalid_argument",
         _ => "operation_failed"
     }, e is Grpc.Core.RpcException rpc ? "模拟器 gRPC 调用失败：" + rpc.StatusCode + "。认证材料不会写入诊断。" : e.Message,
-        (e as DebugException)?.Stage, (e as DebugException)?.EvidencePath, ToolEvidence(e)));
+        (e as DebugException)?.Stage, (e as DebugException)?.EvidencePath, ToolEvidence(e), GuestCleanup(e)));
     private static string? ToolEvidence(Exception? error) => error is null ? null :
         error.Data["toolEvidencePath"] as string ?? ToolEvidence(error.InnerException);
+    private static string? GuestCleanup(Exception? error) => error is null ? null :
+        error.Data["guestCleanupPath"] as string ?? GuestCleanup(error.InnerException);
 }
 public sealed class DebugException(string code, string message, string? stage = null, string? evidencePath = null, Exception? inner = null) : Exception(message, inner)
 {
@@ -47,6 +49,7 @@ public sealed class DebugException(string code, string message, string? stage = 
     {
         var exception = new DebugException(error.Code, error.Stage is null ? error.Message : $"[{error.Stage}] {error.Message}", error.Stage, error.EvidencePath);
         if (error.ToolEvidencePath is not null) exception.Data["toolEvidencePath"] = error.ToolEvidencePath;
+        if (error.GuestCleanupPath is not null) exception.Data["guestCleanupPath"] = error.GuestCleanupPath;
         return exception;
     }
 }

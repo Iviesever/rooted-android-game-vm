@@ -103,6 +103,21 @@ B2b CI [35493701811](https://github.com/Iviesever/rooted-android-game-vm/actions
 
 B整项仍缺第二无关应用等验收，A多用户/无特定游戏环境、D完整故障矩阵、C真实GUI及E新候选覆盖发布均未完成。用户只做后台CLI的限制继续有效，本批未操作GUI、未覆盖安装、未公开Release。提交及对应CI结果记录在本机同一台账，不沿用上一提交CI。
 
+### D1：文件工具归属、真实guest清理与明确恢复（2026-09-20，D整体仍未完成）
+
+从1efea84接续。文件命令及apps.list/apps.resolve/users.list使用请求级guest租约：唯一初始环境token、root控制的启动门、持久实例/运行会话、PID及启动时间、清理回执。完成或异常时先关闭启动门，再定向TERM/KILL并复验；不能读取的进程元数据或不可用通道保持pending。文件传输仅在清理已核实时标整批成功，原错误/工具双流/逐项账本保留；错误增加guestCleanupPath，结果/执行头增加guestToolToken和清理记录路径。files.tools.list/cleanup及原计划resume提供明确恢复，其他实例拒绝，旧VM会话结束不向新会话发送kill。嵌套结束路径不会自动重复一次未核实的清理。
+
+- `guest-tools-fault-acceptance.json`：真实文件规划任务中独立暂停所属sh/main，cancel、timeout、CLI客户端退出后明确cancel均核对guest PID/启动时间并回收；不同token的隔离进程保持存活，关闭后延迟启动被拒。客户端退出本身不自动取消有归属的后台文件任务。
+- `guest-transport-recovery-acceptance.json`：仅暂停本VM adbd，由独立且核对启动时间的watchdog恢复；独立记录证实adbd确为T状态。任务结束后清理保持pending，连接恢复前不报clean，恢复同一会话后未自动重放写入；明确cleanup/resume后9MiB文件SHA一致。这是受控ADB通道不可用验证，不宣称覆盖任意网络/设备离线原因。
+- `guest-transfer-rollback-acceptance.json`：9MiB二进制跨两块上传/下载、正常路径清理、旧备份实读、通过新计划回退并保留替换版本通过；UID/GID10213、mode600及app_data_file SELinux标签核对。该批未另称App实读新样本。
+- `active-export-acceptance.json`：活跃App默认一致性导出被app_running拒绝且目标未创建；显式live保留原PID并标live；显式stopApplications停止后导出，不自动重启App。
+- `guest-session-acceptance.json`：在本次隔离故障记录上模拟丢失清理回执，原真实回执备份保留；正常保存/冷启动后旧session报告session_ended，清理请求未产生ADB/kill工具调用；伪造其他实例记录拒绝、guest未改且历史列表不包含它。
+- `guest-tools-delivery-full.trx`：363项非实机通过；完整构建零警告错误、format verify与独立源码DEX重建通过，DEX为a1e0026e76f90a17c731a2b39835072597f2bf14457f77bdf6ab6dab7fa465c5。最新源码将工具历史列为只读请求，不阻塞在写任务锁后。提交与新CI精确结果存本机台账。
+
+保留边界及下一批：D1仅覆盖文件/应用目录元数据的guest工具；显式shell/root-shell、logs/record/trace生命周期仍待收敛，不能据本批称所有调试工具已清理。`guest-baseline-acceptance.json`保留原root-shell超时后的sh/sleep残留证据，隔离进程已定向清理。第一次通道测试未及时捕获短命工具，原任务e79c07bbb975d03cfc90e1f389fd3413已核实succeeded；优化独立观察器后新隔离任务完成受控故障，未重复启动未明任务或重放原写入。
+
+另外已复现容量缺陷：`space-volume-baseline.json`中8MiB隔离tmpfs目标被计划错误报告为根分区2027646976字节可用，未写目标；临时挂载已umount并验证。D2须修实际目标卷及目录/skip/resume/tar空间估算，不能把“空间不足”标通过。远端文件提交回执丢失后的BackupPath存在性/权限对账，以及A的多用户/第二应用、C真实GUI、E新版本备份覆盖发布仍待完成。VM已正常保存停机；未调整内存、镜像/驱动，未操作Windows GUI、未覆盖安装或公开发布。
+
 本机完整台账：`tasks/20260916-211326-review-remaining/`，含四文档、脚本及evidence（原始实机证据仅保存在本机，不进入公开发布资产）。内存优化仍结项；唯一后续例外是用户明确要求启动物理余量门槛改成2.5GiB。d534f9d实现2560MiB下限；前后profile逐字段核对仅startAvailableMb改变，运行期保护未改。
 
 ## 第一批：导入、作用域权限和故障证据

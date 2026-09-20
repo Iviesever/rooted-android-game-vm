@@ -43,6 +43,10 @@ GUI 与 AI/CLI 使用同一套 `apps.list → files.roots/browse → files.trans
 
 新计划可在source指定单个 `targetName` 改变目标名称。上传 `createParents: true` 配合 `destination.rootRef/relativePath` 会将缺失父目录按顺序写入计划和账本；规划阶段不创建它们，执行时仍验证目标变化与根边界。`contentsOnly: true` 用于目录内容传输，不能同时给该目录指定targetName。
 
+文件与应用目录元数据请求还会记录安卓端工具归属。`files.tools.list` 可在运行或停机时查看最近100条记录；错误中的 `guestCleanupPath`、传输结果中的 `guestToolToken/guestCleanupPath` 指向清理证据。`cleaned` 表示该请求启动门已关闭、未发现仍活跃的所属工具；`pending` 表示设备不可用或清理未能核实，不能据此认定已退出。恢复同一实例后可明确调用 `files.tools.cleanup`（参数token），或由同计划 `files.transfer.resume` 先完成旧工具清理再续作。其他实例的记录拒绝处理；原VM会话已结束时标记 `session_ended`，不向新会话发送kill。此机制目前覆盖文件命令和应用目录元数据，不代表任意显式shell脚本或全部诊断命令都已完成guest清理验收。
+
+需要回退已完成的覆盖时，先从 `files.transfer.inspect` 的逐项账本核对实际backupPath。使用新引用读取该备份并校验，再以明确的新传输计划恢复原目标；恢复时同样备份当前版本。不要直接重放失败的旧写入。目录合并不是全批原子事务，回退范围应按已提交条目逐项确认；文件齐全也不代表应用内部数据库或跨设备还原已验证。
+
 ## 日志、录像和记录目录
 
 “诊断与记录”页可以选择目标应用采集日志，跟随应用重启后的 PID。过滤框可搜索关键字，也可查看异常、崩溃和 ANR。日志丢失或达到上限会标记，不能将没有日志等同于没有问题。

@@ -33,6 +33,8 @@ public static class DebugCommandCatalog
         new("files.transfer.plan", "只读多选计划；source.targetName指定名称，contentsOnly上传目录内容，createParents规划上传缺失父目录", "{\"direction\":\"download\",\"sources\":[{\"entryRef\":\"条目引用\"}],\"destination\":{\"localDirectory\":\"D:\\\\Exports\"}}"),
         new("files.transfer.inspect", "分页读取持久传输计划；计划不代表已复制", "{\"planId\":\"计划编号\",\"offset\":0,\"pageSize\":100}"),
         new("files.transfer.list", "最近计划及明确执行状态/恢复入口", "{}"),
+        new("files.tools.list", "最近guest工具归属、清理证据与待恢复记录", "{}"),
+        new("files.tools.cleanup", "关闭指定请求的启动门并核实同会话guest工具已退出；不重放写入", "{\"token\":\"guest工具记录中的token\"}"),
         new("files.transfer.start", "按计划执行分块传输；重复幂等键返回原任务", "{\"planId\":\"计划编号\",\"idempotencyKey\":\"本次执行唯一键\",\"conflictPolicy\":\"overwrite\",\"stopApplications\":true}"),
         new("files.transfer.resume", "核对源、目标和暂存后明确续作，不自动重放", "{\"planId\":\"计划编号\",\"idempotencyKey\":\"本次续作唯一键\"}"),
         new("apk.inspect", "APK 版本、包名与 ABI", "{\"path\":\"C:\\\\input\\\\app.apk\"}"),

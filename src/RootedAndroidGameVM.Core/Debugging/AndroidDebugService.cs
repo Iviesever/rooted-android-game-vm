@@ -53,6 +53,7 @@ public sealed partial class AndroidDebugService : IDisposable
     }
     public async Task<string> ShellAsync(string script, bool root, CancellationToken ct, bool strict = true)
     {
+        script = await OwnedGuestScriptAsync(script, ct);
         var host = Instance.Require(force: strict);
         if (DebugOperation.Current.Value is { } operation) operation.Session = $"{host.ProcessId}:{host.StartedAtUtcTicks}";
         var spec = root ? AndroidCommandFactory.RootShell(Layout, Options, script) : AndroidCommandFactory.Adb(Layout, Options, "shell", script);
@@ -356,7 +357,7 @@ public sealed partial class AndroidDebugService : IDisposable
             after = await ScreenshotAsync(dir, ct)
         };
     }
-    public async Task<object> ExecuteAsync(DebugRequest request, CancellationToken ct)
+    private async Task<object> ExecuteCoreAsync(DebugRequest request, CancellationToken ct)
     {
         if (request.SchemaVersion != 1) throw new ArgumentException("未知协议版本。");
         var package = request.Text("package");
@@ -484,6 +485,8 @@ public sealed partial class AndroidDebugService : IDisposable
             case "files.transfer.plan": return await PlanFileTransferAsync(request, ct);
             case "files.transfer.inspect": return await ReadTransferPlanAsync(request, ct);
             case "files.transfer.list": return await ListTransferPlansAsync(ct);
+            case "files.tools.list": return await ListGuestToolsAsync(ct);
+            case "files.tools.cleanup": return await CleanupGuestToolsAsync(request, ct);
             case "files.transfer.start": case "files.transfer.resume": return await ExecuteFileTransferAsync(request, ct);
             case "launch": return await LaunchAsync(request, ct);
             case "app.observe": return await ObserveApplicationAsync(package, NewRecord("app-observation"), ct);

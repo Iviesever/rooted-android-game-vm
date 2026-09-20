@@ -47,6 +47,7 @@ public final class Main {
     }
 
     public static void main(String[] args) {
+        if (args.length == 2 && args[0].equals("tools")) { GuestTools.run(args[1]); return; }
         if (args.length == 2 && args[0].equals("read")) { FileTransfer.readChunk(args[1]); return; }
         if (args.length == 2 && args[0].equals("fs")) { DeviceFiles.run(args[1]); return; }
         try {

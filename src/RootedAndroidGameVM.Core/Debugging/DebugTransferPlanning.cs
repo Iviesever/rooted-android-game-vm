@@ -15,7 +15,7 @@ public sealed partial class AndroidDebugService
         FileReferences.Relative(relative); RequireCatalogSession(root.Identity.Session);
         var helper = await EnsureCatalogHelperAsync(root.Identity.Session, ct);
         var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(DebugJson.Write(new { op = "walk", root = root.Path, relativePath = relative })));
-        var script = "CLASSPATH=" + Q(helper) + " app_process / dev.rgvm.catalog.Main fs " + Q(encoded);
+        var script = await OwnedGuestScriptAsync("CLASSPATH=" + Q(helper) + " app_process / dev.rgvm.catalog.Main fs " + Q(encoded), ct);
         Progress.Value?.Invoke(new { stage = "scanning_source", session = root.Identity.Session, manifestPath });
         await BinaryProcess.RunToFileAsync(AndroidCommandFactory.RootShell(Layout, Options, script), manifestPath, 128L * 1024 * 1024, ct);
         ColdCheckpoint.RestrictFile(manifestPath); RequireCatalogSession(root.Identity.Session);

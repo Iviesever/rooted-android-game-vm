@@ -92,7 +92,8 @@ public sealed partial class AndroidDebugService
                 var helper = await EnsureCatalogHelperAsync(root.Identity.Session, ct);
                 var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(DebugJson.Write(new { root = root.Path, relativePath = relative, version = source.Version, offset, length = count })));
                 if (File.Exists(wire)) File.Delete(wire);
-                var copied = await BinaryProcess.RunToFileAsync(AndroidCommandFactory.RootExecOut(Layout, Options, "CLASSPATH=" + Q(helper) + " app_process / dev.rgvm.catalog.Main read " + Q(encoded)), wire, count, ct);
+                var script = await OwnedGuestScriptAsync("CLASSPATH=" + Q(helper) + " app_process / dev.rgvm.catalog.Main read " + Q(encoded), ct);
+                var copied = await BinaryProcess.RunToFileAsync(AndroidCommandFactory.RootExecOut(Layout, Options, script), wire, count, ct);
                 RequireCatalogSession(root.Identity.Session);
                 if (copied != count) throw new DebugException("source_changed", "读取块长度不符合计划。", "reading_chunk");
                 await using (var output = new FileStream(temporary, FileMode.Open, FileAccess.Write, FileShare.None, 65536, true))

@@ -1,6 +1,6 @@
 # Review 剩余优化 Goal（新会话接续入口）
 
-更新：2026-09-20；本轮接续源码基线：`130457c4028e7899532070d431303af8e1416965`（已推送）。随后B3旧命令统一的实现与局部验收见[执行证据](review-remaining-progress.md)最新段，精确提交与CI见本机台账。本文记录完整目标和当前接续边界，不表示目标已经完成。
+更新：2026-09-20；本轮接续源码基线：`130457c4028e7899532070d431303af8e1416965`（已推送）。随后B3旧命令统一、D1文件工具清理的实现与局部验收见[执行证据](review-remaining-progress.md)最新段，精确提交与CI见本机台账。本文记录完整目标和当前接续边界，不表示目标已经完成。
 
 ## 目标与硬约束
 
@@ -46,6 +46,7 @@
 | 冲突与变化保护 | `transfer-policies-acceptance.json`：skip/keep-both/overwrite、文件/目录类型冲突、原备份实读、父目录改名保持子目录结构、源/目标变化拒绝旧计划 | 实际回退、空间不足、guest取消清理等尚待完成 |
 | 文件工作台与恢复摘要 | 源码已有应用/用户选择、树/面包屑/分页/多选、文件及目录传输、冲突预览和历史续作；`workspace-summary-live`、`workspace-summary-recovery-live`、`workspace-history-stopped`证明CLI摘要与停机历史可读 | GUI仅离线模型/离屏布局检查；真实鼠标、键盘、文件选择器、拖放未通过 |
 | B3旧命令统一 | `compat-live-acceptance.json`、`compat-list-pages-acceptance.json`、`compat-cancel-acceptance.json`：六命令共享服务、4107项完整列表、三作用域往返、精确目标名、计划父目录、空目录、备份、取消后明确续作 | 仍为同一测试App，第二无关应用和guest工具清理等D矩阵未完成；未安装新候选 |
+| D1文件工具清理与恢复 | `guest-tools-fault-acceptance.json`、`guest-transport-recovery-acceptance.json`、`guest-session-acceptance.json`：真实guest进程取消/超时、客户端断连后明确取消、ADB通道暂停后的pending/清理/续作、跨会话/实例防护；`guest-transfer-rollback-acceptance.json`、`active-export-acceptance.json`证明实际回退与活跃App边界 | 显式shell及其他诊断命令尚不在租约内；D2空间检查已发现缺陷，远端丢失提交回执后的字段对账仍待补验；不等于D整体通过 |
 
 600MiB源、安卓目标及回传 SHA-256：`987523e7780392e283b404990c4e84e580bc75c451138b0c86c4f81c296eeebe`。
 
@@ -63,7 +64,7 @@
 | D 一致性与恢复 | 活跃应用导出边界、覆盖回退、空间不足、取消/断连/超时后的guest工具清理和恢复；补齐未覆盖的名称/类型/链接/并发组合 | 明确哪些已提交、哪些仍暂存及如何回退；新建/替换后合理UID/mode/SELinux，按需由App实读；受控故障不破坏唯一数据，不自动重放、不串实例、不虚报全批成功。宿主ADB退出不能代替guest工具已清理的证据 |
 | E 交付 | 新版本精确资产、生产程序备份、正常停机覆盖、安装后A–D关键回归、受影响通用输入/任务/恢复回归、发布 | 核对安装EXE/包散列、Root/冷启动/配置和正式数据保持；使用实际安装目录CLI与GUI，不能用源码测试冒充；保留回退备份；新tag/资产身份清晰，全部验收后才公开release |
 
-下一批继续D故障恢复与A第二无关应用/多用户缺口。B3旧命令适配已实现并完成上述局部实测，不从头重做。上传需要创建的目录已进入共享计划和账本，规划阶段不写目标；原有执行器、600MiB传输和三作用域实读证据按影响范围复用。B整体验收仍须补两个无关应用，C与E等待用户恢复GUI操作后完成。
+下一批先修D2：8MiB隔离目标文件系统被空间计划错误报告为约2GiB根分区，见space-volume-baseline.json；还需核查目录-only、skip/resume及tar暂存/目标卷的容量。继续显式shell和其他诊断命令的guest生命周期、远端提交回执丢失对账，再补A第二无关应用/多用户。B3、D1的局部实测不从头重做；600MiB传输和三作用域实读按影响范围复用。B整体验收仍须两个无关应用，C与E等待用户恢复GUI操作后完成。
 
 ## 既有 review 要求与保留边界
 
