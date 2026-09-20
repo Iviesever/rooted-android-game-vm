@@ -78,12 +78,22 @@ public static class BinaryProcess
                 if (stderr.IsCompletedSuccessfully) await File.WriteAllBytesAsync(stderrPath, stderr.Result);
                 await File.WriteAllTextAsync(evidence, DebugJson.Write(new
                 {
-                    operation!.RequestId, operation.JobId, operation.Session, stage = operation.Stage,
-                    tool = Path.GetFileName(spec.FileName), pid = process.Id, startedAt = started,
-                    elapsedMs = Stopwatch.GetElapsedTime(ticks).TotalMilliseconds, exitCode = process.ExitCode,
-                    cancelled = ct.IsCancellationRequested, failure, reaped = process.HasExited,
-                    stdoutComplete = stdout.IsCompletedSuccessfully, stderrComplete = stderr.IsCompletedSuccessfully,
-                    stdoutPath = File.Exists(stdoutPath) ? stdoutPath : null, stderrPath = File.Exists(stderrPath) ? stderrPath : null
+                    operation!.RequestId,
+                    operation.JobId,
+                    operation.Session,
+                    stage = operation.Stage,
+                    tool = Path.GetFileName(spec.FileName),
+                    pid = process.Id,
+                    startedAt = started,
+                    elapsedMs = Stopwatch.GetElapsedTime(ticks).TotalMilliseconds,
+                    exitCode = process.ExitCode,
+                    cancelled = ct.IsCancellationRequested,
+                    failure,
+                    reaped = process.HasExited,
+                    stdoutComplete = stdout.IsCompletedSuccessfully,
+                    stderrComplete = stderr.IsCompletedSuccessfully,
+                    stdoutPath = File.Exists(stdoutPath) ? stdoutPath : null,
+                    stderrPath = File.Exists(stderrPath) ? stderrPath : null
                 }));
             }
         }

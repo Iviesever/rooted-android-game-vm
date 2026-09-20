@@ -22,7 +22,7 @@ public sealed partial class DebugBroker : IDisposable
     private bool _exclusive;
     private StorageOperationLease? _storageLease;
     private static readonly HashSet<string> Quick = ["status", "memory.snapshot", "capabilities", "schema", "runtime.inspect", "screen", "preview", "apps", "metrics", "checkpoint.list", "files.list", "clipboard", "release", "wake", "key"];
-    private static readonly HashSet<string> Readers = ["status", "memory.snapshot", "capabilities", "schema", "runtime.inspect", "screen", "preview", "preview.benchmark", "frames.sample", "apps", "app.observe", "metrics", "checkpoint.list", "files.list", "logs", "record", "trace", "licenses"];
+    private static readonly HashSet<string> Readers = ["status", "memory.snapshot", "capabilities", "schema", "runtime.inspect", "screen", "preview", "preview.benchmark", "frames.sample", "apps", "apps.list", "apps.resolve", "app.observe", "metrics", "checkpoint.list", "files.list", "logs", "record", "trace", "licenses"];
     public async Task RunAsync(CancellationToken ct)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _shutdown.Token); ct = linked.Token;
@@ -88,8 +88,11 @@ public sealed partial class DebugBroker : IDisposable
             catch (Exception e)
             {
                 var failed = DebugReply.Failure(e);
-                try { await WriteFrameAsync(pipe, Encoding.UTF8.GetBytes(DebugJson.Write(failed with
-                    { RequestId = requestId, JobId = jobId, Stage = "protocol_io", Terminal = "failed", Error = failed.Error! with { Stage = failed.Error!.Stage ?? "protocol_io" } })), ct); }
+                try
+                {
+                    await WriteFrameAsync(pipe, Encoding.UTF8.GetBytes(DebugJson.Write(failed with
+                    { RequestId = requestId, JobId = jobId, Stage = "protocol_io", Terminal = "failed", Error = failed.Error! with { Stage = failed.Error!.Stage ?? "protocol_io" } })), ct);
+                }
                 catch { /* A disconnected caller cannot receive diagnostics; input leases still expire. */ }
             }
         }
@@ -103,7 +106,7 @@ public sealed partial class DebugBroker : IDisposable
         request = request with { RequestId = requestId };
         var operation = new DebugOperation(requestId, null,
             Path.Combine(_service.Paths.ProductRoot, "debug-runs", "requests", Guid.NewGuid().ToString("N")))
-            { Stage = request.Command ?? "request", CaptureTools = request.Command is not ("status" or "preview" or "runtime.inspect" or "memory.snapshot" or "session.summary") };
+        { Stage = request.Command ?? "request", CaptureTools = request.Command is not ("status" or "preview" or "runtime.inspect" or "memory.snapshot" or "session.summary") };
         DebugOperation.Current.Value = operation;
         try
         {
@@ -180,8 +183,12 @@ public sealed partial class DebugBroker : IDisposable
                 timeLimit.CancelAfter(TimeSpan.FromSeconds(seconds));
                 var result = await InvokeAsync(request, timeLimit.Token);
                 if (timeLimit.IsCancellationRequested && !created.Cancel.IsCancellationRequested)
-                    result = result with { Ok = false, Error = (result.Error ?? new("timeout", "调试任务超时。")) with
-                        { Code = "timeout", Message = "调试任务超时；已结束本次工具调用，清理结果见阶段及工具记录。 " + result.Error?.Message } };
+                    result = result with
+                    {
+                        Ok = false,
+                        Error = (result.Error ?? new("timeout", "调试任务超时。")) with
+                        { Code = "timeout", Message = "调试任务超时；已结束本次工具调用，清理结果见阶段及工具记录。 " + result.Error?.Message }
+                    };
                 result = created.Operation.Complete(result);
                 created.Stored = await StoredJobResult.WriteAsync(resultDirectory, created.Id, result);
             }

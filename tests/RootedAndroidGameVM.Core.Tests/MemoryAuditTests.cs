@@ -25,7 +25,11 @@ public sealed class MemoryAuditTests
         Assert.True(new MemoryPressureTracker().ShouldStop(host with { AvailableMb = 500 }, TimeSpan.Zero));
     }
     [Theory]
-    [InlineData(0)] [InlineData(1)] [InlineData(16384)] [InlineData(16385)] [InlineData(65536)]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(16384)]
+    [InlineData(16385)]
+    [InlineData(65536)]
     public async Task Bounded_pooled_and_streamed_output_is_exact(int size)
     {
         var data = Enumerable.Range(0, size).Select(i => (byte)(i * 31)).ToArray();

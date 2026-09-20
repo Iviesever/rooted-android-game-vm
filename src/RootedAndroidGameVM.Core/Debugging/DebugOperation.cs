@@ -43,15 +43,26 @@ public sealed class DebugOperation(string requestId, string? jobId, string direc
         EnsureDirectory();
         var path = Path.Combine(DirectoryPath, "progress.json");
         File.WriteAllBytes(path + ".partial", bytes); File.Move(path + ".partial", path, true);
-        return new { stage = Stage, session = Session, pid = Pid, detailPath = path, detailBytes = bytes.Length,
+        return new
+        {
+            stage = Stage,
+            session = Session,
+            pid = Pid,
+            detailPath = path,
+            detailBytes = bytes.Length,
             directory = element.TryGetProperty("directory", out var artifact) ? artifact.GetString() : DirectoryPath,
-            importId = element.TryGetProperty("importId", out var importId) ? importId.GetString() : null };
+            importId = element.TryGetProperty("importId", out var importId) ? importId.GetString() : null
+        };
     }
     public DebugReply Complete(DebugReply reply) => reply with
     {
-        RequestId = RequestId, JobId = JobId, Stage = reply.Error?.Stage ?? Stage,
+        RequestId = RequestId,
+        JobId = JobId,
+        Stage = reply.Error?.Stage ?? Stage,
         Terminal = reply.Ok ? "succeeded" : reply.Error?.Code switch { "cancelled" => "cancelled", "timeout" => "timed_out", "interrupted" => "interrupted", _ => "failed" },
-        Session = Session, Pid = Pid, ArtifactDirectory = Directory.Exists(DirectoryPath) ? DirectoryPath : null,
+        Session = Session,
+        Pid = Pid,
+        ArtifactDirectory = Directory.Exists(DirectoryPath) ? DirectoryPath : null,
         Error = reply.Error is null ? null : reply.Error with { Stage = reply.Error.Stage ?? Stage }
     };
 }

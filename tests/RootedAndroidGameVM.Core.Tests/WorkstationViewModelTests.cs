@@ -8,6 +8,20 @@ namespace RootedAndroidGameVM.Core.Tests;
 public sealed class WorkstationViewModelTests
 {
     [Fact]
+    public async Task Application_search_uses_real_names_and_packages_and_clears_the_previous_target()
+    {
+        using var model = new WorkstationViewModel(new FakeApi { Running = true });
+        await model.RefreshAsync(); await model.RefreshApplicationsAsync();
+        model.SelectedApplication = model.Applications.Single(app => app.Name == "Notes");
+        model.ApplicationFilter = "reader";
+        Assert.Equal("Reader", Assert.Single(model.FilteredApplications).Name);
+        Assert.Empty(model.Package);
+        model.ApplicationFilter = "test.notes";
+        Assert.Equal("Notes", Assert.Single(model.FilteredApplications).Name);
+        Assert.False(model.LaunchCommand.CanExecute(null));
+    }
+
+    [Fact]
     public async Task Delayed_file_list_cannot_populate_a_different_application()
     {
         var pending = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -115,7 +129,7 @@ public sealed class WorkstationViewModelTests
             await model.RefreshAsync();
             await model.InstallCommand.ExecuteAsync();
             Assert.Contains("install", model.Error);
-            Assert.DoesNotContain(api.Calls, call => call.Command == "apps");
+            Assert.DoesNotContain(api.Calls, call => call.Command == "apps.list");
         }
         finally { File.Delete(file); }
     }
@@ -195,10 +209,18 @@ public sealed class WorkstationViewModelTests
                 case "session.summary":
                     var summary = new SessionSummary(DateTimeOffset.UtcNow, "emulator-5554", Running ? "Running" : "Stopped", Running ? Session : null,
                         request.Text("package"), null, null, [], null, null, [], "fixture-artifacts", [], "observe", null, "shared session evidence");
-                    return Task.FromResult(JsonSerializer.SerializeToElement(new { runtime = new { status = summary.Status, serial = summary.Instance,
-                        state = new { awake = true, locked = false, foreground = "test.app" } }, summary }, DebugJson.Options));
+                    return Task.FromResult(JsonSerializer.SerializeToElement(new
+                    {
+                        runtime = new
+                        {
+                            status = summary.Status,
+                            serial = summary.Instance,
+                            state = new { awake = true, locked = false, foreground = "test.app" }
+                        },
+                        summary
+                    }, DebugJson.Options));
                 case "app.observe": return Task.FromResult(JsonSerializer.SerializeToElement(new { stage = "activity_ready", interactiveReady = false }));
-                case "apps": return Task.FromResult(JsonSerializer.SerializeToElement(Packages));
+                case "apps.list": return Task.FromResult(JsonSerializer.SerializeToElement(new { entries = Packages.Select(package => new { package, name = package == "test.notes" ? "Notes" : "Reader", appRef = "ref-" + package, userId = 0, system = false, runningPids = Array.Empty<int>() }).ToArray() }));
                 case "runtime.inspect": return Task.FromResult(JsonSerializer.SerializeToElement(new { requested = RuntimeProfile.Recommended with { StartAvailableMb = 4096, LowRam = true, VmHeapMb = 512 }, host = new { totalMb = 16111, availableMb = 6000 } }, DebugJson.Options));
                 case "status": return Task.FromResult(JsonSerializer.SerializeToElement(new { status = Running ? "Running" : "Stopped", serial = "emulator-5554", state = new { awake = true, locked = false, foreground = "test.app" } }));
                 case "stop": Running = false; break;

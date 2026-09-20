@@ -6,7 +6,9 @@ param(
     [switch]$AllowUnsignedPublicRelease,
     [switch]$ReuseE2EState,
     [switch]$HeadlessE2E,
-    [string]$E2EDependencyCache
+    [string]$E2EDependencyCache,
+    [string]$CatalogSdkRoot = $env:ANDROID_HOME,
+    [string]$CatalogJavaHome = $env:JAVA_HOME_21_X64
 )
 
 $ErrorActionPreference = 'Stop'
@@ -25,6 +27,8 @@ $versionMatch = [regex]::Match(
     '(?m)^#define AppVersion "([^"]+)"\r?$')
 if (-not $versionMatch.Success) { throw 'Unable to read the product version from the Inno script.' }
 $productVersion = $versionMatch.Groups[1].Value
+
+& (Join-Path $PSScriptRoot 'Verify-AndroidCatalog.ps1') -SdkRoot $CatalogSdkRoot -JavaHome $CatalogJavaHome
 
 function Normalize-CertificateThumbprint {
     param([Parameter(Mandatory)][string]$Thumbprint)

@@ -26,6 +26,10 @@ jobs:
         shell: pwsh
         run: dotnet restore RootedAndroidGameVM.sln
 
+      - name: Rebuild and verify embedded Android application catalog
+        shell: pwsh
+        run: .\build\Verify-AndroidCatalog.ps1
+
       - name: Test and build Windows GUI executables
         shell: pwsh
         run: |

@@ -11,6 +11,7 @@ public sealed partial record AndroidPackageName
     public static AndroidPackageName Parse(string value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        if (value == "android") return new(value); // The platform package has no dot.
         if (!PackagePattern().IsMatch(value))
         {
             throw new ArgumentException("Invalid Android package name.", nameof(value));

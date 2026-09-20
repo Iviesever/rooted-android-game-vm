@@ -84,7 +84,12 @@ catch (Exception e)
     Console.Error.WriteLine(e.GetType().Name + ": " + e.Message);
     var failed = DebugReply.Failure(e);
     if (!cleanupConfirmed) failed = new(false, Error: new("cancellation_unconfirmed", "取消后未确认任务清理终态；请查询任务 " + jobId + "。", "client_request"));
-    Console.WriteLine(DebugJson.Write(failed with { RequestId = requestId, JobId = jobId, Stage = "client_request",
+    Console.WriteLine(DebugJson.Write(failed with
+    {
+        RequestId = requestId,
+        JobId = jobId,
+        Stage = "client_request",
         Error = failed.Error! with { Stage = failed.Error!.Stage ?? "client_request" },
-        Terminal = failed.Error!.Code switch { "cancelled" when cleanupConfirmed => "cancelled", "timeout" => "timed_out", _ => "failed" } })); return 1;
+        Terminal = failed.Error!.Code switch { "cancelled" when cleanupConfirmed => "cancelled", "timeout" => "timed_out", _ => "failed" }
+    })); return 1;
 }

@@ -77,7 +77,13 @@ public sealed partial class AndroidDebugService
         var result = new
         {
             package,
-            session, pid = initialPid, finalPid, sameInstance, startedAt, startTimestamp, clockFrequency = Stopwatch.Frequency,
+            session,
+            pid = initialPid,
+            finalPid,
+            sameInstance,
+            startedAt,
+            startTimestamp,
+            clockFrequency = Stopwatch.Frequency,
             layer,
             available = summary.ObservedFps is not null && sameInstance,
             summary,

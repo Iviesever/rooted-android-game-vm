@@ -22,6 +22,8 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
     private string _selectedRenderer = "host";
     private bool _vulkan, _previewEnabled, _desktopDisplay = true;
     private ApplicationRow? _selectedApplication;
+    private string _applicationFilter = "";
+    private bool _includeSystemApplications;
     private FileRow? _selectedFile;
     private CheckpointRow? _selectedCheckpoint;
     private WorkItem? _selectedWork;
@@ -107,6 +109,13 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
     public IReadOnlyList<RendererChoice> Renderers { get; } = [new("host", "硬件加速 · Host"), new("software", "软件渲染 · 自动"), new("swiftshader", "软件渲染 · SwiftShader")];
     public IReadOnlyList<int> RefreshRates { get; } = [60, 90, 120];
     public ObservableCollection<ApplicationRow> Applications { get; } = [];
+    public ObservableCollection<ApplicationRow> FilteredApplications { get; } = [];
+    public string ApplicationFilter
+    {
+        get => _applicationFilter;
+        set { if (Set(ref _applicationFilter, value)) { SelectedApplication = null; FilterApplications(); } }
+    }
+    public bool IncludeSystemApplications { get => _includeSystemApplications; set => Set(ref _includeSystemApplications, value); }
     public ObservableCollection<FileRow> Files { get; } = [];
     public ObservableCollection<CheckpointRow> Checkpoints { get; } = [];
     public ObservableCollection<WorkItem> Work { get; } = [];
@@ -138,7 +147,7 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
         get => _selectedApplication;
         set
         {
-            var targetChanged = Package != (value?.Package ?? "");
+            var targetChanged = Package != (value?.Package ?? "") || _selectedApplication?.AppRef != value?.AppRef;
             Set(ref _selectedApplication, value);
             Package = value?.Package ?? "";
             if (targetChanged) { RemoteFolder = ""; Files.Clear(); SelectedFile = null; }
@@ -269,7 +278,7 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
             var status = result.GetProperty("runtime");
             var refreshedSession = result.GetProperty("summary").Deserialize<SessionSummary>(DebugJson.Options)!;
             if (_session is not null && (_session.Instance != refreshedSession.Instance || _session.Session != refreshedSession.Session || DataRoot != Text(status, "dataRoot")))
-            { SelectedApplication = null; Applications.Clear(); }
+            { SelectedApplication = null; Applications.Clear(); FilterApplications(); }
             _session = refreshedSession;
             SessionText = _session.Text;
             SessionArtifactDirectory = _session.ArtifactDirectory;
@@ -309,14 +318,47 @@ public sealed class WorkstationViewModel : ObservableState, IDisposable
     {
         var session = _session?.Session;
         var dataRoot = DataRoot;
-        var result = await RunAsync("刷新应用", new("apps")); if (result is not { } data) return;
+        var includeSystem = IncludeSystemApplications;
+        var rows = new List<ApplicationRow>();
+        var cursor = "";
+        do
+        {
+            var result = await RunAsync("刷新应用", DebugRequest.Create("apps.list", new { userId = 0, includeSystem, includeIcons = true, pageSize = 200, cursor, refresh = cursor.Length == 0 }));
+            if (result is not { } data) return;
+            foreach (var entry in data.GetProperty("entries").EnumerateArray())
+            {
+                var package = Text(entry, "package");
+                var running = entry.TryGetProperty("runningStateError", out var error) && error.ValueKind == JsonValueKind.String ? "运行状态未知" :
+                    entry.TryGetProperty("runningPids", out var pids) && pids.GetArrayLength() > 0 ? "进程已出现" : "未观察到进程";
+                rows.Add(new(package, Text(entry, "name", package), Text(entry, "appRef"), entry.GetProperty("userId").GetInt32(),
+                    Text(entry, "iconPath", null!), entry.GetProperty("system").GetBoolean(), Text(entry, "installationRevision"), running));
+            }
+            cursor = Text(data, "nextCursor");
+        } while (cursor.Length > 0);
         if (session != _session?.Session || dataRoot != DataRoot) return;
-        var selectedPackage = Package;
-        var packages = data.EnumerateArray().Select(app => app.GetString()!).ToHashSet(StringComparer.Ordinal);
-        foreach (var old in Applications.Where(app => !packages.Contains(app.Package)).ToArray()) Applications.Remove(old);
-        foreach (var package in packages.Where(package => Applications.All(app => app.Package != package))) Applications.Add(new(package, package));
-        SelectedApplication = Applications.FirstOrDefault(app => app.Package == selectedPackage);
-        if (SelectedApplication is null) Package = "";
+        if (includeSystem != IncludeSystemApplications) return;
+        var selection = SelectedApplication;
+        foreach (var old in Applications.Where(app => rows.All(row => row.AppRef != app.AppRef)).ToArray()) Applications.Remove(old);
+        foreach (var row in rows)
+        {
+            var old = Applications.FirstOrDefault(app => app.AppRef == row.AppRef);
+            if (old is null) Applications.Add(row); else old.RefreshMetadata(row);
+        }
+        SelectedApplication = Applications.FirstOrDefault(app => app.AppRef == selection?.AppRef && app.AppRef is { Length: > 0 });
+        FilterApplications();
+    }
+    private void FilterApplications()
+    {
+        var query = ApplicationFilter.Trim();
+        var visible = Applications.Where(app => app.Name.Contains(query, StringComparison.OrdinalIgnoreCase) || app.Package.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(app => app.Name, StringComparer.OrdinalIgnoreCase).ThenBy(app => app.Package).ToArray();
+        foreach (var old in FilteredApplications.Where(app => !visible.Contains(app)).ToArray()) FilteredApplications.Remove(old);
+        for (var index = 0; index < visible.Length; index++)
+        {
+            var old = FilteredApplications.IndexOf(visible[index]);
+            if (old < 0) FilteredApplications.Insert(index, visible[index]);
+            else if (old != index) FilteredApplications.Move(old, index);
+        }
     }
     public async Task InspectApkAsync()
     {

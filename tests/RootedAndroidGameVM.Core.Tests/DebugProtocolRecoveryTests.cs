@@ -36,8 +36,13 @@ public sealed class DebugProtocolRecoveryTests
         try
         {
             var operation = new DebugOperation("request", "job", directory);
-            var progress = operation.CaptureProgress(new { stage = "verifying_content", importId = "original-import", directory,
-                missingFiles = Enumerable.Range(0, 4096).Select(i => new string('x', 40) + i).ToArray() });
+            var progress = operation.CaptureProgress(new
+            {
+                stage = "verifying_content",
+                importId = "original-import",
+                directory,
+                missingFiles = Enumerable.Range(0, 4096).Select(i => new string('x', 40) + i).ToArray()
+            });
             var summary = JsonSerializer.SerializeToElement(progress);
             Assert.True(DebugJson.Write(progress).Length < 1024);
             Assert.Equal("original-import", summary.GetProperty("importId").GetString());
@@ -104,8 +109,10 @@ public sealed class DebugProtocolRecoveryTests
     }
 
     [Theory]
-    [InlineData("cancelled", "cancelled")] [InlineData("timeout", "timed_out")]
-    [InlineData("interrupted", "interrupted")] [InlineData("device_offline", "failed")]
+    [InlineData("cancelled", "cancelled")]
+    [InlineData("timeout", "timed_out")]
+    [InlineData("interrupted", "interrupted")]
+    [InlineData("device_offline", "failed")]
     public void Terminal_state_never_collapses_cancellation_timeout_and_failure(string code, string terminal)
     {
         var operation = new DebugOperation("request", "job", "unused") { Stage = "waiting_for_app" };

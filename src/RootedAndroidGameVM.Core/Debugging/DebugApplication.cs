@@ -57,8 +57,16 @@ public sealed partial class AndroidDebugService
         }
         var stage = observation?.ActivityReady == true ? "activity_ready" : "process_observed";
         Progress.Value?.Invoke(new { stage, directory, package, pid = launch.Pid });
-        var result = new { package, pid = launch.Pid, stage, interactiveReady = false, directory,
-            activity = observation, launchDiagnostic = launch.LaunchDiagnostic };
+        var result = new
+        {
+            package,
+            pid = launch.Pid,
+            stage,
+            interactiveReady = false,
+            directory,
+            activity = observation,
+            launchDiagnostic = launch.LaunchDiagnostic
+        };
         await File.WriteAllTextAsync(Path.Combine(directory, "launch.json"), DebugJson.Write(result), ct);
         return result;
     }

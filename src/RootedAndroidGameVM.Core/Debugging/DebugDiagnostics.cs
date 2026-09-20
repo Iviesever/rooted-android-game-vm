@@ -21,8 +21,17 @@ public sealed partial class AndroidDebugService
         Progress.Value?.Invoke(new { stage = "installing", directory = dir, package = apk.Package });
         await _controller.InstallApkAsync(path, ct);
         var launch = await LaunchProcessAsync(apk.Package, dir, ct);
-        var result = new { apk, pid = launch.Pid, stage = "process_observed", interactiveReady = false, launchObserved = true,
-            launchDiagnostic = launch.LaunchDiagnostic, compatibility = "process_running_requires_functional_validation", screen = await ScreenshotAsync(dir, ct) };
+        var result = new
+        {
+            apk,
+            pid = launch.Pid,
+            stage = "process_observed",
+            interactiveReady = false,
+            launchObserved = true,
+            launchDiagnostic = launch.LaunchDiagnostic,
+            compatibility = "process_running_requires_functional_validation",
+            screen = await ScreenshotAsync(dir, ct)
+        };
         await File.WriteAllTextAsync(Path.Combine(dir, "install.json"), DebugJson.Write(result), ct); return result;
     }
     public async Task<object> MetricsAsync(string package, CancellationToken ct)

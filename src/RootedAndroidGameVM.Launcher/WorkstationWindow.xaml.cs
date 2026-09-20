@@ -150,6 +150,7 @@ public partial class WorkstationWindow : Window
         catch (Exception error) { ViewModel.Message = error.Message; }
         finally { _sendingGesture = false; }
     }
+    private async void ApplicationMode_Click(object sender, RoutedEventArgs e) => await ViewModel.RefreshApplicationsAsync();
     private async void BrowseApk_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFileDialog { Filter = "Android 应用|*.apk", Title = "选择要安装的 APK" };

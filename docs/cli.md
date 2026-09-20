@@ -55,6 +55,8 @@ $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.ex
 | `memory.snapshot` | `{}` | 宿主余量与经过路径/PID/启动时间核验的进程 WS、私有提交、历史峰值 |
 | `start` / `stop` | `{}` | 启动或 sync 后停止 |
 | `apps` | `{}` | 第三方应用列表 |
+| `apps.list` | `{"userId":0,"query":"名称或包名","includeSystem":false,"includeIcons":true,"pageSize":100}` | 真实应用元数据、引用和分页 |
+| `apps.resolve` | `{"appRef":"apps.list返回的引用"}` | 重新核对实例、用户和安装身份 |
 | `apk.inspect` | `{"path":"D:\\app.apk"}` | 检查包名、版本、ABI |
 | `install` | `{"path":"D:\\app.apk"}` | 保留数据安装/升级 |
 | `launch` / `force-stop` | `{"package":"test.app"}` | 启动/停止指定应用 |
@@ -76,6 +78,10 @@ $vm = "$env:LOCALAPPDATA\Programs\RootedAndroidGameVM\RootedAndroidGameVM.Cli.ex
 | `licenses` | `{}` | 随程序附带的第三方库许可证 |
 
 所有 ADB 操作都固定到经过检查的产品实例。没有“自动选第一个设备”的逻辑，也不调用全局 `adb kill-server`。
+
+`apps.list` 返回 `instanceId/session/userId/locale/observedAt/entries/total/snapshotId`，有后续页时返回 `nextCursor`；下一请求保持同一查询条件并传入 `cursor`。`pageSize`为1–200，缓存最多30秒，`refresh:true`重新读取并令旧分页游标失效。条目包含真实`name/nameSource`、`package`、`appRef`、UID、版本、安装修订、进程观察及数据根。`includeIcons:true`把48px PNG保存为本机`iconPath`，不在结果中返回大段图片编码；名称不可用时保留包名，进程不可观测时给出`runningStateError`。
+
+应用引用绑定持久实例、Android用户和安装修订；更新/重装后旧引用会在`apps.resolve`返回`stale_reference`，卸载返回`app_not_found`。它不是权限凭证。旧`apps`保持包名数组；目前旧`launch/files.*`仍接收显式package，新文件计划接口将继续接入应用引用，不能将本批引用解析误认为所有旧命令已经校验引用。GUI本批列出主用户0的应用，多用户文件映射仍属后续批次。
 
 `session.summary`返回runtime与summary，`summary.text`就是GUI展开“会话摘要”显示的同一份文字。它列出实例、App/PID、近期任务阶段、最近传输核验、触点释放依据、产物目录、可恢复点与下一步。启动/停机/恢复期间仍可返回任务进度，安卓状态标为OperationInProgress，不等独占操作结束才显示。ADB不可用但产品进程仍在时为Unreachable，不能误当已停机。
 

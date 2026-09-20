@@ -12,6 +12,8 @@
 
   <ItemGroup>
     <EmbeddedResource Include="..\..\licenses\*.txt" Link="Licenses\%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Debugging\Resources\catalog.dex" LogicalName="RootedAndroidGameVM.catalog.dex" />
+    <EmbeddedResource Include="Debugging\Resources\catalog-manifest.json" LogicalName="RootedAndroidGameVM.catalog-manifest.json" />
     <Protobuf Include="Debugging\Protocol\emulator_controller.proto" GrpcServices="Client" />
     <PackageReference Include="Google.Protobuf" Version="3.33.5" />
     <PackageReference Include="Grpc.Net.Client" Version="2.76.0" />

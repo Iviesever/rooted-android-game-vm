@@ -24,6 +24,8 @@ public static class DebugCommandCatalog
         new("key", "Android 键码", "{\"key\":\"KEYCODE_BACK\"}"),
         new("clipboard", "读取或写入安卓剪贴板", "{\"text\":\"可选写入内容\"}"),
         new("apps", "第三方应用列表", "{}"),
+        new("apps.list", "真实名称/图标、用户和安装身份的应用目录；支持搜索和分页", "{\"userId\":0,\"query\":\"\",\"includeSystem\":false,\"includeIcons\":false,\"pageSize\":100}"),
+        new("apps.resolve", "重新核对应用引用的实例、用户和安装身份", "{\"appRef\":\"apps.list返回的引用\"}"),
         new("apk.inspect", "APK 版本、包名与 ABI", "{\"path\":\"C:\\\\input\\\\app.apk\"}"),
         new("install", "保留数据安装并启动，不降级", "{\"path\":\"C:\\\\input\\\\app.apk\"}"),
         new("launch", "启动并观察进程；waitForActivity可等待前台Activity，均不代表页面可操作", "{\"package\":\"test.app\",\"waitForActivity\":true}"),

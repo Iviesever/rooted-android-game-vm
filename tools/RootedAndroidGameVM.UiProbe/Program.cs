@@ -16,6 +16,13 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        JsonElement? catalogSnapshot = null;
+        if (args.Length == 3 && args[0] == "--catalog")
+        {
+            using var catalog = JsonDocument.Parse(File.ReadAllText(args[1]));
+            catalogSnapshot = catalog.RootElement.Clone();
+            args = [args[2]];
+        }
         if (args.Length == 2 && args[0] == "--preview")
         {
             var frame = new DebugClient().ReadPreviewAsync(CancellationToken.None).GetAwaiter().GetResult();
@@ -40,7 +47,7 @@ internal static class Program
         PresentationTraceSources.DataBindingSource.Listeners.Add(new TextWriterTraceListener(errors));
         PresentationTraceSources.DataBindingSource.Switch.Level = SourceLevels.Error;
         var app = new Application();
-        var window = new WorkstationWindow(liveSnapshot is { } snapshot ? new SnapshotApi(snapshot) : new SampleApi(), offline: true);
+        var window = new WorkstationWindow(liveSnapshot is { } snapshot ? new SnapshotApi(snapshot) : new SampleApi(catalogSnapshot), offline: true);
         var model = window.ViewModel;
         model.RefreshAsync().GetAwaiter().GetResult();
         if (!sessionOnly)
@@ -75,6 +82,8 @@ internal static class Program
         }
         File.WriteAllText(Path.Combine(root, "binding-errors.txt"), errors.ToString());
         File.WriteAllText(Path.Combine(root, "rendered.json"), JsonSerializer.Serialize(outputs, new JsonSerializerOptions { WriteIndented = true }));
+        if (catalogSnapshot is not null)
+            File.WriteAllText(Path.Combine(root, "catalog-bound.json"), JsonSerializer.Serialize(model.Applications.Select(row => new { row.Name, row.Package, row.IconPath }), DebugJson.Options));
         model.Dispose(); window.Close(); app.Shutdown();
         Console.WriteLine($"Rendered {outputs.Count} offscreen layouts; binding errors: {errors.GetStringBuilder().Length} characters.");
         return errors.GetStringBuilder().Length == 0 ? 0 : 1;
@@ -87,17 +96,24 @@ internal static class Program
             request.Command == "session.summary" ? Task.FromResult(snapshot) : throw new NotSupportedException("Live snapshot probe only renders the captured session.");
     }
 
-    private sealed class SampleApi : IWorkstationApi
+    private sealed class SampleApi(JsonElement? catalog = null) : IWorkstationApi
     {
         public Task<PreviewFrame> PreviewAsync(CancellationToken cancellationToken) => throw new NotSupportedException("No live device in offscreen probe.");
         public Task<JsonElement> ExecuteAsync(DebugRequest request, CancellationToken cancellationToken, Action<JsonElement>? progress = null)
         {
+            if (request.Command == "apps.list" && catalog is { } snapshot) return Task.FromResult(snapshot);
             object result = request.Command switch
             {
                 "session.summary" => SampleSession(),
                 "status" => new { status = "Running", serial = "emulator-5554", dataRoot = @"D:\Android-Data", root = true, state = new { awake = true, locked = false, foreground = "com.example.notes" } },
                 "runtime.inspect" => new { requested = RuntimeProfile.Recommended, observed = new { activeRefreshRate = 120.0, renderer = "GLES: NVIDIA · 硬件渲染" }, host = new { totalMb = 16384, availableMb = 4800 } },
-                "apps" => new[] { "com.example.notes", "com.example.toolbox", "com.example.test" },
+                "apps.list" => new
+                {
+                    entries = new[] {
+                    new { package = "com.example.notes", name = "笔记", appRef = "notes-ref", userId = 0, system = false },
+                    new { package = "com.example.reader", name = "文档阅读器", appRef = "reader-ref", userId = 0, system = false }
+                }
+                },
                 "files.list" => new { entries = new[] { new { name = "documents", details = "directory|4096|10212|10212|700" }, new { name = "images", details = "directory|4096|10212|10212|700" }, new { name = "readme.txt", details = "regular file|1234|10212|10212|600" }, new { name = "中文文件名与较长的内容说明.json", details = "regular file|65536|10212|10212|600" } } },
                 "checkpoint.list" => new[] { new { id = "20260913-120000-example", path = @"D:\Android-Data\checkpoints\20260913-120000-example" } },
                 _ => new { success = true }
@@ -114,8 +130,18 @@ internal static class Program
                 new("acknowledged", true, "1234:5678", at, [], null, @"D:\Android-Data\debug-runs\release.json"), [],
                 @"D:\Android-Data\debug-runs\import", ["查看失败任务原始记录"], "核查传输结果", null, "");
             summary = summary with { Text = SessionSummaryText.Render(summary) };
-            return new { runtime = new { status = "Running", serial = "emulator-5554", dataRoot = @"D:\Android-Data", root = true,
-                state = new { awake = true, locked = false, foreground = "com.example.notes" } }, summary };
+            return new
+            {
+                runtime = new
+                {
+                    status = "Running",
+                    serial = "emulator-5554",
+                    dataRoot = @"D:\Android-Data",
+                    root = true,
+                    state = new { awake = true, locked = false, foreground = "com.example.notes" }
+                },
+                summary
+            };
         }
     }
 }

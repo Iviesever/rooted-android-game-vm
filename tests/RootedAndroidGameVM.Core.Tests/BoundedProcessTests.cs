@@ -7,7 +7,12 @@ namespace RootedAndroidGameVM.Core.Tests;
 public sealed class BoundedProcessTests
 {
     [Theory]
-    [InlineData(0)] [InlineData(1)] [InlineData(4095)] [InlineData(4096)] [InlineData(4097)] [InlineData(65536)]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(4095)]
+    [InlineData(4096)]
+    [InlineData(4097)]
+    [InlineData(65536)]
     public async Task Text_boundary_preserves_utf16_and_line_endings(int length)
     {
         var text = string.Concat(Enumerable.Repeat("中文\r\n🙂", length / 6 + 1))[..length];
@@ -18,7 +23,8 @@ public sealed class BoundedProcessTests
     }
 
     [Theory]
-    [InlineData(false)] [InlineData(true)]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task Overflow_on_either_pipe_stops_a_long_lived_producer(bool stderr)
     {
         if (!OperatingSystem.IsWindows()) return;

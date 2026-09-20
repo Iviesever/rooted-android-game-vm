@@ -69,8 +69,17 @@ public sealed partial class AndroidDebugService : IDisposable
                 try { Instance.RequireStopped(); }
                 catch (DebugException error) when (error.Code == "instance_busy")
                 {
-                    return new { version = "0.5.0", status = "Unreachable", dataRoot = Paths.ProductRoot, serial = Options.Serial,
-                        instanceActive = true, reason = "产品进程仍在运行，但ADB未确认连接；不能当成已停机。", hostMemory = HostMemory.Read(), memoryProtection = MemoryNotice?.Invoke() };
+                    return new
+                    {
+                        version = "0.5.0",
+                        status = "Unreachable",
+                        dataRoot = Paths.ProductRoot,
+                        serial = Options.Serial,
+                        instanceActive = true,
+                        reason = "产品进程仍在运行，但ADB未确认连接；不能当成已停机。",
+                        hostMemory = HostMemory.Read(),
+                        memoryProtection = MemoryNotice?.Invoke()
+                    };
                 }
             }
             return new { version = "0.5.0", status = status.ToString(), dataRoot = Paths.ProductRoot, serial = Options.Serial, hostMemory = HostMemory.Read(), memoryProtection = MemoryNotice?.Invoke() };
@@ -122,8 +131,14 @@ public sealed partial class AndroidDebugService : IDisposable
         await _controller.StopAsync(ct); await Instance.WaitStoppedAsync(ct);
         Transport.Dispose();
         var stoppedEvidence = Path.ChangeExtension(release.EvidencePath, ".stopped.json");
-        _lastRelease = release with { State = "instance_stopped", RemainingOwnedSlots = [], ErrorCode = null,
-            ObservedAt = DateTimeOffset.UtcNow, EvidencePath = stoppedEvidence };
+        _lastRelease = release with
+        {
+            State = "instance_stopped",
+            RemainingOwnedSlots = [],
+            ErrorCode = null,
+            ObservedAt = DateTimeOffset.UtcNow,
+            EvidencePath = stoppedEvidence
+        };
         await File.WriteAllTextAsync(stoppedEvidence, DebugJson.Write(_lastRelease), CancellationToken.None);
         lock (_observations) _observations.Clear();
     }
@@ -313,13 +328,33 @@ public sealed partial class AndroidDebugService : IDisposable
         finally
         {
             try { cleanup = await ReleaseAsync(fresh.Session); }
-            finally { await File.WriteAllTextAsync(Path.Combine(dir, "input.json"), DebugJson.Write(new { observation = old, frames, timings, startTimestamp, clockFrequency,
-                cancelled = ct.IsCancellationRequested, cleanup, failure = inputError is null ? null : DebugReply.Failure(inputError).Error }), CancellationToken.None); }
+            finally
+            {
+                await File.WriteAllTextAsync(Path.Combine(dir, "input.json"), DebugJson.Write(new
+                {
+                    observation = old,
+                    frames,
+                    timings,
+                    startTimestamp,
+                    clockFrequency,
+                    cancelled = ct.IsCancellationRequested,
+                    cleanup,
+                    failure = inputError is null ? null : DebugReply.Failure(inputError).Error
+                }), CancellationToken.None);
+            }
         }
         if (cleanup?.Acknowledged != true) throw new DebugException("input_release_unverified", "输入已结束，但未确认触点释放；请检查恢复记录并重新观察。", "releasing_input", cleanup?.EvidencePath);
         Progress.Value?.Invoke(new { stage = "verifying_after_input", directory = dir, session = fresh.Session, pid = fresh.AppPid });
-        return new { directory = dir, timings, startTimestamp, clockFrequency, clock = "Windows QPC / Stopwatch; RPC call and acknowledgement, not game response",
-            cleanup, after = await ScreenshotAsync(dir, ct) };
+        return new
+        {
+            directory = dir,
+            timings,
+            startTimestamp,
+            clockFrequency,
+            clock = "Windows QPC / Stopwatch; RPC call and acknowledgement, not game response",
+            cleanup,
+            after = await ScreenshotAsync(dir, ct)
+        };
     }
     public async Task<object> ExecuteAsync(DebugRequest request, CancellationToken ct)
     {
@@ -340,11 +375,30 @@ public sealed partial class AndroidDebugService : IDisposable
             case "status": return await StatusAsync(ct);
             case "memory.snapshot": return ProcessMemory.Read(Paths);
             case "grpc.audit": return await Transport.AuditAuthenticationAsync(ct);
-            case "schema": return new { protocolVersion = 1, commands = DebugCommandCatalog.Commands, inputLeaseSeconds = 5, inputCoordinates = "原始 PNG 像素", maxTouches = 10,
-                inputScheduling = new { optionalStart = "arguments.startAtQpc: Int64 Windows QPC timestamp", maximumFutureSeconds = 120,
-                    missedSchedule = "input_schedule_missed", sentTimestampMeaning = "RPC invocation, not game response", clockFrequencyInResult = true },
-                request = DebugProtocolSchema.Request, response = DebugProtocolSchema.Response, jobStates = DebugProtocolSchema.JobStates,
-                maxRequestBytes = 1024 * 1024, maxInlineJobResultBytes = StoredJobResult.MaxInlineBytes, jobResultsOnDisk = true, testStepResultsOnDisk = true };
+            case "schema":
+                return new
+                {
+                    protocolVersion = 1,
+                    commands = DebugCommandCatalog.Commands,
+                    inputLeaseSeconds = 5,
+                    inputCoordinates = "原始 PNG 像素",
+                    maxTouches = 10,
+                    inputScheduling = new
+                    {
+                        optionalStart = "arguments.startAtQpc: Int64 Windows QPC timestamp",
+                        maximumFutureSeconds = 120,
+                        missedSchedule = "input_schedule_missed",
+                        sentTimestampMeaning = "RPC invocation, not game response",
+                        clockFrequencyInResult = true
+                    },
+                    request = DebugProtocolSchema.Request,
+                    response = DebugProtocolSchema.Response,
+                    jobStates = DebugProtocolSchema.JobStates,
+                    maxRequestBytes = 1024 * 1024,
+                    maxInlineJobResultBytes = StoredJobResult.MaxInlineBytes,
+                    jobResultsOnDisk = true,
+                    testStepResultsOnDisk = true
+                };
             case "runtime.inspect":
                 var requestedProfile = new RuntimeProfileStore(Paths).Read();
                 DisplayTelemetry? observedDisplay = null;
@@ -411,6 +465,8 @@ public sealed partial class AndroidDebugService : IDisposable
             case "clipboard": return new { text = await Transport.ClipboardAsync(request.Arguments?.ContainsKey("text") == true ? request.Text("text") : null, ct) };
             case "shell": case "root-shell": return new { stdout = await ShellAsync(request.Text("script"), request.Command == "root-shell", ct) };
             case "apps": return await _controller.ListThirdPartyPackagesAsync(ct);
+            case "apps.list": return await ListApplicationsAsync(request, ct);
+            case "apps.resolve": return await ResolveApplicationAsync(request, ct);
             case "launch": return await LaunchAsync(request, ct);
             case "app.observe": return await ObserveApplicationAsync(package, NewRecord("app-observation"), ct);
             case "force-stop": AndroidPackageName.Parse(package); Instance.Require(); await _controller.ForceStopPackageAsync(package, ct); return new { package, stopped = true };
@@ -453,5 +509,5 @@ public sealed partial class AndroidDebugService : IDisposable
             default: throw new ArgumentException("未知命令：" + request.Command);
         }
     }
-    public void Dispose() { Transport.Dispose(); Instance.Dispose(); _stateGate.Dispose(); _captureGate.Dispose(); _summaryGate.Dispose(); }
+    public void Dispose() { Transport.Dispose(); Instance.Dispose(); _stateGate.Dispose(); _captureGate.Dispose(); _summaryGate.Dispose(); _catalogGate.Dispose(); }
 }

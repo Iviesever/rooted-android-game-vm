@@ -11,7 +11,29 @@ public interface IWorkstationApi
 
 public enum WorkstationSection { Android, Applications, Files, Diagnostics, Automation, Checkpoints, Settings }
 public sealed record WorkstationNavigation(WorkstationSection Section, string Title, string Glyph, string Description);
-public sealed record ApplicationRow(string Package, string Name);
+public sealed class ApplicationRow(string package, string name, string? appRef = null, int userId = 0,
+    string? iconPath = null, bool system = false, string? installationRevision = null, string runningState = "未观察") : ObservableState
+{
+    private string _name = name, _runningState = runningState;
+    private string? _iconPath = iconPath;
+    public string Package { get; } = package;
+    public string Name => _name;
+    public string? AppRef { get; } = appRef;
+    public int UserId { get; } = userId;
+    public string? IconPath => _iconPath;
+    public bool System { get; } = system;
+    public string? InstallationRevision { get; } = installationRevision;
+    public string RunningState => _runningState;
+    public string DisplayText => $"{Name} · {Package}";
+    public string Detail => $"{Package} · 用户 {UserId} · {RunningState}" + (System ? " · 系统应用" : "");
+    public void RefreshMetadata(ApplicationRow row)
+    {
+        if (row.AppRef != AppRef) throw new ArgumentException("应用身份不同。");
+        Set(ref _name, row.Name, nameof(Name)); Set(ref _iconPath, row.IconPath, nameof(IconPath));
+        Set(ref _runningState, row.RunningState, nameof(RunningState));
+        Changed(nameof(DisplayText)); Changed(nameof(Detail));
+    }
+}
 public sealed record RendererChoice(string Value, string Title);
 public sealed record FileRow(string Name, string Kind, long? Bytes, string Permissions)
 {

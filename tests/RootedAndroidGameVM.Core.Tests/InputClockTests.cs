@@ -1,6 +1,7 @@
 using RootedAndroidGameVM.Core.Debugging;
 
 namespace RootedAndroidGameVM.Core.Tests;
+
 public sealed class InputClockTests
 {
     [Fact]

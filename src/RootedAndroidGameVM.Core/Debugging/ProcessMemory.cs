@@ -97,9 +97,16 @@ public sealed class ProcessMemorySampler(InstallPaths paths, IEnumerable<string>
         var gc = GC.GetGCMemoryInfo();
         using var observer = Process.GetCurrentProcess();
         return new(DateTimeOffset.UtcNow, clock.Elapsed.TotalMilliseconds, inventoryAgeMs, host, rows.Values.ToArray(), errors,
-            new { pid = observer.Id, managedLiveEstimateBytes = GC.GetTotalMemory(false), lastGcHeapBytes = gc.HeapSizeBytes,
-                lastGcFragmentedBytes = gc.FragmentedBytes, allocatedBytes = GC.GetTotalAllocatedBytes(false),
-                workingSetBytes = observer.WorkingSet64, privateCommitBytes = observer.PrivateMemorySize64 },
+            new
+            {
+                pid = observer.Id,
+                managedLiveEstimateBytes = GC.GetTotalMemory(false),
+                lastGcHeapBytes = gc.HeapSizeBytes,
+                lastGcFragmentedBytes = gc.FragmentedBytes,
+                allocatedBytes = GC.GetTotalAllocatedBytes(false),
+                workingSetBytes = observer.WorkingSet64,
+                privateCommitBytes = observer.PrivateMemorySize64
+            },
             $"WS 求和含共享页重复计数，仅为本次观测之和；PrivateCommit 不是物理内存，生命周期峰值不是阶段峰值。同 SDK 的 ADB/辅助进程保守计入，可能共享。guest PSS 不重复加到 QEMU。清单缓存上限 {_inventoryLifetime.TotalMilliseconds:0}ms，每次重验 PID/时间/路径；采样仍可能漏掉短命进程及瞬时峰值，错误见 errors。observer 不计入产品总和。");
     }
 }

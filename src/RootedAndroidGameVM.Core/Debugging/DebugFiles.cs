@@ -142,8 +142,16 @@ public sealed partial class AndroidDebugService
                 "mv -f " + Q(stage) + " " + Q(remote) + "; " + (rootAccess ? "restorecon " + Q(remote) + "; " : "") + "sync";
             var committed = await ShellAsync(script + "; if test -f " + Q(backupRemote) + "; then echo backup-created; fi", rootAccess, ct);
             var permissions = (await ShellAsync("stat -c '%u:%g:%a' " + Q(remote), rootAccess, ct)).Trim();
-            return new { remote, backup = committed.Contains("backup-created", StringComparison.Ordinal) ? backupRemote : null,
-                sha256 = hashExpected, atomic = true, scope, permissions, applicationReadVerified = false };
+            return new
+            {
+                remote,
+                backup = committed.Contains("backup-created", StringComparison.Ordinal) ? backupRemote : null,
+                sha256 = hashExpected,
+                atomic = true,
+                scope,
+                permissions,
+                applicationReadVerified = false
+            };
         }
         finally
         {

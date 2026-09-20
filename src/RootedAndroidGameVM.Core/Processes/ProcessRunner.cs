@@ -94,12 +94,22 @@ public sealed class ProcessRunner : IProcessRunner
                 if (stderr.IsCompletedSuccessfully) await File.WriteAllTextAsync(stderrPath, stderr.Result);
                 await File.WriteAllTextAsync(evidence, DebugJson.Write(new
                 {
-                    operation!.RequestId, operation.JobId, operation.Session, stage = operation.Stage,
-                    tool = Path.GetFileName(request.Spec.FileName), pid = process.Id, startedAt,
-                    elapsedMs = Stopwatch.GetElapsedTime(startedTicks).TotalMilliseconds, exitCode = process.ExitCode,
-                    cancelled = cancellationToken.IsCancellationRequested, failure = failureName, reaped = process.HasExited,
-                    stdoutComplete = stdout.IsCompletedSuccessfully, stderrComplete = stderr.IsCompletedSuccessfully,
-                    stdoutPath = File.Exists(stdoutPath) ? stdoutPath : null, stderrPath = File.Exists(stderrPath) ? stderrPath : null
+                    operation!.RequestId,
+                    operation.JobId,
+                    operation.Session,
+                    stage = operation.Stage,
+                    tool = Path.GetFileName(request.Spec.FileName),
+                    pid = process.Id,
+                    startedAt,
+                    elapsedMs = Stopwatch.GetElapsedTime(startedTicks).TotalMilliseconds,
+                    exitCode = process.ExitCode,
+                    cancelled = cancellationToken.IsCancellationRequested,
+                    failure = failureName,
+                    reaped = process.HasExited,
+                    stdoutComplete = stdout.IsCompletedSuccessfully,
+                    stderrComplete = stderr.IsCompletedSuccessfully,
+                    stdoutPath = File.Exists(stdoutPath) ? stdoutPath : null,
+                    stderrPath = File.Exists(stderrPath) ? stderrPath : null
                 }));
             }
         }

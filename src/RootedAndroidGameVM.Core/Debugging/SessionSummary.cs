@@ -132,8 +132,13 @@ public sealed partial class DebugBroker
                 // read the guest or a directory being switched by an exclusive operation.
                 var root = _service.Paths.ProductRoot;
                 var cached = _lastSessionObservation?.DataRoot == root ? _lastSessionObservation : null;
-                var runtime = JsonSerializer.SerializeToElement(new { status = "OperationInProgress", serial = _service.Options.Serial,
-                    dataRoot = root, reason = "独占任务正在执行；当前安卓状态尚未重新核验。" }, DebugJson.Options);
+                var runtime = JsonSerializer.SerializeToElement(new
+                {
+                    status = "OperationInProgress",
+                    serial = _service.Options.Serial,
+                    dataRoot = root,
+                    reason = "独占任务正在执行；当前安卓状态尚未重新核验。"
+                }, DebugJson.Options);
                 observed = new(runtime, null, cached?.Page is { } page && page.Package == package ? page with { Superseded = true } : null,
                     "OperationInProgress", null, _service.Options.Serial, root,
                     null, _service.LastInputRelease, [], false);
