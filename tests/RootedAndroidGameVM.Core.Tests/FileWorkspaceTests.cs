@@ -148,6 +148,9 @@ public sealed class FileWorkspaceTests
         };
         var execution = model.ExecuteAsync("original-plan", "overwrite", true, "stable-key");
         Assert.True(model.CanCancel); Assert.Contains("1 / 2 MiB", model.ProgressText);
+        var callCount = backend.Calls.Count;
+        await model.InitializeAsync();
+        Assert.Equal(callCount, backend.Calls.Count); Assert.True(model.CanCancel); Assert.False(model.CanChangeScope);
         await model.CancelAsync(); Assert.Equal("own-job", backend.Calls.Last().Text("id"));
         pending.SetResult(Json(new { transferVerified = true })); await execution;
         Assert.Contains("已核验", model.Message); Assert.False(model.CanCancel);

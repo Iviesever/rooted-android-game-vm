@@ -79,12 +79,13 @@ public sealed class FileWorkspaceViewModel(WorkstationOperation run) : Observabl
     }
     public async Task InitializeAsync()
     {
+        if (IsBusy) return;
         await _initialization.WaitAsync();
+        IsBusy = true;
         try
         {
             await RefreshTransfersAsync();
             if (!_running) { Message = "启动安卓后可浏览文件；历史任务仍可查看。"; return; }
-            IsBusy = true;
             var session = _session;
             var result = await run("读取安卓用户", new("users.list"), false);
             if (result is not { } data || session != _session || !_running) return;
