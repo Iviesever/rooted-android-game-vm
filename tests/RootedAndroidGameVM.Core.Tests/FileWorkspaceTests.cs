@@ -161,6 +161,42 @@ public sealed class FileWorkspaceTests
     }
 
     [Fact]
+    public async Task A_resumed_tasks_history_follows_job_progress_even_when_refresh_returns_the_old_cancelled_row()
+    {
+        var backend = new Backend(); var model = await backend.Open();
+        model.Message = "上次传输已取消";
+        model.Transfers.CollectionChanged += (_, change) =>
+        {
+            if (change.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Replace) model.SelectedTransfer = null;
+        };
+        var pending = new TaskCompletionSource<JsonElement?>(); Action<JsonElement>? observer = null; var finished = false;
+        backend.Override = (request, progress) =>
+        {
+            if (request.Command == "files.transfer.resume")
+            {
+                observer = progress;
+                observer!(Json(new { jobId = "resume-job", status = "running", stage = "uploading" }));
+                return pending.Task;
+            }
+            if (request.Command == "files.transfer.list" && finished)
+                return Task.FromResult<JsonElement?>(Json(new { transfers = new[] { new FileTransferHistoryRow("original-plan", "upload", "succeeded", DateTimeOffset.UtcNow, 3, 1234, "records", false) } }));
+            return null;
+        };
+        var execution = model.ResumeAsync(Assert.Single(model.Transfers));
+        Assert.Empty(model.Message);
+        Assert.Equal("running", Assert.Single(model.Transfers).Status);
+        Assert.Equal("resume-job", model.SelectedTransfer?.JobId);
+        await model.RefreshTransfersAsync();
+        Assert.Equal("running", Assert.Single(model.Transfers).Status);
+        observer!(Json(new { jobId = "resume-job", status = "cancelling", stage = "uploading" }));
+        Assert.Equal("正在取消", Assert.Single(model.Transfers).StatusText);
+        Assert.False(model.CanResumeSelected);
+        finished = true; pending.SetResult(Json(new { transferVerified = true })); await execution;
+        Assert.Equal("succeeded", Assert.Single(model.Transfers).Status);
+        Assert.False(model.IsBusy);
+    }
+
+    [Fact]
     public async Task History_remains_readable_while_stopped_and_never_auto_replays()
     {
         var backend = new Backend(); var model = new FileWorkspaceViewModel(backend.Run);

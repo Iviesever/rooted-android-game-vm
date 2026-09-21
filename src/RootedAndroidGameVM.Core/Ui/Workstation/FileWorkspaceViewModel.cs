@@ -17,6 +17,8 @@ public sealed class FileWorkspaceViewModel(WorkstationOperation run) : Observabl
     private readonly SemaphoreSlim _initialization = new(1, 1);
     private FileTransferHistoryRow? _selectedTransfer;
     private string? _currentJobId; private string _progress = "";
+    private string? _activePlanId, _activeHistoryStatus, _activeHistoryDataRoot;
+    private DateTimeOffset _activeHistoryObservedAt;
     public ApplicationRow? RequestedApplication { get; set; }
     public ObservableCollection<AndroidUser> Users { get; } = [];
     public ObservableCollection<ApplicationRow> Applications { get; } = [];
@@ -237,33 +239,52 @@ public sealed class FileWorkspaceViewModel(WorkstationOperation run) : Observabl
         return DebugRequest.Create("files.transfer.plan", new { direction = "download", format, sources, destination = new { localDirectory = Path.GetFullPath(destination) } });
     }
     public async Task<JsonElement?> PrepareAsync(DebugRequest request)
-    { IsBusy = true; _currentJobId = null; ProgressText = "正在核对来源与目标…"; var generation = _scopeGeneration; try { var plan = await run("准备传输", request, false, CaptureProgress); return generation == _scopeGeneration ? plan : null; } finally { IsBusy = false; } }
+    { IsBusy = true; _currentJobId = null; Message = ""; ProgressText = "正在核对来源与目标…"; var generation = _scopeGeneration; try { var plan = await run("准备传输", request, false, CaptureProgress); return generation == _scopeGeneration ? plan : null; } finally { IsBusy = false; } }
     public async Task ExecuteAsync(string planId, string policy, bool stopApplications, string idempotencyKey)
     {
-        IsBusy = true; _currentJobId = null; ProgressText = "正在开始传输…";
+        IsBusy = true; _currentJobId = null; Message = ""; ProgressText = "正在开始传输…";
         try
         {
+            await BeginTransferHistoryAsync(planId);
             var result = await run("传输文件", DebugRequest.Create("files.transfer.start", new { planId, conflictPolicy = policy, stopApplications, idempotencyKey }), true, CaptureProgress);
             Message = result is { } data && data.GetProperty("transferVerified").GetBoolean() ? "传输已核验；应用读取可另行确认。" : "传输未完成，请查看结果或继续原任务。";
         }
-        finally { IsBusy = false; await RefreshTransfersAsync(); SelectedTransfer = Transfers.FirstOrDefault(item => item.PlanId == planId); if (_running) { var message = Message; await RefreshDirectoryAsync(); Message = message; } }
+        finally { ClearActiveHistory(); IsBusy = false; await RefreshTransfersAsync(); SelectedTransfer = Transfers.FirstOrDefault(item => item.PlanId == planId); if (_running) { var message = Message; await RefreshDirectoryAsync(); Message = message; } }
     }
     public async Task ResumeAsync(FileTransferHistoryRow transfer)
     {
-        IsBusy = true; _currentJobId = null; ProgressText = "正在核对原任务与暂存…";
+        IsBusy = true; _currentJobId = null; Message = ""; ProgressText = "正在核对原任务与暂存…";
         try
         {
+            await BeginTransferHistoryAsync(transfer.PlanId);
             var result = await run("继续传输", DebugRequest.Create("files.transfer.resume", new { planId = transfer.PlanId, idempotencyKey = "gui-resume-" + Guid.NewGuid().ToString("N") }), true, CaptureProgress);
             Message = result is { } data && data.GetProperty("transferVerified").GetBoolean() ? "原任务已完成并核验。" : "原任务未完成，请查看结果。";
         }
-        finally { IsBusy = false; await RefreshTransfersAsync(); SelectedTransfer = Transfers.FirstOrDefault(item => item.PlanId == transfer.PlanId); if (_running) { var message = Message; await RefreshDirectoryAsync(); Message = message; } }
+        finally { ClearActiveHistory(); IsBusy = false; await RefreshTransfersAsync(); SelectedTransfer = Transfers.FirstOrDefault(item => item.PlanId == transfer.PlanId); if (_running) { var message = Message; await RefreshDirectoryAsync(); Message = message; } }
+    }
+    private async Task BeginTransferHistoryAsync(string planId)
+    {
+        _activePlanId = planId; _activeHistoryStatus = "starting"; _activeHistoryDataRoot = _dataRoot; _activeHistoryObservedAt = DateTimeOffset.UtcNow;
+        await RefreshTransfersAsync(); SelectedTransfer = Transfers.FirstOrDefault(item => item.PlanId == planId);
+    }
+    private void ClearActiveHistory() { _activePlanId = null; _activeHistoryStatus = null; _activeHistoryDataRoot = null; }
+    private void ApplyActiveHistory()
+    {
+        if (_activePlanId is null || _activeHistoryStatus is null || _activeHistoryDataRoot != _dataRoot ||
+            Transfers.FirstOrDefault(item => item.PlanId == _activePlanId) is not { } row) return;
+        var updated = row with { Status = _activeHistoryStatus, JobId = _currentJobId ?? row.JobId, CanResume = false, UpdatedAt = _activeHistoryObservedAt };
+        var selected = SelectedTransfer?.PlanId == updated.PlanId;
+        Transfers[Transfers.IndexOf(row)] = updated;
+        if (selected) SelectedTransfer = updated;
     }
     public async Task RefreshTransfersAsync()
     {
+        var dataRoot = _dataRoot;
         var result = await run("读取传输记录", new("files.transfer.list"), false);
-        if (result is not { } data) return;
+        if (result is not { } data || dataRoot != _dataRoot) return;
         var selected = SelectedTransfer?.PlanId; Transfers.Clear();
         foreach (var entry in data.GetProperty("transfers").Deserialize<FileTransferHistoryRow[]>(DebugJson.Options)!) Transfers.Add(entry);
+        ApplyActiveHistory();
         SelectedTransfer = Transfers.FirstOrDefault(entry => entry.PlanId == selected);
     }
     public Task<JsonElement?> InspectSelectedAsync() => SelectedTransfer is null ? Task.FromResult<JsonElement?>(null) : run("查看传输结果", DebugRequest.Create("files.transfer.inspect", new { planId = SelectedTransfer.PlanId }), false);
@@ -271,7 +292,13 @@ public sealed class FileWorkspaceViewModel(WorkstationOperation run) : Observabl
     public async Task CancelAsync() { if (_currentJobId is not null) await run("取消传输", DebugRequest.Create("cancel", new { id = _currentJobId }), false); }
     private void CaptureProgress(JsonElement update)
     {
+        var previousJob = _currentJobId;
         if (update.TryGetProperty("jobId", out var id)) _currentJobId = id.GetString();
+        if (_activePlanId is not null && update.TryGetProperty("status", out var status) &&
+            (_activeHistoryStatus != status.GetString() || previousJob != _currentJobId))
+        {
+            _activeHistoryStatus = status.GetString(); _activeHistoryObservedAt = DateTimeOffset.UtcNow; ApplyActiveHistory();
+        }
         if (update.TryGetProperty("progress", out var progress) && progress.ValueKind == JsonValueKind.Object && progress.TryGetProperty("bytes", out var bytes) && progress.TryGetProperty("totalBytes", out var total))
             ProgressText = $"已传 {FileSizeText.Format(bytes.GetInt64())} / {FileSizeText.Format(total.GetInt64())}";
         else if (update.TryGetProperty("stage", out var stage)) ProgressText = "当前阶段：" + stage.GetString();
