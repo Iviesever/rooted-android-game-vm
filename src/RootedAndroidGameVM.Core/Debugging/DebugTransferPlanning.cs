@@ -276,7 +276,8 @@ public sealed partial class AndroidDebugService
     private static IEnumerable<TransferPlanEntry[]> RemoteTargetBatches(IEnumerable<TransferPlanEntry> entries, string parent)
     {
         var batch = new List<TransferPlanEntry>(); var bytes = 0;
-        foreach (var entry in entries)
+        // Callers replace plan items with observations between batches.
+        foreach (var entry in entries.ToArray())
         {
             var size = Encoding.UTF8.GetByteCount(DebugJson.Write(FileTransferPolicy.JoinRemote(parent, entry.TargetRelativePath)));
             if (batch.Count > 0 && (batch.Count == 100 || bytes + size > 10000)) { yield return batch.ToArray(); batch.Clear(); bytes = 0; }

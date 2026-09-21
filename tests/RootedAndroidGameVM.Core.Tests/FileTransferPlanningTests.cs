@@ -6,6 +6,31 @@ namespace RootedAndroidGameVM.Core.Tests;
 public sealed class FileTransferPlanningTests
 {
     [Theory]
+    [InlineData(122, 8)]
+    [InlineData(25, 700)]
+    public void Target_batches_allow_observation_results_to_replace_original_plan_items(int count, int nameLength)
+    {
+        var items = Enumerable.Range(0, count).Select(index => new TransferPlanEntry(index, "s0", "", new string('x', nameLength) + index,
+            new("file", 1, "source", "sha"), null, "new")).ToList();
+        var method = typeof(AndroidDebugService).GetMethod("RemoteTargetBatches", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        var batches = (IEnumerable<TransferPlanEntry[]>)method.Invoke(null, [items.Where(item => item.Issue is null), "parent"])!;
+        var visited = new List<int>(); var batchCount = 0;
+        foreach (var batch in batches)
+        {
+            batchCount++;
+            Assert.InRange(batch.Length, 1, 100);
+            foreach (var item in batch)
+            {
+                visited.Add(item.Index);
+                items[item.Index] = item with { Conflict = "same", Target = item.Source };
+            }
+        }
+        Assert.True(batchCount > 1);
+        Assert.Equal(Enumerable.Range(0, count), visited);
+        Assert.All(items, item => Assert.Equal("same", item.Conflict));
+    }
+
+    [Theory]
     [InlineData("../outside")]
     [InlineData("nested/file")]
     [InlineData("/absolute")]
