@@ -147,7 +147,7 @@ public sealed class FileWorkspaceTests
             progress!(Json(new { jobId = "own-job", stage = "transferring", progress = new { bytes = 1048576, totalBytes = 2097152 } })); return pending.Task;
         };
         var execution = model.ExecuteAsync("original-plan", "overwrite", true, "stable-key");
-        Assert.True(model.CanCancel); Assert.Contains("1 / 2 MiB", model.ProgressText);
+        Assert.True(model.CanCancel); Assert.Contains("1 MiB / 2 MiB", model.ProgressText);
         var callCount = backend.Calls.Count;
         await model.InitializeAsync();
         Assert.Equal(callCount, backend.Calls.Count); Assert.True(model.CanCancel); Assert.False(model.CanChangeScope);
@@ -210,6 +210,7 @@ public sealed class FileWorkspaceTests
             preview = Array.Empty<TransferPlanEntry>()
         }), "destination");
         Assert.True(review.NeedsReview); Assert.Equal(archive, review.NeedsArchive); Assert.Equal(execute, review.CanExecute);
+        Assert.Contains("2 B", review.Description);
         Assert.Equal("keep-both", review.Policy.Value);
     }
 }

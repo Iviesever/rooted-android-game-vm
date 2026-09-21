@@ -273,7 +273,7 @@ public sealed class FileWorkspaceViewModel(WorkstationOperation run) : Observabl
     {
         if (update.TryGetProperty("jobId", out var id)) _currentJobId = id.GetString();
         if (update.TryGetProperty("progress", out var progress) && progress.ValueKind == JsonValueKind.Object && progress.TryGetProperty("bytes", out var bytes) && progress.TryGetProperty("totalBytes", out var total))
-            ProgressText = $"已传 {bytes.GetInt64() / 1048576d:0.##} / {total.GetInt64() / 1048576d:0.##} MiB";
+            ProgressText = $"已传 {FileSizeText.Format(bytes.GetInt64())} / {FileSizeText.Format(total.GetInt64())}";
         else if (update.TryGetProperty("stage", out var stage)) ProgressText = "当前阶段：" + stage.GetString();
         Changed(nameof(CanCancel));
     }

@@ -4,7 +4,10 @@ using RootedAndroidGameVM.Core.Debugging;
 namespace RootedAndroidGameVM.Core.Ui.Workstation;
 
 public sealed record ConflictChoice(string Value, string Title);
-public sealed record TransferPreviewRow(string Path, string Kind, string Size, string Action, string? Issue);
+public sealed record TransferPreviewRow(string Path, string Kind, string Size, string Action, string? Issue)
+{
+    public override string ToString() => Path + " · " + Action;
+}
 public sealed class TransferReviewModel : ObservableState
 {
     private ConflictChoice _policy;
@@ -14,7 +17,7 @@ public sealed class TransferReviewModel : ObservableState
         PlanId = summary.GetProperty("planId").GetString()!;
         Destination = destination;
         var count = summary.GetProperty("totalEntries").GetInt32(); var bytes = summary.GetProperty("totalBytes").GetInt64();
-        Description = $"{count} 项 · {bytes / 1048576d:0.##} MiB · " + (summary.GetProperty("direction").GetString() == "upload" ? "电脑 → 安卓" : "安卓 → 电脑");
+        Description = $"{count} 项 · {FileSizeText.Format(bytes)} · " + (summary.GetProperty("direction").GetString() == "upload" ? "电脑 → 安卓" : "安卓 → 电脑");
         var counts = summary.GetProperty("counts");
         CountText = string.Join(" · ", counts.EnumerateObject().Select(item => ActionText(item.Name) + " " + item.Value.GetInt32()));
         Issues = summary.GetProperty("issues").EnumerateArray().Select(value => value.GetString()!).ToArray();
@@ -28,7 +31,7 @@ public sealed class TransferReviewModel : ObservableState
         var entries = summary.GetProperty("conflicts").GetArrayLength() > 0 ? summary.GetProperty("conflicts") : summary.GetProperty("preview");
         Rows = entries.Deserialize<TransferPlanEntry[]>(DebugJson.Options)!.Select(entry => new TransferPreviewRow(entry.TargetRelativePath,
             entry.Source.Kind == "directory" ? "文件夹" : entry.Source.Kind == "symlink" ? "链接" : "文件",
-            entry.Source.Kind == "directory" ? "—" : $"{entry.Source.Bytes / 1048576d:0.##} MiB", ActionText(entry.Conflict), entry.Issue)).ToArray();
+            entry.Source.Kind == "directory" ? "—" : FileSizeText.Format(entry.Source.Bytes), ActionText(entry.Conflict), entry.Issue)).ToArray();
         _policy = Policies[0];
     }
     public string PlanId { get; }

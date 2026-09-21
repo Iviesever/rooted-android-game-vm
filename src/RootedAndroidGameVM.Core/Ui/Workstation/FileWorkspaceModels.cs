@@ -3,6 +3,12 @@ using RootedAndroidGameVM.Core.Debugging;
 
 namespace RootedAndroidGameVM.Core.Ui.Workstation;
 
+public static class FileSizeText
+{
+    public static string Format(long bytes) => bytes >= 1073741824 ? $"{bytes / 1073741824d:0.##} GiB" :
+        bytes >= 1048576 ? $"{bytes / 1048576d:0.##} MiB" : bytes >= 1024 ? $"{bytes / 1024d:0.##} KiB" : $"{bytes} B";
+}
+
 public sealed class FileTreeNode(FileRootDescriptor root, string relativePath, string name, string? cursor = null, FileTreeNode? parent = null) : ObservableState
 {
     public FileRootDescriptor Root { get; } = root;
@@ -31,7 +37,7 @@ public sealed record FileEntryRow(RemoteFileEntry Entry)
     public override string ToString() => Name + " · " + TypeText;
     public bool IsDirectory => Entry.Kind == "directory";
     public string TypeText => Entry.Kind switch { "directory" => "文件夹", "file" => "文件", "symlink" => "链接", _ => "特殊项目" };
-    public string SizeText => IsDirectory ? "—" : Entry.Bytes >= 1073741824 ? $"{Entry.Bytes / 1073741824d:0.##} GiB" : Entry.Bytes >= 1048576 ? $"{Entry.Bytes / 1048576d:0.##} MiB" : Entry.Bytes >= 1024 ? $"{Entry.Bytes / 1024d:0.##} KiB" : $"{Entry.Bytes} B";
+    public string SizeText => IsDirectory ? "—" : FileSizeText.Format(Entry.Bytes);
     public string PermissionText => $"{Entry.Uid}:{Entry.Gid} · {Entry.Mode}";
     public string ModifiedText => DateTimeOffset.FromUnixTimeMilliseconds(Entry.ModifiedUnixMs).ToLocalTime().ToString("yyyy-MM-dd HH:mm");
 }
@@ -39,6 +45,7 @@ public sealed record FileTransferHistoryRow(string PlanId, string Direction, str
     int TotalEntries, long TotalBytes, string ArtifactDirectory, bool CanResume, string? JobId = null)
 {
     public string DirectionText => Direction == "upload" ? "上传" : "下载";
+    public string UpdatedText => UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
     public override string ToString() => DirectionText + " · " + StatusText + " · " + PlanId;
     public string StatusText => Status switch { "planned" => "待执行", "running" or "verifying" => "执行中", "succeeded" => "已核验", "cancelled" => "已取消", "interrupted" => "已中断", _ => "未完成" };
 }
