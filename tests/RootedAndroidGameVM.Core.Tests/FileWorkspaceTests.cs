@@ -78,6 +78,38 @@ public sealed class FileWorkspaceTests
     }
 
     [Fact]
+    public async Task Selecting_an_unavailable_root_clears_the_previous_transfer_target()
+    {
+        var backend = new Backend(); var model = await backend.Open();
+        model.SetSelection(model.Entries.ToArray());
+        var locked = Root with { RootRef = "locked", Accessible = false, Locked = true, Reason = "user_locked" };
+        await model.NavigateAsync(locked, "");
+        Assert.Empty(model.Entries); Assert.Empty(model.Selection);
+        Assert.False(model.CanUpload); Assert.False(model.CanDownload); Assert.False(model.CanExportDirectory);
+        Assert.Contains("用户未解锁", model.Message);
+        Assert.Throws<InvalidOperationException>(() => model.UploadRequest([Path.GetTempPath()]));
+    }
+
+    [Fact]
+    public async Task Missing_creatable_root_is_planned_without_writes_and_refreshed_after_creation()
+    {
+        var backend = new Backend(); var model = await backend.Open();
+        var missing = Root with { Accessible = false, Exists = false, Creatable = true, Reason = "not_created", EntryRef = null };
+        backend.Calls.Clear();
+        await model.NavigateAsync(missing, "new-folder");
+        Assert.Empty(backend.Calls); Assert.True(model.CanUpload); Assert.False(model.CanExportDirectory);
+        var upload = model.UploadRequest([Path.GetTempPath()]);
+        Assert.True(upload.Arguments!["createParents"].GetBoolean());
+        Assert.Equal(Root.RootRef, upload.Arguments["destination"].GetProperty("rootRef").GetString());
+        Assert.Equal("new-folder", upload.Arguments["destination"].GetProperty("relativePath").GetString());
+        await model.RefreshDirectoryAsync();
+        Assert.Equal(new[] { "files.roots", "files.browse" }, backend.Calls.Select(call => call.Command));
+        Assert.Equal("new-folder", backend.Calls.Last().Text("relativePath"));
+        Assert.True(model.CanExportDirectory);
+        Assert.Equal("directory-new-folder", model.UploadRequest([Path.GetTempPath()]).Arguments!["destination"].GetProperty("entryRef").GetString());
+    }
+
+    [Fact]
     public async Task A_late_directory_reply_cannot_populate_a_new_session()
     {
         var backend = new Backend(); var model = await backend.Open();
@@ -132,6 +164,27 @@ public sealed class FileWorkspaceTests
         model.UpdateContext(false, null, "data"); await model.InitializeAsync();
         Assert.Single(model.Transfers); Assert.False(model.CanResumeSelected);
         Assert.All(backend.Calls, call => Assert.Equal("files.transfer.list", call.Command));
+    }
+
+    [Theory]
+    [InlineData("completed", "已提交并核验")]
+    [InlineData("committing", "提交待确认")]
+    public void Results_keep_partial_failure_backup_and_pagination_visible(string itemStatus, string expected)
+    {
+        var row = new TransferPlanEntry(100, "source", "file.txt", "folder/file.txt", new("file", 10, "v", "sha"), null, "new");
+        var page = new TransferResultPage(Json(new
+        {
+            summary = new { status = "failed", totalEntries = 205 },
+            execution = new TransferExecutionHeader("plan", new("overwrite", true), "session", "job", "failed", DateTimeOffset.UtcNow, "设备断连"),
+            executionEntries = new[] { new TransferItemState(100, itemStatus, "actual/file.txt", 10, "temporary", "original-backup", "sha", "写入回执待确认") },
+            entries = new[] { row },
+            nextOffset = 200
+        }));
+        Assert.Contains("失败", page.Summary); Assert.Contains("设备断连", page.Summary);
+        var result = Assert.Single(page.Rows);
+        Assert.Equal("actual/file.txt", result.Path); Assert.Equal(expected, result.Status);
+        Assert.Contains("original-backup", result.Detail); Assert.Contains("temporary", result.Detail);
+        Assert.Contains("写入回执待确认", result.Detail); Assert.Equal(200, page.NextOffset);
     }
 
     [Theory]

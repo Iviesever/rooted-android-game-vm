@@ -14,11 +14,12 @@ public sealed class FileTreeNode(FileRootDescriptor root, string relativePath, s
     public bool Loading { get; set; }
     public FileTreeNode? Parent { get; } = parent;
     public bool Accessible => Root.Accessible;
+    public override string ToString() => Detail;
     public ObservableCollection<FileTreeNode> Children { get; } = [];
     public string Detail => Root.Accessible ? Name : Name + " · " + (Root.Reason switch
     {
         "data_locked" => "用户未解锁",
-        "not_created" => "尚未生成",
+        "not_created" => Root.Creatable ? "上传时创建" : "尚未生成",
         "metadata_unavailable" => "系统未提供",
         _ => Root.Reason ?? "不可访问"
     });
@@ -27,6 +28,7 @@ public sealed record FileBreadcrumb(string Title, string RelativePath);
 public sealed record FileEntryRow(RemoteFileEntry Entry)
 {
     public string Name => Entry.Name;
+    public override string ToString() => Name + " · " + TypeText;
     public bool IsDirectory => Entry.Kind == "directory";
     public string TypeText => Entry.Kind switch { "directory" => "文件夹", "file" => "文件", "symlink" => "链接", _ => "特殊项目" };
     public string SizeText => IsDirectory ? "—" : Entry.Bytes >= 1073741824 ? $"{Entry.Bytes / 1073741824d:0.##} GiB" : Entry.Bytes >= 1048576 ? $"{Entry.Bytes / 1048576d:0.##} MiB" : Entry.Bytes >= 1024 ? $"{Entry.Bytes / 1024d:0.##} KiB" : $"{Entry.Bytes} B";

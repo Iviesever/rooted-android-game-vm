@@ -10,7 +10,10 @@ public interface IWorkstationApi
 }
 
 public enum WorkstationSection { Android, Applications, Files, Diagnostics, Automation, Checkpoints, Settings }
-public sealed record WorkstationNavigation(WorkstationSection Section, string Title, string Glyph, string Description);
+public sealed record WorkstationNavigation(WorkstationSection Section, string Title, string Glyph, string Description)
+{
+    public override string ToString() => Title;
+}
 public sealed class ApplicationRow(string package, string name, string? appRef = null, int userId = 0,
     string? iconPath = null, bool system = false, string? installationRevision = null, string runningState = "未观察") : ObservableState
 {
@@ -25,6 +28,7 @@ public sealed class ApplicationRow(string package, string name, string? appRef =
     public string? InstallationRevision { get; } = installationRevision;
     public string RunningState => _runningState;
     public string DisplayText => $"{Name} · {Package}";
+    public override string ToString() => DisplayText;
     public string Detail => $"{Package} · 用户 {UserId} · {RunningState}" + (System ? " · 系统应用" : "");
     public void RefreshMetadata(ApplicationRow row)
     {

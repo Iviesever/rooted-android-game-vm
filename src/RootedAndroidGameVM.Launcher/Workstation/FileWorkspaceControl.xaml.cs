@@ -102,10 +102,6 @@ public partial class FileWorkspaceControl : UserControl
     private async void Cancel_Click(object sender, RoutedEventArgs e) => await Guard(model => model.CancelAsync());
     private void OpenRecords_Click(object sender, RoutedEventArgs e)
     { if (Model?.SelectedTransfer is { } row && Directory.Exists(row.ArtifactDirectory)) Process.Start(new ProcessStartInfo(row.ArtifactDirectory) { UseShellExecute = true }); }
-    private async void Inspect_Click(object sender, RoutedEventArgs e) => await Guard(async model =>
-    {
-        if (await model.InspectSelectedAsync() is not { } data) return;
-        var text = new TextBox { Text = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }), IsReadOnly = true, AcceptsReturn = true, Margin = new Thickness(15), VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto };
-        new Window { Owner = OwnerWindow, Title = "传输结果与备份记录", Width = 850, Height = 600, Content = text }.Show();
-    });
+    private void Inspect_Click(object sender, RoutedEventArgs e)
+    { if (Model is { SelectedTransfer: { } transfer } model) new TransferResultsWindow(model, transfer.PlanId) { Owner = OwnerWindow }.Show(); }
 }
