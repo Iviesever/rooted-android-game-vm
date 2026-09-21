@@ -30,7 +30,7 @@ try
             ok = true,
             requestId,
             terminal = "succeeded",
-            version = "0.5.0",
+            version = "0.5.1",
             usage = "RootedAndroidGameVM.Cli <command> [--json '{...}'] [--wait] | --request file.json",
             examples = new[] { "status", "start --wait", "screen", "input --json '{\"observation\":\"id\",\"frames\":[...]}' --wait", "checkpoint.create --wait", "job --json '{\"id\":\"jobId\"}'" },
             note = "长操作返回 jobId；--wait 每秒输出 NDJSON 任务状态。输入须每 5 秒内轮询一次任务，否则自动释放触点。"

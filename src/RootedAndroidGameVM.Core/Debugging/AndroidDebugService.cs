@@ -70,7 +70,7 @@ public sealed partial class AndroidDebugService : IDisposable
             var host = Instance.Require();
             return new
             {
-                version = "0.5.0",
+                version = "0.5.1",
                 status = "Unreachable",
                 dataRoot = Paths.ProductRoot,
                 serial = Options.Serial,
@@ -97,7 +97,7 @@ public sealed partial class AndroidDebugService : IDisposable
                 {
                     return new
                     {
-                        version = "0.5.0",
+                        version = "0.5.1",
                         status = "Unreachable",
                         dataRoot = Paths.ProductRoot,
                         serial = Options.Serial,
@@ -108,13 +108,13 @@ public sealed partial class AndroidDebugService : IDisposable
                     };
                 }
             }
-            return new { version = "0.5.0", status = status.ToString(), dataRoot = Paths.ProductRoot, serial = Options.Serial, hostMemory = HostMemory.Read(), memoryProtection = MemoryNotice?.Invoke() };
+            return new { version = "0.5.1", status = status.ToString(), dataRoot = Paths.ProductRoot, serial = Options.Serial, hostMemory = HostMemory.Read(), memoryProtection = MemoryNotice?.Invoke() };
         }
         var host = Instance.Require();
         var state = await StateAsync(ct);
         return new
         {
-            version = "0.5.0",
+            version = "0.5.1",
             status = "Running",
             dataRoot = Paths.ProductRoot,
             serial = Options.Serial,
@@ -453,7 +453,7 @@ public sealed partial class AndroidDebugService : IDisposable
             case "capabilities":
                 return new
                 {
-                    version = "0.5.0",
+                    version = "0.5.1",
                     protocol = 1,
                     ownedAvdOnly = true,
                     maxTouches = 10,

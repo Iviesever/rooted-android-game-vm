@@ -1,3 +1,17 @@
+# 0.5.1
+
+通用 Root 安卓工作台与双向文件管理。默认界面和接口不再包含特定游戏的专属流程，既有应用与用户数据保持独立于程序升级。
+
+- 按真实应用名称、图标和安卓用户选择应用；同名应用显示包名消歧，文件管理无需手写包名。
+- 浏览私有、设备保护、外部、OBB、媒体及共享目录；支持文件和文件夹双向复制、多选、拖放与多个应用数据根导出。
+- GUI 与 AI/CLI 共用版本引用、只读计划、传输任务、逐项哈希和权限记录；冲突可跳过、保留双方或备份后覆盖。
+- 取消和设备离线保留明确状态；用户可继续原任务，重新核对已完成内容、暂存与本实例的工具清理。
+- 修复多批上传规划时的集合修改异常、不可访问根残留旧上传目标、缺失应用根上传、目录 Enter 导航和续作期间历史状态不同步。
+- 传输预览和进度准确显示小文件字节数，历史使用本地时间；结果支持分页、失败原因、暂存及备份记录。
+- 保留现有镜像、图形和运行配置；启动物理余量门槛支持 2560 MiB，运行期保护保持。
+
+This installer is intentionally unsigned and named `UNSIGNED`. Windows may show an unknown publisher warning. Verify the SHA-256 checksum and repository build provenance before running it. No third-party APK, system image or user data is bundled.
+
 # 0.5.0
 
 本版改进导入、调试任务、输入归属和会话证据；实际验收与限制见docs/review-remaining-progress.md。
