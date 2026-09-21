@@ -39,6 +39,7 @@ public sealed record FileTransferHistoryRow(string PlanId, string Direction, str
     int TotalEntries, long TotalBytes, string ArtifactDirectory, bool CanResume, string? JobId = null)
 {
     public string DirectionText => Direction == "upload" ? "上传" : "下载";
+    public override string ToString() => DirectionText + " · " + StatusText + " · " + PlanId;
     public string StatusText => Status switch { "planned" => "待执行", "running" or "verifying" => "执行中", "succeeded" => "已核验", "cancelled" => "已取消", "interrupted" => "已中断", _ => "未完成" };
 }
 public sealed class ExportRootChoice(FileRootDescriptor root) : ObservableState

@@ -3,7 +3,10 @@ using RootedAndroidGameVM.Core.Debugging;
 
 namespace RootedAndroidGameVM.Core.Ui.Workstation;
 
-public sealed record TransferResultRow(string Path, string Status, string Detail);
+public sealed record TransferResultRow(string Path, string Status, string Detail)
+{
+    public override string ToString() => Path + " · " + Status;
+}
 public sealed class TransferResultPage
 {
     public TransferResultRow[] Rows { get; }
